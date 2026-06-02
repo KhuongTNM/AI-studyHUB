@@ -1,6 +1,6 @@
 # AI Study Hub
 
-AI Study Hub la he thong quan ly tai lieu hoc tap co AI ho tro hoi dap, duoc tach thanh frontend React + TypeScript va backend Java Spring Boot.
+AI Study Hub la he thong quan ly tai lieu hoc tap co AI ho tro hoi dap, duoc tach thanh frontend React/Next.js + TypeScript va backend Java Spring Boot.
 
 ## Cau truc
 
@@ -11,10 +11,12 @@ AI-studyHUB/
   database/
     ai_study_hub_schema_mssql.sql
   frontend/
-    src/
-      App.tsx
-      main.tsx
-      styles.css
+    app/
+    components/
+    hooks/
+    lib/
+    public/
+    styles/
     package.json
   backend/
     src/main/java/com/aistudyhub/backend/
@@ -27,7 +29,9 @@ AI-studyHUB/
 
 ## Frontend
 
-Frontend hien tai la view-only prototype bang React + TypeScript. Phan nay chi hien thi giao dien va fixture data de minh hoa workflow, chua xu ly login/upload/chat that.
+Frontend hien tai giu lai view/design goc cua prototype bang Next.js, React va TypeScript. Sidebar, header, modal, dashboard va cac man hinh trong prototype duoc giu nguyen de nhom co the noi API backend sau.
+
+Frontend chua ket noi database truc tiep. Cac thao tac dang nhap, upload, chat, room va admin trong prototype chi la state/mock phuc vu hien thi UI; logic that se duoc chuyen sang backend Spring Boot khi phat trien API.
 
 Man hinh da phan anh cac module:
 
@@ -119,6 +123,7 @@ Nguon business rules: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
 
 ## Ghi chu hien tai
 
-- Frontend da xoa logic nghiep vu cua prototype cu va chi giu giao dien.
+- Frontend giu thiet ke prototype goc, khong phai ban redesign moi.
+- Frontend chua co API/database integration that; cac service/controller se duoc noi voi backend o giai do tiep theo.
 - Backend moi co skeleton, entity `User` va database config.
 - Cac API controller/service/repository se duoc bo sung o giai do tiep theo.
