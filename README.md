@@ -1,6 +1,6 @@
 # AI Study Hub
 
-AI Study Hub la he thong quan ly tai lieu hoc tap co AI ho tro hoi dap, duoc tach thanh frontend React + TypeScript va backend Java Spring Boot.
+AI Study Hub la he thong quan ly tai lieu hoc tap co AI ho tro hoi dap, duoc tach thanh frontend React/Next.js + TypeScript va backend Java Spring Boot.
 
 ## Cau truc
 
@@ -11,23 +11,33 @@ AI-studyHUB/
   database/
     ai_study_hub_schema_mssql.sql
   frontend/
-    src/
-      App.tsx
-      main.tsx
-      styles.css
+    app/
+    components/
+    hooks/
+    lib/
+    public/
+    styles/
     package.json
   backend/
     src/main/java/com/aistudyhub/backend/
       AiStudyHubBackendApplication.java
-      config/DatabaseConfig.java
-      model/User.java
+      config/
+        DatabaseConfig.java
+      entity/
+        User.java
+      repository/
+      dto/
+      service/
+      controller/
     src/main/resources/application.properties
     pom.xml
 ```
 
 ## Frontend
 
-Frontend hien tai la view-only prototype bang React + TypeScript. Phan nay chi hien thi giao dien va fixture data de minh hoa workflow, chua xu ly login/upload/chat that.
+Frontend hien tai giu lai view/design goc cua prototype bang Next.js, React va TypeScript. Sidebar, header, modal, dashboard va cac man hinh trong prototype duoc giu nguyen de nhom co the noi API backend sau.
+
+Frontend chua ket noi database truc tiep. Cac thao tac dang nhap, upload, chat, room va admin trong prototype chi la state/mock phuc vu hien thi UI; logic that se duoc chuyen sang backend Spring Boot khi phat trien API.
 
 Man hinh da phan anh cac module:
 
@@ -57,12 +67,30 @@ npm run build
 
 ## Backend
 
-Backend la Spring Boot skeleton de nhom tiep tuc phat trien API.
+Backend la Spring Boot skeleton de nhom tiep tuc phat trien API theo cau truc layer:
+
+```text
+backend
+|
+|-- config/       Cau hinh he thong: Security, CORS, Beans, Database
+|-- entity/       Map voi bang database bang JPA Entity
+|-- repository/   Truy van database bang Spring Data JPA
+|-- dto/          Van chuyen du lieu Request/Response
+|-- service/      Xu ly logic nghiep vu
+`-- controller/   Nhan Request HTTP va tra ve JSON
+```
+
+Luong xu ly backend nen di theo thu tu:
+
+```text
+HTTP Request -> Controller -> Service -> Repository -> Entity/Database
+HTTP Response <- Controller <- Service <- Repository <- Entity/Database
+```
 
 File object/entity mau:
 
 ```text
-backend/src/main/java/com/aistudyhub/backend/model/User.java
+backend/src/main/java/com/aistudyhub/backend/entity/User.java
 ```
 
 File ket noi database:
@@ -77,6 +105,17 @@ Chay backend:
 cd backend
 mvn spring-boot:run
 ```
+
+Quy tac viet code backend:
+
+- `entity/`: chi mapping bang database, vi du `User`, `Document`, `ChatSession`.
+- `repository/`: interface truy van database, vi du `UserRepository`.
+- `dto/`: request/response object, vi du `LoginRequest`, `RegisterRequest`, `UserResponse`.
+- `service/`: logic nghiep vu, validation nang cao, tinh toan, goi repository.
+- `controller/`: khai bao endpoint REST, nhan DTO request va tra DTO/JSON response.
+- `config/`: cau hinh dung chung nhu CORS, Security/JWT, PasswordEncoder, Bean config.
+- Khong nen dat logic nghiep vu trong controller.
+- Khong nen de frontend goi database truc tiep; frontend chi goi API tu controller.
 
 Mac dinh backend doc cau hinh SQL Server tu bien moi truong:
 
@@ -119,6 +158,7 @@ Nguon business rules: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
 
 ## Ghi chu hien tai
 
-- Frontend da xoa logic nghiep vu cua prototype cu va chi giu giao dien.
-- Backend moi co skeleton, entity `User` va database config.
-- Cac API controller/service/repository se duoc bo sung o giai do tiep theo.
+- Frontend giu thiet ke prototype goc, khong phai ban redesign moi.
+- Frontend chua co API/database integration that; cac service/controller se duoc noi voi backend o giai do tiep theo.
+- Backend moi co skeleton theo package `config/entity/repository/dto/service/controller`, entity `User` va database config.
+- Cac API controller/service/repository/DTO cu the se duoc bo sung o giai do tiep theo.
