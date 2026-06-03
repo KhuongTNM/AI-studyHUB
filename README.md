@@ -15,13 +15,17 @@ AI-studyHUB/
   frontend/
     app/
     components/
+    hooks/
     lib/
       api/auth.ts          # Gọi API đăng nhập / đăng ký / đăng xuất
       auth-storage.ts      # Lưu JWT (localStorage)
+    public/
+    styles/
     .env.local.example     # Mẫu cấu hình URL backend
     package.json
   backend/
     src/main/java/com/aistudyhub/backend/
+      AiStudyHubBackendApplication.java
       config/              # Database, Security, CORS, seed dữ liệu demo
       entity/
       repository/
@@ -106,7 +110,7 @@ export DB_PASSWORD="MatKhauCuaBan"
 Cấu hình JWT và CORS (cùng file `application.properties`):
 
 ```properties
-app.jwt.secret=${JWT_SECRET:...}
+app.jwt.secret=${JWT_SECRET:AIStudyHubDevSecretKeyMustBeAtLeast32CharactersLong}
 app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
 app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
 ```
@@ -214,4 +218,4 @@ Nguồn: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
 - Frontend giữ thiết kế prototype gốc (Next.js).
 - **Authentication** (login, register, logout, `/me`) đã nối backend + JWT.
 - Document, Cloud, Chatbot, Flashcard, Study Room, Admin: UI có sẵn, logic/API backend đang phát triển dần.
-- Nhánh phát triển chính: **`develop`** trên GitHub.
+- Nhánh phát triển chính: **`develop`** trên [GitHub](https://github.com/KhuongTNM/AI-studyHUB/tree/develop).
