@@ -1,4 +1,4 @@
-package com.aistudyhub.backend.model;
+package com.aistudyhub.backend.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

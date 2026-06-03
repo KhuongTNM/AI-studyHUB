@@ -1,7 +1,7 @@
 -- =============================================================
 -- AI STUDY HUB — Database Schema (Microsoft SQL Server / T-SQL)
 -- Group 07 | SU26SWP391
--- Dựa trên 71 Business Rules + Functional Requirements
+-- Dựa trên 70 Business Rules + Functional Requirements
 -- =============================================================
 
 USE master;

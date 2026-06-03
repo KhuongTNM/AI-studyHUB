@@ -1,6 +1,7 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react"
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react"
+import { fetchCurrentUserApi, loginApi, logoutApi, registerApi } from "@/lib/api/auth"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -358,8 +359,8 @@ interface AppState {
   packagePrices: PackagePrice[]
   rooms: StudyRoom[]
   currentRoomId: string | null
-  login: (email: string, password: string) => { success: boolean; error?: string }
-  register: (email: string, password: string, displayName: string) => { success: boolean; error?: string }
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  register: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   openAuthModal: (tab?: "login" | "register" | "forgot") => void
   closeAuthModal: () => void
@@ -444,47 +445,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authModalTab, setAuthModalTab] = useState<"login" | "register" | "forgot">("login")
   const [currentPage, setCurrentPage] = useState<AppState["currentPage"]>("home")
 
-  const login = useCallback((email: string, password: string) => {
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase())
-    if (!user) return { success: false, error: "Email không tồn tại trong hệ thống." }
-    if (user.isLocked) return { success: false, error: "Tài khoản đã bị khóa. Liên hệ Admin." }
-    if (password !== user.password) {
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, loginAttempts: u.loginAttempts + 1 } : u))
-      return { success: false, error: "Sai mật khẩu." }
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const result = await loginApi(email, password)
+      if (!result.success) return result
+      setCurrentUser(result.user)
+      setShowAuthModal(false)
+      return { success: true }
+    } catch {
+      return { success: false, error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080." }
     }
-    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, loginAttempts: 0, lastActive: new Date() } : u))
-    setCurrentUser({ ...user, loginAttempts: 0, lastActive: new Date() })
-    setShowAuthModal(false)
-    return { success: true }
-  }, [users])
+  }, [])
 
-  const register = useCallback((email: string, password: string, displayName: string) => {
-    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { success: false, error: "Email này đã được đăng ký." }
+  const register = useCallback(async (email: string, password: string, displayName: string) => {
+    try {
+      const result = await registerApi(email, password, displayName)
+      if (!result.success) return result
+      setCurrentUser(result.user)
+      setShowAuthModal(false)
+      return { success: true }
+    } catch {
+      return { success: false, error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080." }
     }
-    if (password.length < 8) return { success: false, error: "Mật khẩu phải có ít nhất 8 ký tự." }
-    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
-      return { success: false, error: "Mật khẩu phải chứa ít nhất 1 chữ cái và 1 số." }
-    }
-    if (displayName.length > 50) return { success: false, error: "Tên hiển thị không được vượt quá 50 ký tự." }
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      email, displayName, password,
-      role: "user", isLocked: false, emailVerified: false,
-      createdAt: new Date(), loginAttempts: 0, lastActive: new Date(),
-      storageUsed: 0, storageLimit: 1024 * 1024 * 512,
-      subscriptionTier: "free",
-    }
-    setUsers(prev => [...prev, newUser])
-    setCurrentUser(newUser)
-    setShowAuthModal(false)
-    return { success: true }
-  }, [users])
+  }, [])
 
   const logout = useCallback(() => {
+    void logoutApi()
     setCurrentUser(null)
     setActiveChatId(null)
     setCurrentPage("home")
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchCurrentUserApi()
+      .then(user => {
+        if (!cancelled && user) setCurrentUser(user)
+      })
+      .catch(() => {
+        // ignore restore errors on initial load
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const openAuthModal = useCallback((tab: "login" | "register" | "forgot" = "login") => {

@@ -57,15 +57,49 @@ Du an se duoc to chuc theo cac module cua AI Study Hub:
 
 ## 5. Ke hoach backend
 
-1. Tao `backend/` Spring Boot Maven skeleton.
-2. Tao file object/entity mau:
-   - `src/main/java/com/aistudyhub/backend/model/User.java`
-   - co mapping co ban voi bang `users` trong schema MSSQL.
-3. Tao file ket noi database:
-   - `src/main/java/com/aistudyhub/backend/config/DatabaseConfig.java`
-   - cau hinh `DataSource` doc tu environment/properties.
-4. Tao `application.properties` mau cho SQL Server.
-5. Them `pom.xml` voi Spring Boot Web, Data JPA, Validation, SQL Server JDBC driver.
+Backend se dung Spring Boot theo cau truc layer ro rang:
+
+```text
+backend/src/main/java/com/aistudyhub/backend/
+  AiStudyHubBackendApplication.java
+  config/       cau hinh he thong: Security, CORS, Beans, Database
+  entity/       map voi bang database bang JPA Entity
+  repository/   truy van database bang Spring Data JPA
+  dto/          object van chuyen du lieu request/response
+  service/      xu ly logic nghiep vu va goi repository
+  controller/   nhan HTTP request va tra JSON response
+```
+
+Nguyen tac trien khai:
+
+1. Tao `backend/` Spring Boot Maven project voi Java 17.
+2. Moi bang database can co entity rieng trong `entity/`.
+   - Vi du hien tai: `src/main/java/com/aistudyhub/backend/entity/User.java`
+   - Entity chi phu trach mapping voi database, khong viet logic HTTP.
+3. Moi entity/module can co repository trong `repository/`.
+   - Vi du du kien: `UserRepository extends JpaRepository<User, UUID>`.
+   - Repository chi phu trach truy van database.
+4. Request/response khong tra truc tiep entity neu khong can thiet.
+   - Tao DTO trong `dto/`, vi du `LoginRequest`, `RegisterRequest`, `UserResponse`.
+5. Logic nghiep vu dat trong `service/`.
+   - Vi du: validate dang ky, hash password, kiem tra locked account, tinh storage.
+6. API endpoint dat trong `controller/`.
+   - Controller chi nhan request, validate DTO, goi service va tra JSON.
+7. Cau hinh he thong dat trong `config/`.
+   - `DatabaseConfig.java` da doc database config tu environment/properties.
+   - Cac cau hinh sau se them tai day: CORS, Security/JWT, PasswordEncoder, OpenAPI.
+8. Tao `application.properties` mau cho SQL Server.
+9. Them `pom.xml` voi Spring Boot Web, Data JPA, Validation, SQL Server JDBC driver.
+
+Thu tu phat trien API uu tien:
+
+1. Authentication: register, login, logout/token, profile.
+2. Document Management: upload metadata, list, search, soft delete.
+3. Cloud Storage: storage used/limit, warning tren 80%.
+4. AI Chatbot: chat session, chat message, document context.
+5. Flashcard: CRUD flashcard va status hoc tap.
+6. Study Room: room, member, chat.
+7. Admin/Sub-admin: user management, lock/reset/delete, activity log.
 
 ## 6. Ke hoach database
 
@@ -97,7 +131,7 @@ README goc se gom:
 - Co file `IMPLEMENTATION_PLAN.md` truoc khi bat dau trien khai.
 - Co cau truc `frontend/`, `backend/`, `database/`.
 - Frontend build duoc ve mat TypeScript/project structure.
-- Backend co Maven project, object/entity va database config.
+- Backend co Maven project, package layer `config/entity/repository/dto/service/controller`, entity mau va database config.
 - README ro rang de thanh vien nhom tiep tuc phat trien.
 - Du an nam trong `E:\Education\Lab\SWP391\AI-studyHUB`.
 - Neu GitHub authentication/network cho phep, du an duoc push len repository yeu cau.
