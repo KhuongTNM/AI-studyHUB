@@ -10,6 +10,7 @@ import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.security.JwtService;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
