@@ -93,8 +93,7 @@ export function AuthModal() {
     setError("")
     if (!email || !password) { setError(text.required); return }
     setLoading(true)
-    await new Promise(r => setTimeout(r, 800))
-    const result = login(email, password)
+    const result = await login(email, password)
     setLoading(false)
     if (!result.success) setError(result.error || text.failedLogin)
   }
@@ -109,8 +108,7 @@ export function AuthModal() {
       setError(text.letterNumber); return
     }
     setLoading(true)
-    await new Promise(r => setTimeout(r, 1000))
-    const result = register(email, password, displayName)
+    const result = await register(email, password, displayName)
     setLoading(false)
     if (!result.success) setError(result.error || text.failedRegister)
   }

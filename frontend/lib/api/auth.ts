@@ -1,0 +1,125 @@
+import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/auth-storage"
+import type { User, UserRole } from "@/lib/store"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+
+export interface ApiUser {
+  id: string
+  email: string
+  displayName: string
+  role: string
+  locked: boolean
+  storageUsedBytes: number
+  storageLimitBytes: number
+  languagePreference: string
+  themePreference: string
+  createdAt: string
+}
+
+interface AuthApiResponse {
+  accessToken: string
+  tokenType: string
+  user: ApiUser
+}
+
+interface ErrorBody {
+  message?: string
+}
+
+async function parseError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as ErrorBody
+    if (body.message) return body.message
+  } catch {
+    // ignore parse errors
+  }
+  return "Đã xảy ra lỗi. Vui lòng thử lại."
+}
+
+function mapRole(role: string): UserRole {
+  if (role === "sub-admin") return "sub-admin"
+  if (role === "admin") return "admin"
+  return "user"
+}
+
+export function mapApiUserToStoreUser(apiUser: ApiUser): User {
+  return {
+    id: apiUser.id,
+    email: apiUser.email,
+    displayName: apiUser.displayName,
+    password: "",
+    role: mapRole(apiUser.role),
+    isLocked: apiUser.locked,
+    emailVerified: true,
+    createdAt: new Date(apiUser.createdAt),
+    loginAttempts: 0,
+    lastActive: new Date(),
+    storageUsed: apiUser.storageUsedBytes,
+    storageLimit: apiUser.storageLimitBytes,
+  }
+}
+
+async function handleAuthResponse(
+  response: Response
+): Promise<{ success: true; user: User } | { success: false; error: string }> {
+  if (!response.ok) {
+    return { success: false, error: await parseError(response) }
+  }
+  const data = (await response.json()) as AuthApiResponse
+  setAccessToken(data.accessToken)
+  return { success: true, user: mapApiUserToStoreUser(data.user) }
+}
+
+export async function loginApi(email: string, password: string): Promise<{ success: true; user: User } | { success: false; error: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  })
+  return handleAuthResponse(response)
+}
+
+export async function registerApi(
+  email: string,
+  password: string,
+  displayName: string
+): Promise<{ success: true; user: User } | { success: false; error: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, displayName }),
+  })
+  return handleAuthResponse(response)
+}
+
+export async function logoutApi(): Promise<void> {
+  const token = getAccessToken()
+  if (token) {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch {
+      // client-side logout still proceeds
+    }
+  }
+  clearAccessToken()
+}
+
+export async function fetchCurrentUserApi(): Promise<User | null> {
+  const token = getAccessToken()
+  if (!token) return null
+
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!response.ok) {
+    clearAccessToken()
+    return null
+  }
+
+  const data = (await response.json()) as ApiUser
+  return mapApiUserToStoreUser(data)
+}

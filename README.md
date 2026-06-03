@@ -1,8 +1,10 @@
 # AI Study Hub
 
-AI Study Hub la he thong quan ly tai lieu hoc tap co AI ho tro hoi dap, duoc tach thanh frontend React/Next.js + TypeScript va backend Java Spring Boot.
+AI Study Hub là hệ thống quản lý tài liệu học tập có AI hỗ trợ hỏi đáp, được tách thành **frontend** (Next.js + TypeScript) và **backend** (Java Spring Boot).
 
-## Cau truc
+Repository: [https://github.com/KhuongTNM/AI-studyHUB](https://github.com/KhuongTNM/AI-studyHUB)
+
+## Cấu trúc dự án
 
 ```text
 AI-studyHUB/
@@ -13,117 +15,203 @@ AI-studyHUB/
   frontend/
     app/
     components/
-    hooks/
     lib/
-    public/
-    styles/
+      api/auth.ts          # Gọi API đăng nhập / đăng ký / đăng xuất
+      auth-storage.ts      # Lưu JWT (localStorage)
+    .env.local.example     # Mẫu cấu hình URL backend
     package.json
   backend/
     src/main/java/com/aistudyhub/backend/
-      AiStudyHubBackendApplication.java
-      config/DatabaseConfig.java
-      model/User.java
+      config/              # Database, Security, CORS, seed dữ liệu demo
+      entity/
+      repository/
+      dto/
+      service/
+      controller/
+      security/
     src/main/resources/application.properties
     pom.xml
 ```
 
-## Frontend
+## Chuẩn bị công cụ
 
-Frontend hien tai giu lai view/design goc cua prototype bang Next.js, React va TypeScript. Sidebar, header, modal, dashboard va cac man hinh trong prototype duoc giu nguyen de nhom co the noi API backend sau.
+Cài đặt và kiểm tra trước khi chạy dự án:
 
-Frontend chua ket noi database truc tiep. Cac thao tac dang nhap, upload, chat, room va admin trong prototype chi la state/mock phuc vu hien thi UI; logic that se duoc chuyen sang backend Spring Boot khi phat trien API.
+| Công cụ | Phiên bản gợi ý | Dùng cho |
+|---------|-----------------|----------|
+| [Java JDK](https://adoptium.net/) | 17+ | Backend Spring Boot |
+| [Apache Maven](https://maven.apache.org/download.cgi) | 3.9+ | Build/chạy backend (`mvn`) |
+| [Node.js](https://nodejs.org/) | 18+ (LTS) | Frontend Next.js |
+| npm | đi kèm Node.js | Cài dependency frontend |
+| [SQL Server](https://www.microsoft.com/sql-server) | 2019+ hoặc Express | Database `AIStudyHub` |
+| SSMS hoặc Azure Data Studio | mới nhất | Chạy script schema |
 
-Man hinh da phan anh cac module:
-
-- Authentication
-- Document Management
-- Cloud Storage
-- AI Chatbot
-- Flashcard
-- Study Room
-- Profile/Admin overview
-- Trash va Activity Log
-
-Chay frontend:
+Kiểm tra nhanh trong terminal:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+java -version
+mvn -version
+node -v
+npm -v
 ```
 
-Build frontend:
+**Lưu ý:** Nếu gặp lỗi `'mvn' is not recognized`, cần cài Maven và thêm thư mục `bin` vào biến môi trường `PATH`, hoặc chạy backend từ IDE (Run class `AiStudyHubBackendApplication`).
+
+## Cấu hình database
+
+### 1. Tạo schema (bắt buộc trước khi chạy backend)
+
+Chạy file SQL trong SQL Server Management Studio hoặc Azure Data Studio:
+
+```text
+database/ai_study_hub_schema_mssql.sql
+```
+
+Script tạo database **`AIStudyHub`** và các bảng (users, documents, subscription_plans, …).
+
+### 2. Cấu hình kết nối backend → SQL Server
+
+Backend đọc thông tin kết nối theo thứ tự ưu tiên: **biến môi trường** → giá trị mặc định trong file properties.
+
+| Vị trí | Mô tả |
+|--------|--------|
+| `backend/src/main/resources/application.properties` | File cấu hình chính (mặc định khi dev local) |
+| `backend/src/main/java/com/aistudyhub/backend/config/DatabaseConfig.java` | Đọc `app.datasource.*` và tạo `DataSource` (HikariCP) |
+| Biến môi trường `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Ghi đè properties khi deploy / CI |
+
+Các khóa trong `application.properties`:
+
+```properties
+app.datasource.url=${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true}
+app.datasource.username=${DB_USERNAME:sa}
+app.datasource.password=${DB_PASSWORD:YourStrongPassword123}
+```
+
+**Ví dụ đặt biến môi trường (Windows PowerShell):**
+
+```powershell
+$env:DB_URL="jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true"
+$env:DB_USERNAME="sa"
+$env:DB_PASSWORD="MatKhauCuaBan"
+```
+
+**Ví dụ đặt biến môi trường (Linux/macOS):**
 
 ```bash
-cd frontend
-npm run build
+export DB_URL="jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true"
+export DB_USERNAME="sa"
+export DB_PASSWORD="MatKhauCuaBan"
 ```
 
-## Backend
+Cấu hình JWT và CORS (cùng file `application.properties`):
 
-Backend la Spring Boot skeleton de nhom tiep tuc phat trien API.
+```properties
+app.jwt.secret=${JWT_SECRET:...}
+app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
+app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
+```
 
-File object/entity mau:
+### 3. Cấu hình frontend → backend API
+
+| Vị trí | Mô tả |
+|--------|--------|
+| `frontend/.env.local` | File local (không commit secret); copy từ `.env.local.example` |
+| `frontend/.env.local.example` | Mẫu: `NEXT_PUBLIC_API_URL=http://localhost:8080` |
+| `frontend/lib/api/auth.ts` | Đọc `process.env.NEXT_PUBLIC_API_URL` |
+
+Tạo file `frontend/.env.local`:
 
 ```text
-backend/src/main/java/com/aistudyhub/backend/model/User.java
+NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
-File ket noi database:
+## Chạy dự án (thứ tự)
 
-```text
-backend/src/main/java/com/aistudyhub/backend/config/DatabaseConfig.java
-```
+### Bước 1 — Database
 
-Chay backend:
+1. Bật SQL Server.
+2. Chạy `database/ai_study_hub_schema_mssql.sql`.
+3. Đảm bảo `DB_PASSWORD` (hoặc properties) khớp tài khoản SQL của bạn.
+
+### Bước 2 — Backend (cổng 8080)
 
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
-Mac dinh backend doc cau hinh SQL Server tu bien moi truong:
+Khi bảng `users` **trống**, ứng dụng tự seed tài khoản demo:
 
-```text
-DB_URL
-DB_USERNAME
-DB_PASSWORD
+| Email | Mật khẩu | Vai trò |
+|-------|-----------|---------|
+| `admin@aistudyhub.com` | `Admin123` | admin |
+| `student@aistudyhub.com` | `Student123` | user |
+| `subadmin@aistudyhub.com` | `SubAdmin123` | sub_admin |
+
+### Bước 3 — Frontend (cổng 3000)
+
+```bash
+cd frontend
+npm install
+cp .env.local.example .env.local   # Windows: copy .env.local.example .env.local
+npm run dev
 ```
 
-Neu khong co bien moi truong, file `application.properties` se dung gia tri mau:
+Mở trình duyệt: **http://localhost:3000**
 
-```text
-jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true
-sa
-YourStrongPassword123
+Build production frontend:
+
+```bash
+cd frontend
+npm run build
 ```
 
-## Database
+## API Authentication (đã triển khai)
 
-Schema MSSQL nam tai:
+| Method | Endpoint | Mô tả |
+|--------|----------|--------|
+| `POST` | `/api/auth/register` | Đăng ký (tự đăng nhập, trả JWT) |
+| `POST` | `/api/auth/login` | Đăng nhập |
+| `POST` | `/api/auth/logout` | Đăng xuất (cần header `Authorization: Bearer <token>`) |
+| `GET` | `/api/auth/me` | Lấy thông tin user hiện tại |
+
+Frontend đã nối **đăng nhập, đăng ký, đăng xuất** qua API. Các module khác (tài liệu, chat, room, …) vẫn dùng mock/state trên UI cho đến khi backend bổ sung API tương ứng.
+
+## Backend — cấu trúc layer
 
 ```text
-database/ai_study_hub_schema_mssql.sql
+HTTP Request  -> Controller -> Service -> Repository -> Entity/Database
+HTTP Response <- Controller <- Service <- Repository <- Entity/Database
 ```
 
-Co the chay file nay bang SQL Server Management Studio hoac Azure Data Studio de tao database `AIStudyHub`.
+| Package | Trách nhiệm |
+|---------|----------------|
+| `config/` | Database, Security/JWT, CORS, seed dữ liệu |
+| `entity/` | JPA mapping bảng DB |
+| `repository/` | Truy vấn Spring Data JPA |
+| `dto/` | Request/Response (LoginRequest, RegisterRequest, …) |
+| `service/` | Logic nghiệp vụ, validation |
+| `controller/` | REST API |
+| `security/` | JWT filter, principal |
+
+Quy tắc: không đặt logic nghiệp vụ trong `controller`; frontend **không** gọi database trực tiếp.
 
 ## Business Rules Mapping
 
-Nguon business rules: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
+Nguồn: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
 
-- BR-001 -> BR-012: Authentication, validation email/password, role mac dinh, login attempts, locked account.
-- BR-013 -> BR-026: Document Management, file type PDF/DOCX/PPTX, subject bat buoc, status upload, public/private, soft delete.
-- BR-027 -> BR-031: Cloud Storage, storage limit, storage used, canh bao tren 80%, preview.
-- BR-032 -> BR-037: AI Chatbot, logged-in user, chat session, document context, Markdown render.
-- BR-038 -> BR-042: Flashcard, tao tu tai lieu hoac thu cong, trang thai hoc tap.
-- BR-043 -> BR-051: Study Room, subscription-based create room, capacity, room chat.
-- BR-052 -> BR-057: Profile va Settings, display name, password, dark mode, language, upgrade plan.
-- BR-058 -> BR-070: Admin/Sub-admin, user management, lock/reset/delete, subscription, storage limit, activity log.
+- **BR-001 → BR-012:** Authentication (email, password, role, login attempts, khóa tài khoản)
+- **BR-013 → BR-026:** Document Management
+- **BR-027 → BR-031:** Cloud Storage
+- **BR-032 → BR-037:** AI Chatbot
+- **BR-038 → BR-042:** Flashcard
+- **BR-043 → BR-051:** Study Room
+- **BR-052 → BR-057:** Profile & Settings
+- **BR-058 → BR-070:** Admin / Sub-admin
 
-## Ghi chu hien tai
+## Ghi chú hiện tại
 
-- Frontend giu thiet ke prototype goc, khong phai ban redesign moi.
-- Frontend chua co API/database integration that; cac service/controller se duoc noi voi backend o giai do tiep theo.
-- Backend moi co skeleton, entity `User` va database config.
-- Cac API controller/service/repository se duoc bo sung o giai do tiep theo.
+- Frontend giữ thiết kế prototype gốc (Next.js).
+- **Authentication** (login, register, logout, `/me`) đã nối backend + JWT.
+- Document, Cloud, Chatbot, Flashcard, Study Room, Admin: UI có sẵn, logic/API backend đang phát triển dần.
+- Nhánh phát triển chính: **`develop`** trên GitHub.
