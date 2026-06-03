@@ -131,20 +131,62 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 ## Chạy dự án (thứ tự)
 
-### Bước 1 — Database
+### Quick Start (Windows)
+
+**Chạy backend:**
+```bash
+cd backend
+run-backend.bat
+```
+
+Hoặc dùng PowerShell:
+```powershell
+cd backend
+.\run-backend.ps1
+```
+
+**Chạy frontend (terminal mới):**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Mở trình duyệt: **http://localhost:3000** (Backend: **http://localhost:8080**)
+
+---
+
+### Chi tiết từng bước
+
+#### Bước 1 — Database
 
 1. Bật SQL Server.
-2. Chạy `database/ai_study_hub_schema_mssql.sql`.
-3. Đảm bảo `DB_PASSWORD` (hoặc properties) khớp tài khoản SQL của bạn.
+2. Chạy `database/ai_study_hub_schema_mssql.sql` trong SQL Server Management Studio hoặc Azure Data Studio.
+3. Đảm bảo username/password khớp với file `backend/src/main/resources/application.properties`.
 
-### Bước 2 — Backend (cổng 8080)
+#### Bước 2 — Backend (cổng 8080)
 
+**Windows (cmd):**
+```bash
+cd backend
+run-backend.bat
+```
+
+**Windows (PowerShell):**
+```powershell
+cd backend
+.\run-backend.ps1
+```
+
+**macOS/Linux:**
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
-Khi bảng `users` **trống**, ứng dụng tự seed tài khoản demo:
+Backend chạy tại: **http://localhost:8080**
+
+**Tài khoản demo (auto-seed khi bảng `users` trống):**
 
 | Email | Mật khẩu | Vai trò |
 |-------|-----------|---------|
@@ -152,7 +194,9 @@ Khi bảng `users` **trống**, ứng dụng tự seed tài khoản demo:
 | `student@aistudyhub.com` | `Student123` | user |
 | `subadmin@aistudyhub.com` | `SubAdmin123` | sub_admin |
 
-### Bước 3 — Frontend (cổng 3000)
+#### Bước 3 — Frontend (cổng 3000)
+
+Mở **terminal mới** (backend vẫn chạy):
 
 ```bash
 cd frontend
@@ -161,12 +205,10 @@ cp .env.local.example .env.local   # Windows: copy .env.local.example .env.local
 npm run dev
 ```
 
-Mở trình duyệt: **http://localhost:3000**
+Frontend chạy tại: **http://localhost:3000**
 
-Build production frontend:
-
+**Build production:**
 ```bash
-cd frontend
 npm run build
 ```
 
