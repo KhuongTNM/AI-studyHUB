@@ -4,8 +4,10 @@ import com.aistudyhub.backend.dto.AuthResponse;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UserResponse;
+import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.security.JwtService;
@@ -22,16 +24,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final int maxLoginAttempts;
 
     public AuthService(
             UserRepository userRepository,
+            SubscriptionPlanRepository subscriptionPlanRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             @Value("${app.auth.max-login-attempts}") int maxLoginAttempts) {
         this.userRepository = userRepository;
+        this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.maxLoginAttempts = maxLoginAttempts;
@@ -50,6 +55,7 @@ public class AuthService {
         }
 
         PasswordPolicyValidator.validate(request.getPassword());
+        SubscriptionPlan freePlan = getFreePlan();
 
         LocalDateTime now = LocalDateTime.now();
         User user = new User();
@@ -60,8 +66,10 @@ public class AuthService {
         user.setRole(User.Role.user);
         user.setLocked(false);
         user.setLoginAttempts((short) 0);
-        user.setStorageLimitBytes(536870912L);
+        user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
         user.setStorageUsedBytes(0L);
+        user.setSubscriptionPlanId(freePlan.getId());
+        user.setSubscriptionExpiresAt(null);
         user.setLanguagePreference(User.LanguagePreference.vi);
         user.setThemePreference(User.ThemePreference.light);
         user.setCreatedAt(now);
@@ -71,6 +79,11 @@ public class AuthService {
         UserResponse userResponse = UserResponse.from(user);
         String token = jwtService.generateToken(user.getId(), user.getEmail(), userResponse.getRole());
         return new AuthResponse(token, userResponse);
+    }
+
+    private SubscriptionPlan getFreePlan() {
+        return subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+                .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Gói Free chưa được cấu hình."));
     }
 
     @Transactional
