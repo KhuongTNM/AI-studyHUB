@@ -169,7 +169,7 @@ Mở trình duyệt: **http://localhost:3000** (Backend: **http://localhost:8080
 **Windows (cmd):**
 ```bash
 cd backend
-run-backend.bat
+mvn spring-boot:run
 ```
 
 **Windows (PowerShell):**
