@@ -136,7 +136,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 **Chạy backend:**
 ```bash
 cd backend
-run-backend.bat
+mvn spring-boot:run
 ```
 
 Hoặc dùng PowerShell:
