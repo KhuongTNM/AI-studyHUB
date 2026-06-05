@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react"
 import { fetchCurrentUserApi, loginApi, logoutApi, registerApi } from "@/lib/api/auth"
+import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/lib/api/subscription-plans"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -386,7 +387,7 @@ interface AppState {
   setFlashcardSelectedDocumentId: (id: string | "all") => void
   toggleDarkMode: () => void
   setLanguage: (language: Language) => void
-  updatePackagePrice: (tier: PackageTier, newPrice: number) => { success: boolean; error?: string }
+  updatePackagePrice: (tier: PackageTier, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => { success: boolean; error?: string }
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
   createRoom: (roomId: string, password?: string) => { success: boolean; error?: string }
@@ -489,6 +490,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSubscriptionPlansApi()
+      .then(plans => {
+        if (cancelled) return
+        setPackagePrices(prev => prev.map(pkg => {
+          const planName = pkg.tier === "2-4" ? "plan_2_4" : pkg.tier === "5+" ? "plan_5_plus" : "free"
+          const plan = plans.find(item => item.name === planName)
+          if (!plan) return pkg
+          return {
+            ...pkg,
+            id: String(plan.id),
+            name: plan.displayName,
+            price: Number(plan.price),
+            maxUsers: plan.maxRoomMembers || pkg.maxUsers,
+          }
+        }))
+      })
+      .catch(() => {
+        // keep mock prices when backend is not available
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser?.id])
 
   const openAuthModal = useCallback((tab: "login" | "register" | "forgot" = "login") => {
     setAuthModalTab(tab)
@@ -669,20 +696,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const updatePackagePrice = useCallback((tier: PackageTier, newPrice: number) => {
-    setPackagePrices(prev => prev.map(p => p.tier === tier ? { ...p, price: newPrice } : p))
+  const updatePackagePrice = useCallback(async (tier: PackageTier, newPrice: number, adminPassword: string) => {
+    if (currentUser?.role !== "admin") {
+      return { success: false, error: "Chỉ Admin mới được chỉnh sửa giá gói." }
+    }
 
-    if (currentUser) {
+    try {
+      const updatedPlan = await updatePackagePriceApi(tier, newPrice, adminPassword)
+      const updatedPrice = Number(updatedPlan.price)
+      setPackagePrices(prev => prev.map(p => p.tier === tier ? { ...p, price: updatedPrice } : p))
       const tierName = tier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"
       setActivityLogs(prev => [{
         id: `log-${Date.now()}`,
         userId: currentUser.id,
         action: `Cập nhật giá ${tierName}`,
-        target: `${newPrice.toLocaleString("vi-VN")}đ/tháng`,
+        target: `${updatedPrice.toLocaleString("vi-VN")}đ/tháng`,
         timestamp: new Date(),
       }, ...prev])
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Không thể cập nhật giá gói." }
     }
-    return { success: true }
   }, [currentUser])
 
   const grantSubscription = useCallback((userId: string, tier: PackageTier, durationMonths: number) => {

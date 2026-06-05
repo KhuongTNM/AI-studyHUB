@@ -53,6 +53,10 @@ public class SubscriptionPlan {
         return price;
     }
 
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
     public short getMaxRoomMembers() {
         return maxRoomMembers;
     }
@@ -67,5 +71,9 @@ public class SubscriptionPlan {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }
