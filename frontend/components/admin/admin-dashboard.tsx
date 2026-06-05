@@ -15,7 +15,7 @@ export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
-    packagePrices, updatePackagePrice, grantSubscription,
+    packagePrices, updatePackagePrice, grantSubscription, updateUserStorageLimit,
   } = useApp()
   const [userSearch, setUserSearch] = useState("")
   const [message, setMessage] = useState("")
@@ -130,15 +130,21 @@ export function AdminDashboard() {
     return true
   }
 
+  const canUpdateStorage = (target: User) => canTouchAccount(target) && target.role === "user"
+
   const runAccountAction = (result: { success: boolean; error?: string }, successText: string) => {
     setMessage(result.success ? successText : result.error ?? "Không thể thực hiện thao tác.")
   }
 
-  const updateStorageLimit = (user: User, value: string) => {
+  const updateStorageLimit = async (user: User, value: string) => {
     const gb = Number(value)
     if (Number.isFinite(gb) && gb > 0) {
-      updateUser(user.id, { storageLimit: gb * 1024 * 1024 * 1024 })
-      setMessage(`Đã cập nhật dung lượng cho ${user.email}.`)
+      const currentGb = user.storageLimit / (1024 * 1024 * 1024)
+      if (Math.abs(gb - currentGb) < 0.001) return
+      const result = await updateUserStorageLimit(user.id, gb)
+      runAccountAction(result, `Đã cập nhật dung lượng cho ${user.email}.`)
+    } else {
+      setMessage("Giới hạn dung lượng phải lớn hơn 0 GB.")
     }
   }
 
@@ -250,8 +256,9 @@ export function AdminDashboard() {
                     min="0.1"
                     step="0.1"
                     defaultValue={(user.storageLimit / (1024 * 1024 * 1024)).toFixed(1)}
+                    disabled={!canUpdateStorage(user)}
                     onBlur={e => updateStorageLimit(user, e.target.value)}
-                    className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                    className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                   />
                   GB
                 </label>
