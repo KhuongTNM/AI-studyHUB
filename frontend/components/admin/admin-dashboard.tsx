@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp, formatBytes, type PackageTier, type User } from "@/lib/store"
 
-type PendingAction = { label: string; run: () => void } | null
+type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
 
 export function AdminDashboard() {
   const {
@@ -112,18 +112,14 @@ export function AdminDashboard() {
     )
   }
 
-  const requirePassword = (label: string, run: () => void) => {
+  const requirePassword = (label: string, run: (password: string) => void | Promise<void>) => {
     setPendingAction({ label, run })
     setAdminPassword("")
     setMessage("")
   }
 
-  const confirmAction = () => {
-    if (adminPassword !== currentUser.password) {
-      setMessage("Mật khẩu xác thực không đúng.")
-      return
-    }
-    pendingAction?.run()
+  const confirmAction = async () => {
+    await pendingAction?.run(adminPassword)
     setPendingAction(null)
     setAdminPassword("")
   }
@@ -194,6 +190,7 @@ export function AdminDashboard() {
         )}
 
         {/* Cấu hình giá gói dịch vụ */}
+        {isAdmin && (
         <section className="mb-6 rounded-lg border border-border bg-card p-4">
           <h2 className="mb-3 font-semibold text-foreground flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -216,8 +213,9 @@ export function AdminDashboard() {
                       onBlur={e => {
                         const newPrice = Number(e.target.value)
                         if (!isNaN(newPrice) && newPrice >= 0) {
-                          requirePassword(`Cập nhật giá ${pkg.name}`, () => {
-                            updatePackagePrice(pkg.tier, newPrice)
+                          requirePassword(`Cập nhật giá ${pkg.name}`, async (password) => {
+                            const result = await updatePackagePrice(pkg.tier, newPrice, password)
+                            runAccountAction(result, `Đã cập nhật giá ${pkg.name}.`)
                           })
                         }
                       }}
@@ -230,6 +228,7 @@ export function AdminDashboard() {
             })}
           </div>
         </section>
+        )}
 
         <section className="rounded-lg border border-border bg-card p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
