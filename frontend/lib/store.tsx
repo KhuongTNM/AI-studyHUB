@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react"
+import { fetchAdminUsersApi, updateUserStorageLimitApi } from "@/lib/api/admin-users"
 import { fetchCurrentUserApi, loginApi, logoutApi, registerApi } from "@/lib/api/auth"
 import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/lib/api/subscription-plans"
 
@@ -374,6 +375,7 @@ interface AppState {
   updateChatSession: (id: string, updates: Partial<ChatSession>) => void
   setActiveChatId: (id: string | null) => void
   updateUser: (id: string, updates: Partial<User>) => void
+  updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
   toggleUserLock: (id: string) => { success: boolean; error?: string }
   resetUserPassword: (id: string, password: string) => { success: boolean; error?: string }
   deleteUserAccount: (id: string) => { success: boolean; error?: string }
@@ -517,6 +519,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser?.id])
 
+  useEffect(() => {
+    if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) return
+    let cancelled = false
+    fetchAdminUsersApi()
+      .then(fetchedUsers => {
+        if (cancelled) return
+        setUsers(fetchedUsers)
+        const refreshedCurrentUser = fetchedUsers.find(user => user.id === currentUser.id)
+        if (refreshedCurrentUser) setCurrentUser(refreshedCurrentUser)
+      })
+      .catch(() => {
+        // keep mock users when backend admin user API is not available
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser?.id, currentUser?.role])
+
   const openAuthModal = useCallback((tab: "login" | "register" | "forgot" = "login") => {
     setAuthModalTab(tab)
     setShowAuthModal(true)
@@ -607,6 +627,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u))
     setCurrentUser(prev => prev?.id === id ? { ...prev, ...updates } : prev)
   }, [])
+
+  const updateUserStorageLimit = useCallback(async (id: string, storageLimitGb: number) => {
+    if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) {
+      return { success: false, error: "Không có quyền cập nhật dung lượng." }
+    }
+
+    const target = users.find(user => user.id === id)
+    if (!target) return { success: false, error: "Không tìm thấy người dùng." }
+    if (target.role !== "user") return { success: false, error: "Chỉ được chỉnh dung lượng của tài khoản user." }
+
+    try {
+      const updatedUser = await updateUserStorageLimitApi(id, storageLimitGb)
+      setUsers(prev => prev.map(user => user.id === id ? updatedUser : user))
+      setCurrentUser(prev => prev?.id === id ? updatedUser : prev)
+      setActivityLogs(prev => [{
+        id: `log-${Date.now()}`,
+        userId: currentUser.id,
+        action: "Cập nhật giới hạn dung lượng",
+        target: `${updatedUser.email}: ${formatBytes(updatedUser.storageLimit)}`,
+        timestamp: new Date(),
+      }, ...prev])
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Không thể cập nhật dung lượng." }
+    }
+  }, [currentUser, users])
 
   const toggleUserLock = useCallback((id: string) => {
     const target = users.find(u => u.id === id)
@@ -1091,7 +1137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login, register, logout, openAuthModal, closeAuthModal, setCurrentPage,
       addDocument, updateDocument, deleteDocument, restoreDocument,
       addChatSession, updateChatSession, setActiveChatId,
-      updateUser, toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount, addCategory, deleteCategory,
+      updateUser, updateUserStorageLimit, toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount, addCategory, deleteCategory,
       addFlashcards, generateFlashcardsFromDocument, setFlashcardSelectedDocumentId,
       toggleDarkMode, setLanguage,
       updatePackagePrice, grantSubscription, buySubscription, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage,
