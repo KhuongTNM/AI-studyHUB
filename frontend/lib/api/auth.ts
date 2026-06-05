@@ -11,6 +11,8 @@ export interface ApiUser {
   locked: boolean
   storageUsedBytes: number
   storageLimitBytes: number
+  subscriptionPlanId?: number | null
+  subscriptionExpiresAt?: string | null
   languagePreference: string
   themePreference: string
   createdAt: string
@@ -42,6 +44,12 @@ function mapRole(role: string): UserRole {
   return "user"
 }
 
+function mapSubscriptionTier(subscriptionPlanId?: number | null): User["subscriptionTier"] {
+  if (subscriptionPlanId === 2) return "2-4"
+  if (subscriptionPlanId === 3) return "5+"
+  return "free"
+}
+
 export function mapApiUserToStoreUser(apiUser: ApiUser): User {
   return {
     id: apiUser.id,
@@ -56,6 +64,8 @@ export function mapApiUserToStoreUser(apiUser: ApiUser): User {
     lastActive: new Date(),
     storageUsed: apiUser.storageUsedBytes,
     storageLimit: apiUser.storageLimitBytes,
+    subscriptionTier: mapSubscriptionTier(apiUser.subscriptionPlanId),
+    subscriptionExpiresAt: apiUser.subscriptionExpiresAt ? new Date(apiUser.subscriptionExpiresAt) : undefined,
   }
 }
 
