@@ -5,11 +5,16 @@ import { User, Mail, Lock, Clock, Eye, EyeOff, CheckCircle2, AlertCircle, Camera
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp, formatBytes, type PackageTier } from "@/lib/store"
+import {
+  completeSubscriptionPurchaseForDevApi,
+  createSubscriptionPurchaseApi,
+  type SubscriptionPurchase,
+} from "@/lib/api/subscription-purchases"
 
 type ProfileTab = "info" | "history" | "security" | "packages"
 
 export function ProfilePage() {
-  const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices, buySubscription } = useApp()
+  const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices } = useApp()
   const [tab, setTab] = useState<ProfileTab>("info")
   const [displayName, setDisplayName] = useState(currentUser?.displayName ?? "")
   const [showPass, setShowPass] = useState(false)
@@ -24,6 +29,10 @@ export function ProfilePage() {
   const [selectedTier, setSelectedTier] = useState<PackageTier | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<"qr" | "card" | "wallet">("qr")
   const [purchaseSuccess, setPurchaseSuccess] = useState(false)
+  const [purchaseOrder, setPurchaseOrder] = useState<SubscriptionPurchase | null>(null)
+  const [purchaseError, setPurchaseError] = useState("")
+  const [isCreatingPurchase, setIsCreatingPurchase] = useState(false)
+  const [isCompletingPurchase, setIsCompletingPurchase] = useState(false)
 
   useEffect(() => {
     const openPackagesTab = () => {
@@ -71,6 +80,51 @@ export function ProfilePage() {
     if (newPass !== confirmPass) { setPassError("Mật khẩu xác nhận không khớp."); return }
     setPassSuccess("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.")
     setOldPass(""); setNewPass(""); setConfirmPass("")
+  }
+
+  const openCheckout = (tier: PackageTier) => {
+    setSelectedTier(tier)
+    setShowCheckoutModal(true)
+    setPaymentMethod("qr")
+    setPurchaseSuccess(false)
+    setPurchaseOrder(null)
+    setPurchaseError("")
+  }
+
+  const createVietQrPurchase = async () => {
+    if (!selectedTier) return
+    setIsCreatingPurchase(true)
+    setPurchaseError("")
+    try {
+      const order = await createSubscriptionPurchaseApi(selectedTier)
+      setPurchaseOrder(order)
+    } catch (error) {
+      setPurchaseError(error instanceof Error ? error.message : "Không thể tạo thanh toán VietQR.")
+    } finally {
+      setIsCreatingPurchase(false)
+    }
+  }
+
+  const completeVietQrPurchaseForDev = async () => {
+    if (!purchaseOrder) return
+    setIsCompletingPurchase(true)
+    setPurchaseError("")
+    try {
+      const completed = await completeSubscriptionPurchaseForDevApi(purchaseOrder.orderId)
+      setPurchaseOrder(completed)
+      if (completed.user) {
+        updateUser(currentUser.id, {
+          subscriptionTier: completed.user.subscriptionTier,
+          subscriptionExpiresAt: completed.user.subscriptionExpiresAt,
+          storageLimit: completed.user.storageLimit,
+        })
+      }
+      setPurchaseSuccess(true)
+    } catch (error) {
+      setPurchaseError(error instanceof Error ? error.message : "Không thể xác nhận thanh toán.")
+    } finally {
+      setIsCompletingPurchase(false)
+    }
   }
 
   const tabs: { id: ProfileTab; label: string; icon: React.ElementType }[] = [
@@ -385,12 +439,7 @@ export function ProfilePage() {
                           <Button
                             variant={isActive ? "outline" : "default"}
                             className="w-full"
-                            onClick={() => {
-                              setSelectedTier(pkg.tier);
-                              setShowCheckoutModal(true);
-                              setPaymentMethod("qr");
-                              setPurchaseSuccess(false);
-                            }}
+                            onClick={() => openCheckout(pkg.tier)}
                           >
                             {isActive ? "Gia hạn gói" : "Nâng cấp ngay"}
                           </Button>
@@ -435,24 +484,26 @@ export function ProfilePage() {
                 <div className="space-y-3 mb-6">
                   <p className="text-sm font-semibold text-foreground">Chọn phương thức thanh toán:</p>
                   {[
-                    { id: "qr", label: "Quét mã QR (Ngân hàng / Ví điện tử)", desc: "Mã QR được tạo tự động để quét nhanh" },
-                    { id: "card", label: "Thẻ ATM Nội địa / Quốc tế (Visa, Mastercard)", desc: "Nhập thông tin thẻ của bạn" },
-                    { id: "wallet", label: "Ví điện tử Momo / ShopeePay / ZaloPay", desc: "Thanh toán qua ví điện tử liên kết" }
+                    { id: "qr", label: "VietQR", desc: "Mã QR chuyển khoản ngân hàng cho môi trường dev", disabled: false },
+                    { id: "card", label: "Thẻ ATM / Visa / Mastercard", desc: "Sẽ triển khai sau", disabled: true },
+                    { id: "wallet", label: "Ví điện tử", desc: "Sẽ triển khai sau", disabled: true }
                   ].map((method) => (
                     <label
                       key={method.id}
-                      onClick={() => setPaymentMethod(method.id as any)}
+                      onClick={() => !method.disabled && setPaymentMethod(method.id as any)}
                       className={cn(
                         "flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
                         paymentMethod === method.id
                           ? "border-primary bg-primary/5"
-                          : "border-border hover:bg-muted/50"
+                          : "border-border hover:bg-muted/50",
+                        method.disabled && "cursor-not-allowed opacity-60"
                       )}
                     >
                       <input
                         type="radio"
                         name="payment-method"
                         checked={paymentMethod === method.id}
+                        disabled={method.disabled}
                         onChange={() => {}}
                         className="mt-1 accent-primary"
                       />
@@ -464,24 +515,57 @@ export function ProfilePage() {
                   ))}
                 </div>
 
+                {purchaseError && (
+                  <p className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {purchaseError}
+                  </p>
+                )}
+
+                {purchaseOrder && (
+                  <div className="mb-6 space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Mã đơn</p>
+                        <p className="font-semibold text-foreground">{purchaseOrder.orderId}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Nội dung CK</p>
+                        <p className="font-semibold text-foreground">{purchaseOrder.content}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Ngân hàng</p>
+                        <p className="font-semibold text-foreground">{purchaseOrder.bankCode}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Tài khoản</p>
+                        <p className="font-semibold text-foreground">{purchaseOrder.bankAccount}</p>
+                      </div>
+                    </div>
+                    <img
+                      src={purchaseOrder.qrImageUrl}
+                      alt={`VietQR ${purchaseOrder.orderId}`}
+                      className="mx-auto h-56 w-56 rounded-lg border border-border bg-white object-contain p-2"
+                    />
+                    <p className="text-center text-xs text-muted-foreground">
+                      Dev mode: quét QR hoặc dùng nút mô phỏng callback sau khi kiểm tra thông tin thanh toán.
+                    </p>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={() => setShowCheckoutModal(false)}>
                     Hủy bỏ
                   </Button>
-                  <Button
-                    className="flex-1 gap-2"
-                    onClick={() => {
-                      const res = buySubscription(selectedTier);
-                      if (res.success) {
-                        setPurchaseSuccess(true);
-                        const storageLimit = selectedTier === "2-4" ? 1024 * 1024 * 1024 : 1024 * 1024 * 1024 * 5;
-                        updateUser(currentUser.id, { storageLimit });
-                      }
-                    }}
-                  >
-                    Xác nhận thanh toán
-                  </Button>
+                  {!purchaseOrder ? (
+                    <Button className="flex-1 gap-2" disabled={isCreatingPurchase} onClick={createVietQrPurchase}>
+                      {isCreatingPurchase ? "Đang tạo QR..." : "Tạo mã VietQR"}
+                    </Button>
+                  ) : (
+                    <Button className="flex-1 gap-2" disabled={isCompletingPurchase} onClick={completeVietQrPurchaseForDev}>
+                      {isCompletingPurchase ? "Đang xác nhận..." : "Dev: giả lập đã thanh toán"}
+                    </Button>
+                  )}
                 </div>
               </>
             ) : (
