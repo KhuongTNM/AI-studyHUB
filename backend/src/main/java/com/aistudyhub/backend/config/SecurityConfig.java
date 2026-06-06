@@ -33,13 +33,13 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
-                        .requestMatchers("/api/auth/**").authenticated()
-                        .requestMatchers("/api/admin/**").authenticated()
-                        .requestMatchers("/api/subscription-purchases/**").authenticated()
-                        .requestMatchers("/bank/api/transaction-sync").permitAll()
-                        .anyRequest().permitAll())
+    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+    .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+    .requestMatchers("/api/documents/**").permitAll()
+    .requestMatchers("/api/auth/**").authenticated()
+    .requestMatchers("/api/admin/**").authenticated()
+    .anyRequest().permitAll()
+)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
