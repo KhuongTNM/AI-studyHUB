@@ -13,6 +13,8 @@ public class UserResponse {
     private boolean locked;
     private long storageUsedBytes;
     private long storageLimitBytes;
+    private Integer subscriptionPlanId;
+    private LocalDateTime subscriptionExpiresAt;
     private String languagePreference;
     private String themePreference;
     private LocalDateTime createdAt;
@@ -26,6 +28,8 @@ public class UserResponse {
         response.locked = user.isLocked();
         response.storageUsedBytes = user.getStorageUsedBytes();
         response.storageLimitBytes = user.getStorageLimitBytes();
+        response.subscriptionPlanId = user.getSubscriptionPlanId();
+        response.subscriptionExpiresAt = user.getSubscriptionExpiresAt();
         response.languagePreference = user.getLanguagePreference().name();
         response.themePreference = user.getThemePreference().name();
         response.createdAt = user.getCreatedAt();
@@ -65,6 +69,14 @@ public class UserResponse {
 
     public long getStorageLimitBytes() {
         return storageLimitBytes;
+    }
+
+    public Integer getSubscriptionPlanId() {
+        return subscriptionPlanId;
+    }
+
+    public LocalDateTime getSubscriptionExpiresAt() {
+        return subscriptionExpiresAt;
     }
 
     public String getLanguagePreference() {
