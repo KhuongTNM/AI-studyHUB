@@ -3,12 +3,14 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.AuthResponse;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
+import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AuthService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,5 +45,10 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me() {
         return ResponseEntity.ok(authService.getCurrentUser());
+    }
+
+    @PatchMapping("/me/language")
+    public ResponseEntity<UserResponse> updateLanguage(@Valid @RequestBody UpdateLanguagePreferenceRequest request) {
+        return ResponseEntity.ok(authService.updateLanguagePreference(request));
     }
 }
