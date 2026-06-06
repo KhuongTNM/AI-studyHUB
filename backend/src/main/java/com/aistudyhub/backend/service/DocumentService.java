@@ -2,6 +2,7 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
+import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -85,6 +87,14 @@ public class DocumentService {
         }
 
         return document;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Document> getDocuments(UUID userId, UUID currentUserId) {
+        if (currentUserId.equals(userId)) {
+            return documentRepository.findByUserId(userId);
+        }
+        return documentRepository.findByUserIdAndVisibility(userId, Visibility.PUBLIC);
     }
 
     @Transactional(readOnly = true)

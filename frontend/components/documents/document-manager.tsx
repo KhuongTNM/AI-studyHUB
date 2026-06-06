@@ -11,6 +11,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useApp, Document, formatBytes } from "@/lib/store"
 
@@ -169,8 +172,9 @@ function EditDocModal({ doc, onClose }: { doc: Document; onClose: () => void }) 
 }
 
 // ─── Upload Modal ─────────────────────────────────────────────────────────────
-function UploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (files: File[], subject: string) => void }) {
+function UploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (files: File[], subject: string, isPublic: boolean) => void }) {
   const [subject, setSubject] = useState("")
+  const [isPublic, setIsPublic] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
@@ -186,7 +190,7 @@ function UploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (fi
 
   const handleUpload = () => {
     if (!selectedFiles.length || !subject.trim()) return
-    onUpload(selectedFiles, subject.trim())
+    onUpload(selectedFiles, subject.trim(), isPublic)
     onClose()
   }
 
@@ -208,6 +212,20 @@ function UploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (fi
               placeholder="Nhập tên môn học"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
+          </div>
+
+          {/* Visibility */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Chế độ hiển thị</label>
+            <Select value={isPublic ? "public" : "private"} onValueChange={v => setIsPublic(v === "public")}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="private">Riêng tư</SelectItem>
+                <SelectItem value="public">Công khai</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Drop zone */}
@@ -374,6 +392,7 @@ export function DocumentManager() {
   const { documents, categories, addDocument, deleteDocument, updateDocument, currentUser, setCurrentPage, generateFlashcardsFromDocument } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all")
   const [sortBy, setSortBy] = useState<"date" | "name" | "size">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -391,7 +410,10 @@ export function DocumentManager() {
         d.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
       const matchCat = selectedCategory === "all" || d.categoryId === selectedCategory
-      return matchSearch && matchCat
+      const matchVis = visibilityFilter === "all" ||
+        (visibilityFilter === "public" && d.isPublic) ||
+        (visibilityFilter === "private" && !d.isPublic)
+      return matchSearch && matchCat && matchVis
     })
     .sort((a, b) => {
       let cmp = 0
@@ -401,7 +423,7 @@ export function DocumentManager() {
       return sortOrder === "desc" ? -cmp : cmp
     })
 
-  const simulateUpload = useCallback((files: File[], subject: string) => {
+  const simulateUpload = useCallback((files: File[], subject: string, isPublic: boolean) => {
     if (!currentUser) return
     files.forEach(file => {
       const ext = file.name.split(".").pop() as "pdf" | "docx" | "pptx"
@@ -419,7 +441,7 @@ export function DocumentManager() {
         uploadProgress: 0,
         tags: [],
         downloadCount: 0,
-        isPublic: false,
+        isPublic,
         shareStatus: "none",
       }
       addDocument(newDoc)
@@ -548,6 +570,23 @@ export function DocumentManager() {
                 <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("asc") }}>Tên A-Z</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("desc") }}>Tên Z-A</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setSortBy("size"); setSortOrder("desc") }}>Lớn nhất</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Visibility filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Filter className="h-3 w-3" />
+                  {visibilityFilter === "all" ? "Tất cả chế độ" : visibilityFilter === "public" ? "Công khai" : "Riêng tư"}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => setVisibilityFilter("all")}>Tất cả chế độ</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setVisibilityFilter("public")}>Công khai</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setVisibilityFilter("private")}>Riêng tư</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 

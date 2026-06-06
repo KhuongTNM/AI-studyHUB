@@ -50,8 +50,9 @@ public class Document {
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "visibility", nullable = false, length = 10)
-    private String visibility = "private";
+    private Visibility visibility = Visibility.PRIVATE;
 
     @Column(name = "share_status", nullable = false, length = 10)
     private String shareStatus = "none";
@@ -167,11 +168,11 @@ public class Document {
         this.retryCount = retryCount;
     }
 
-    public String getVisibility() {
+    public Visibility getVisibility() {
         return visibility;
     }
 
-    public void setVisibility(String visibility) {
+    public void setVisibility(Visibility visibility) {
         this.visibility = visibility;
     }
 
