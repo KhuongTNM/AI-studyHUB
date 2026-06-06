@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react"
 import { fetchAdminUsersApi, updateUserStorageLimitApi } from "@/lib/api/admin-users"
-import { fetchCurrentUserApi, loginApi, logoutApi, registerApi } from "@/lib/api/auth"
+import { fetchCurrentUserApi, loginApi, logoutApi, registerApi, updateLanguagePreferenceApi } from "@/lib/api/auth"
 import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/lib/api/subscription-plans"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -26,6 +26,7 @@ export interface User {
   storageLimit: number
   subscriptionTier?: PackageTier
   subscriptionExpiresAt?: Date
+  languagePreference?: Language
 }
 
 export interface PackagePrice {
@@ -443,7 +444,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ])
   const [flashcardSelectedDocumentId, setFlashcardSelectedDocId] = useState<string | "all">("all")
   const [isDarkMode, setIsDarkMode] = useState(false)
-  const [language, setLanguage] = useState<Language>("vi")
+  const [language, setLanguageState] = useState<Language>(() => {
+    if (typeof window === "undefined") return "vi"
+    const storedLanguage = window.localStorage.getItem("ai-study-hub-language")
+    return storedLanguage === "en" ? "en" : "vi"
+  })
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authModalTab, setAuthModalTab] = useState<"login" | "register" | "forgot">("login")
   const [currentPage, setCurrentPage] = useState<AppState["currentPage"]>("home")
@@ -453,6 +458,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const result = await loginApi(email, password)
       if (!result.success) return result
       setCurrentUser(result.user)
+      setLanguageState(result.user.languagePreference ?? "vi")
       setShowAuthModal(false)
       return { success: true }
     } catch {
@@ -465,6 +471,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const result = await registerApi(email, password, displayName)
       if (!result.success) return result
       setCurrentUser(result.user)
+      setLanguageState(result.user.languagePreference ?? "vi")
       setShowAuthModal(false)
       return { success: true }
     } catch {
@@ -483,7 +490,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     fetchCurrentUserApi()
       .then(user => {
-        if (!cancelled && user) setCurrentUser(user)
+        if (!cancelled && user) {
+          setCurrentUser(user)
+          setLanguageState(user.languagePreference ?? "vi")
+        }
       })
       .catch(() => {
         // ignore restore errors on initial load
@@ -733,6 +743,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteCategory = useCallback((id: string) => {
     setCategories(prev => prev.filter(c => c.id !== id))
   }, [])
+
+  const setLanguage = useCallback((nextLanguage: Language) => {
+    setLanguageState(nextLanguage)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("ai-study-hub-language", nextLanguage)
+      document.documentElement.lang = nextLanguage
+    }
+    setCurrentUser(prev => prev ? { ...prev, languagePreference: nextLanguage } : prev)
+
+    if (currentUser) {
+      void updateLanguagePreferenceApi(nextLanguage)
+        .then(updatedUser => {
+          setCurrentUser(updatedUser)
+          setUsers(prev => prev.map(user => user.id === updatedUser.id ? updatedUser : user))
+        })
+        .catch(() => {
+          // keep the local preference so the UI switch remains responsive
+        })
+    }
+  }, [currentUser])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem("ai-study-hub-language", language)
+    document.documentElement.lang = language
+  }, [language])
 
   const toggleDarkMode = useCallback(() => {
     setIsDarkMode(prev => {

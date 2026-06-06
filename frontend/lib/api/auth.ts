@@ -1,5 +1,5 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/auth-storage"
-import type { User, UserRole } from "@/lib/store"
+import type { Language, User, UserRole } from "@/lib/store"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -66,6 +66,7 @@ export function mapApiUserToStoreUser(apiUser: ApiUser): User {
     storageLimit: apiUser.storageLimitBytes,
     subscriptionTier: mapSubscriptionTier(apiUser.subscriptionPlanId),
     subscriptionExpiresAt: apiUser.subscriptionExpiresAt ? new Date(apiUser.subscriptionExpiresAt) : undefined,
+    languagePreference: apiUser.languagePreference === "en" ? "en" : "vi",
   }
 }
 
@@ -132,4 +133,22 @@ export async function fetchCurrentUserApi(): Promise<User | null> {
 
   const data = (await response.json()) as ApiUser
   return mapApiUserToStoreUser(data)
+}
+
+export async function updateLanguagePreferenceApi(language: Language): Promise<User> {
+  const token = getAccessToken()
+  const response = await fetch(`${API_BASE_URL}/api/auth/me/language`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ language }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await parseError(response))
+  }
+
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }

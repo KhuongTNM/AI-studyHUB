@@ -3,6 +3,7 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.dto.AuthResponse;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
+import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
@@ -120,6 +121,20 @@ public class AuthService {
     public UserResponse getCurrentUser() {
         User user = getAuthenticatedUser();
         return UserResponse.from(user);
+    }
+
+    @Transactional
+    public UserResponse updateLanguagePreference(UpdateLanguagePreferenceRequest request) {
+        User user = getAuthenticatedUser();
+        User.LanguagePreference languagePreference;
+        try {
+            languagePreference = User.LanguagePreference.valueOf(request.getLanguage());
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngôn ngữ chỉ hỗ trợ vi hoặc en.");
+        }
+        user.setLanguagePreference(languagePreference);
+        user.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(user));
     }
 
     public void logout() {
