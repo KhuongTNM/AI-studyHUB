@@ -1,11 +1,22 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Be_Vietnam_Pro, IBM_Plex_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AppProvider } from '@/lib/store'
-import './globals.css'
+import '../styles/globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const beVietnamPro = Be_Vietnam_Pro({
+  subsets: ["latin", "vietnamese"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: 'AI Study Hub - Quản lý tài liệu học tập thông minh',
@@ -37,7 +48,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" className="bg-background">
-      <body className="font-sans antialiased">
+      <body className={`${beVietnamPro.variable} ${ibmPlexMono.variable} font-sans antialiased`}>
         <AppProvider>
           {children}
         </AppProvider>

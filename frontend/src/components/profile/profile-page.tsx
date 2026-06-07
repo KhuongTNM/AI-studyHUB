@@ -9,7 +9,7 @@ import {
   completeSubscriptionPurchaseForDevApi,
   createSubscriptionPurchaseApi,
   type SubscriptionPurchase,
-} from "@/lib/api/subscription-purchases"
+} from "@/services/api/subscription-purchases"
 
 type ProfileTab = "info" | "history" | "security" | "packages"
 

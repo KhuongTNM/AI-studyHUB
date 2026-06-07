@@ -13,14 +13,34 @@ AI-studyHUB/
   database/
     ai_study_hub_schema_mssql.sql
   frontend/
-    app/
-    components/
-    hooks/
-    lib/
-      api/auth.ts          # Gọi API đăng nhập / đăng ký / đăng xuất
-      auth-storage.ts      # Lưu JWT (localStorage)
+    src/
+      app/                 # Next.js App Router
+      assets/              # Tài nguyên tĩnh của frontend
+      configs/             # Cấu hình dùng chung cho frontend
+      components/          # Khối giao diện người dùng chính
+        auth/
+        admin/
+        cloud/
+        documents/
+        flashcards/
+        profile/
+        ui/
+      hooks/               # React hooks chia sẻ logic
+        useApp.tsx         # AppProvider và hook truy cập state dùng chung
+      lib/                 # Tích hợp thư viện và adapter hạ tầng
+        auth-storage.ts    # Lưu JWT (localStorage)
+        store.tsx          # Re-export để giữ tương thích import cũ
+      services/            # Lớp gọi API / dịch vụ bên ngoài
+        api/
+      states/              # Types, mock data và state seed
+        types.ts
+        mock-data.ts
+      styles/              # Thành phần CSS dùng chung
+        globals.css
+      utils/               # Tiện ích và logic dùng chung nhiều màn hình
+        format.ts
+        ai-mock.ts
     public/
-    styles/
     .env.local.example     # Mẫu cấu hình URL backend
     package.json
   backend/
@@ -121,7 +141,7 @@ app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
 |--------|--------|
 | `frontend/.env.local` | File local (không commit secret); copy từ `.env.local.example` |
 | `frontend/.env.local.example` | Mẫu: `NEXT_PUBLIC_API_URL=http://localhost:8080` |
-| `frontend/lib/api/auth.ts` | Đọc `process.env.NEXT_PUBLIC_API_URL` |
+| `frontend/src/services/api/auth.ts` | Đọc `process.env.NEXT_PUBLIC_API_URL` |
 
 Tạo file `frontend/.env.local`:
 
