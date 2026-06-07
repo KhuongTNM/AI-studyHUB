@@ -1,5 +1,5 @@
-import { getAccessToken } from "@/lib/auth-storage"
-import { mapApiUserToStoreUser, type ApiUser } from "@/lib/api/auth"
+﻿import { getAccessToken } from "@/lib/auth-storage"
+import { mapApiUserToStoreUser, type ApiUser } from "@/services/api/auth"
 import type { PackageTier, User } from "@/lib/store"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
@@ -41,7 +41,7 @@ async function parseError(response: Response): Promise<string> {
   } catch {
     // ignore parse errors
   }
-  return "Không thể tạo thanh toán VietQR. Vui lòng thử lại."
+  return "KhÃ´ng thá»ƒ táº¡o thanh toÃ¡n VietQR. Vui lÃ²ng thá»­ láº¡i."
 }
 
 function authHeaders(): HeadersInit {
@@ -78,3 +78,4 @@ export async function completeSubscriptionPurchaseForDevApi(orderId: string): Pr
   if (!response.ok) throw new Error(await parseError(response))
   return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
 }
+

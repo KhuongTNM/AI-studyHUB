@@ -1,5 +1,5 @@
-import { getAccessToken } from "@/lib/auth-storage"
-import { mapApiUserToStoreUser, type ApiUser } from "@/lib/api/auth"
+﻿import { getAccessToken } from "@/lib/auth-storage"
+import { mapApiUserToStoreUser, type ApiUser } from "@/services/api/auth"
 import type { User } from "@/lib/store"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
@@ -15,7 +15,7 @@ async function parseError(response: Response): Promise<string> {
   } catch {
     // ignore parse errors
   }
-  return "Không thể cập nhật dung lượng. Vui lòng thử lại."
+  return "KhÃ´ng thá»ƒ cáº­p nháº­t dung lÆ°á»£ng. Vui lÃ²ng thá»­ láº¡i."
 }
 
 function authHeaders(): HeadersInit {
@@ -44,3 +44,4 @@ export async function updateUserStorageLimitApi(userId: string, storageLimitGb: 
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
+
