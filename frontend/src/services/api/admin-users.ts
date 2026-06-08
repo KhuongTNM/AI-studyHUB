@@ -59,3 +59,17 @@ export async function toggleUserLockApi(userId: string, locked: boolean): Promis
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
+
+/** BR-062: Admin/Sub-admin reset mật khẩu của user bất kỳ (trừ Admin). */
+export async function resetUserPasswordApi(userId: string, newPassword: string): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/password`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ newPassword }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
+}

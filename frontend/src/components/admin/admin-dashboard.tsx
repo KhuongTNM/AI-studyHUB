@@ -23,6 +23,7 @@ export function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState("")
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const [newPassword, setNewPassword] = useState("Reset1234")
+  const [resetLoading, setResetLoading] = useState(false)
   const [subAdminForm, setSubAdminForm] = useState({ displayName: "", email: "", password: "" })
 
   const [grantTarget, setGrantTarget] = useState<User | null>(null)
@@ -302,25 +303,57 @@ export function AdminDashboard() {
         />
       )}
 
-      {resetTarget && (
+      {resetTarget && (() => {
+        const hasMinLength = newPassword.length >= 8
+        const hasLetter = /[a-zA-Z]/.test(newPassword)
+        const hasDigit = /[0-9]/.test(newPassword)
+        const isPasswordValid = hasMinLength && hasLetter && hasDigit
+        const isDirty = newPassword !== "Reset1234" || newPassword.length === 0
+
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-foreground">{text.reset}: {resetTarget.email}</h3>
-            <label className="mt-4 block text-sm">
+            <div className="mt-4 block text-sm">
               <span className="mb-1 block text-muted-foreground">{text.newPassword}</span>
-              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-            </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                className={"w-full rounded-lg border px-3 py-2 text-sm bg-background " + (!isPasswordValid && isDirty ? "border-destructive focus:ring-destructive" : "border-border")}
+              />
+              {/* BR-002 inline checklist */}
+              <ul className="mt-2 space-y-1">
+                <li className={"flex items-center gap-1.5 text-xs " + (hasMinLength ? "text-green-600" : "text-destructive")}>
+                  <span>{hasMinLength ? "✓" : "✗"}</span> Tối thiểu 8 ký tự
+                </li>
+                <li className={"flex items-center gap-1.5 text-xs " + (hasLetter ? "text-green-600" : "text-destructive")}>
+                  <span>{hasLetter ? "✓" : "✗"}</span> Có ít nhất 1 chữ cái (a-z, A-Z)
+                </li>
+                <li className={"flex items-center gap-1.5 text-xs " + (hasDigit ? "text-green-600" : "text-destructive")}>
+                  <span>{hasDigit ? "✓" : "✗"}</span> Có ít nhất 1 chữ số (0-9)
+                </li>
+              </ul>
+            </div>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setResetTarget(null)}>{text.cancel}</Button>
-              <Button onClick={() => {
-                runAccountAction(resetUserPassword(resetTarget.id, newPassword), "Đã reset mật khẩu.")
-                setResetTarget(null)
-                setNewPassword("Reset1234")
-              }}><KeyRound className="mr-2 h-4 w-4" />{text.save}</Button>
+              <Button variant="outline" disabled={resetLoading} onClick={() => { setResetTarget(null); setNewPassword("Reset1234") }}>{text.cancel}</Button>
+              <Button disabled={resetLoading || !isPasswordValid} onClick={async () => {
+                setResetLoading(true)
+                const result = await resetUserPassword(resetTarget.id, newPassword)
+                setResetLoading(false)
+                if (result.success) {
+                  setMessage("Đã reset mật khẩu thành công.")
+                  setResetTarget(null)
+                  setNewPassword("Reset1234")
+                } else {
+                  setMessage(result.error ?? "Không thể reset mật khẩu.")
+                }
+              }}><KeyRound className="mr-2 h-4 w-4" />{resetLoading ? "Đang xử lý..." : text.save}</Button>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Modal Cấp Gói Dịch Vụ */}
       {grantTarget && (
