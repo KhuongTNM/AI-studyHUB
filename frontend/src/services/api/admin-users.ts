@@ -45,3 +45,17 @@ export async function updateUserStorageLimitApi(userId: string, storageLimitGb: 
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
+/** BR-061: Lock (isLocked=true) or unlock (isLocked=false) a user account */
+export async function toggleUserLockApi(userId: string, locked: boolean): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/lock`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ locked }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
+}
+

@@ -42,6 +42,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             UUID userId = jwtService.extractUserId(token);
             User user = userRepository.findById(userId).orElse(null);
             if (user != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                // BR-061: Reject token immediately if account is locked (force logout)
+                if (user.isLocked()) {
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"message\":\"Tài khoản đã bị khóa. Liên hệ Admin.\"}");
+                    return;
+                }
                 AuthUserPrincipal principal = new AuthUserPrincipal(user);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());

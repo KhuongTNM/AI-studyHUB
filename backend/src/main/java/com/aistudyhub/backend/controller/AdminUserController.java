@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.LockUserRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AdminUserService;
@@ -34,5 +35,16 @@ public class AdminUserController {
             @PathVariable UUID userId,
             @Valid @RequestBody UpdateUserStorageLimitRequest request) {
         return ResponseEntity.ok(adminUserService.updateStorageLimit(userId, request));
+    }
+
+    /**
+     * BR-061: Admin/Sub-admin khoá hoặc mở khoá tài khoản user.
+     * Tài khoản bị khoá sẽ bị từ chối ở mọi request tiếp theo (force logout).
+     */
+    @PatchMapping("/{userId}/lock")
+    public ResponseEntity<UserResponse> setLockStatus(
+            @PathVariable UUID userId,
+            @Valid @RequestBody LockUserRequest request) {
+        return ResponseEntity.ok(adminUserService.setLockStatus(userId, request.getLocked()));
     }
 }
