@@ -59,6 +59,28 @@ public class AdminUserService {
         return UserResponse.from(userRepository.save(target));
     }
 
+    @Transactional
+    public UserResponse setLockStatus(UUID userId, boolean locked) {
+        User actor = requireAdminOrSubAdmin();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        if (target.getId().equals(actor.getId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể tự khóa/mở khóa tài khoản hiện tại.");
+        }
+        if (actor.getRole() == User.Role.sub_admin && target.getRole() != User.Role.user) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Sub-admin chỉ được khóa/mở khóa tài khoản user.");
+        }
+
+        target.setLocked(locked);
+        if (!locked) {
+            // Reset login attempts on unlock so user doesn't get re-locked on first wrong password
+            target.setLoginAttempts((short) 0);
+        }
+        target.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(target));
+    }
+
     private User requireAdminOrSubAdmin() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof AuthUserPrincipal principal)) {
@@ -67,7 +89,7 @@ public class AdminUserService {
         User user = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
         if (user.getRole() != User.Role.admin && user.getRole() != User.Role.sub_admin) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin hoặc Sub-admin mới được chỉnh dung lượng.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin hoặc Sub-admin mới được thực hiện thao tác này.");
         }
         return user;
     }
