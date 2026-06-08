@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.LockUserRequest;
+import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AdminUserService;
@@ -46,5 +47,16 @@ public class AdminUserController {
             @PathVariable UUID userId,
             @Valid @RequestBody LockUserRequest request) {
         return ResponseEntity.ok(adminUserService.setLockStatus(userId, request.getLocked()));
+    }
+
+    /**
+     * BR-062: Admin/Sub-admin reset mật khẩu của user bất kỳ (trừ Admin).
+     * Mật khẩu mới phải đáp ứng BR-002.
+     */
+    @PatchMapping("/{userId}/password")
+    public ResponseEntity<UserResponse> resetPassword(
+            @PathVariable UUID userId,
+            @Valid @RequestBody ResetUserPasswordRequest request) {
+        return ResponseEntity.ok(adminUserService.resetPassword(userId, request));
     }
 }

@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.entity.User;
@@ -14,6 +15,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,9 +25,11 @@ public class AdminUserService {
     private static final BigDecimal BYTES_PER_GB = BigDecimal.valueOf(1024L * 1024L * 1024L);
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminUserService(UserRepository userRepository) {
+    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional(readOnly = true)
@@ -77,6 +81,38 @@ public class AdminUserService {
             // Reset login attempts on unlock so user doesn't get re-locked on first wrong password
             target.setLoginAttempts((short) 0);
         }
+        target.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(target));
+    }
+
+    /**
+     * BR-062: Admin/Sub-admin reset mật khẩu của user bất kỳ, ngoại trừ tài khoản Admin.
+     * Mật khẩu mới phải đáp ứng BR-002 (≥8 ký tự, có chữ và số).
+     */
+    @Transactional
+    public UserResponse resetPassword(UUID userId, ResetUserPasswordRequest request) {
+        User actor = requireAdminOrSubAdmin();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        // BR-062: không được reset mật khẩu của tài khoản Admin (kể cả Admin reset Admin khác)
+        if (target.getRole() == User.Role.admin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Không được phép reset mật khẩu tài khoản Admin.");
+        }
+        // Sub-admin chỉ được reset mật khẩu tài khoản user
+        if (actor.getRole() == User.Role.sub_admin && target.getRole() != User.Role.user) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Sub-admin chỉ được reset mật khẩu tài khoản user.");
+        }
+        if (target.getId().equals(actor.getId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng dùng trang Profile để đổi mật khẩu của chính bạn.");
+        }
+
+        // BR-002: validate password policy
+        PasswordPolicyValidator.validate(request.getNewPassword());
+
+        target.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        // Reset login attempts so the user is not stuck locked out
+        target.setLoginAttempts((short) 0);
         target.setUpdatedAt(LocalDateTime.now());
         return UserResponse.from(userRepository.save(target));
     }
