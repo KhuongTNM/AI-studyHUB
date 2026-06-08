@@ -109,7 +109,7 @@ GO
 INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
 SELECT
     N'admin@aistudy.hub',
-    N'$2b$12$replace_with_real_bcrypt_hash',
+    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
     N'System Admin',
     N'admin',
     1073741824,   -- 1 GB
