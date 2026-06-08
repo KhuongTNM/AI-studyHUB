@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAdminUsersApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
+import { fetchAdminUsersApi, resetUserPasswordApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
 import { MOCK_USERS } from "@/states/mock-data"
 import type { Document, User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
@@ -108,22 +108,43 @@ export function useAdminState({
     [currentUser, users, addLog],
   )
 
+  /** BR-062: Admin/Sub-admin reset mật khẩu của user bất kỳ (trừ Admin). BR-002 được validate phía client trước. */
   const resetUserPassword = useCallback(
-    (id: string, password: string) => {
+    async (id: string, password: string): Promise<{ success: boolean; error?: string }> => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
       if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
-      if (currentUser.role === "sub-admin" && target.role === "admin") {
-        return { success: false, error: "Sub-admin không được reset mật khẩu Admin." }
-      }
-      if (password.length < 8) return { success: false, error: "Mật khẩu phải có ít nhất 8 ký tự." }
 
-      setUsers(prev =>
-        prev.map(u => (u.id === id ? { ...u, password, loginAttempts: 0 } : u)),
-      )
-      return { success: true }
+      // BR-062: không được reset mật khẩu Admin
+      if (target.role === "admin") {
+        return { success: false, error: "Không được phép reset mật khẩu tài khoản Admin." }
+      }
+      if (currentUser.role === "sub-admin" && target.role !== "user") {
+        return { success: false, error: "Sub-admin chỉ được reset mật khẩu tài khoản user." }
+      }
+      if (target.id === currentUser.id) {
+        return { success: false, error: "Vui lòng dùng trang Profile để đổi mật khẩu của chính bạn." }
+      }
+
+      // BR-002: client-side validation (mirror backend PasswordPolicyValidator)
+      if (password.length < 8) return { success: false, error: "Mật khẩu phải có ít nhất 8 ký tự." }
+      if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+        return { success: false, error: "Mật khẩu phải chứa ít nhất 1 chữ cái và 1 số." }
+      }
+
+      try {
+        const updatedUser = await resetUserPasswordApi(id, password)
+        setUsers(prev => prev.map(u => (u.id === id ? updatedUser : u)))
+        addLog("Reset mật khẩu", target.email, currentUser.id)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể reset mật khẩu.",
+        }
+      }
     },
-    [currentUser, users],
+    [currentUser, users, addLog],
   )
 
   const deleteUserAccount = useCallback(
