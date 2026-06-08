@@ -88,7 +88,7 @@ export interface AppState {
   activityLogs: ActivityLog[]
   updateUser: (id: string, updates: Partial<User>) => void
   updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
-  toggleUserLock: (id: string) => { success: boolean; error?: string }
+  toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
   resetUserPassword: (id: string, password: string) => { success: boolean; error?: string }
   deleteUserAccount: (id: string) => { success: boolean; error?: string }
   createSubAdminAccount: (email: string, password: string, displayName: string) => { success: boolean; error?: string }

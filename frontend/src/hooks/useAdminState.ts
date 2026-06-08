@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAdminUsersApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
+import { fetchAdminUsersApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
 import { MOCK_USERS } from "@/states/mock-data"
 import type { Document, User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
@@ -79,24 +79,31 @@ export function useAdminState({
   )
 
   const toggleUserLock = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
       if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
-      if (currentUser.role === "sub-admin" && target.role === "admin") {
-        return { success: false, error: "Sub-admin không được khóa tài khoản Admin." }
+      if (currentUser.role === "sub-admin" && target.role !== "user") {
+        return { success: false, error: "Sub-admin chỉ được khóa/mở khóa tài khoản user." }
       }
       if (target.id === currentUser.id) return { success: false, error: "Không thể tự khóa tài khoản hiện tại." }
 
-      setUsers(prev =>
-        prev.map(u => (u.id === id ? { ...u, isLocked: !u.isLocked, loginAttempts: 0 } : u)),
-      )
-      addLog(
-        target.isLocked ? "Unlocked account" : "Locked account",
-        target.email,
-        currentUser.id,
-      )
-      return { success: true }
+      const newLocked = !target.isLocked
+      try {
+        const updatedUser = await toggleUserLockApi(id, newLocked)
+        setUsers(prev => prev.map(u => (u.id === id ? updatedUser : u)))
+        addLog(
+          newLocked ? "Locked account" : "Unlocked account",
+          target.email,
+          currentUser.id,
+        )
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể thực hiện thao tác.",
+        }
+      }
     },
     [currentUser, users, addLog],
   )
