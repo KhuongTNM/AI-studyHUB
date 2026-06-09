@@ -46,6 +46,10 @@ public class Document {
     @Column(name = "status", nullable = false, length = 20)
     private DocumentStatus status = DocumentStatus.UPLOADING;
 
+    @Convert(converter = VisibilityConverter.class)
+    @Column(name = "visibility", nullable = false, length = 10)
+    private Visibility visibility = Visibility.PRIVATE;
+
     @Column(name = "share_status", nullable = false, length = 10)
     private String shareStatus = "none";
 
@@ -86,6 +90,8 @@ public class Document {
     public void setTags(String tags) { this.tags = tags; }
     public DocumentStatus getStatus() { return status; }
     public void setStatus(DocumentStatus status) { this.status = status; }
+    public Visibility getVisibility() { return visibility; }
+    public void setVisibility(Visibility visibility) { this.visibility = visibility; }
     public String getShareStatus() { return shareStatus; }
     public void setShareStatus(String shareStatus) { this.shareStatus = shareStatus; }
     public String getShareNote() { return shareNote; }
