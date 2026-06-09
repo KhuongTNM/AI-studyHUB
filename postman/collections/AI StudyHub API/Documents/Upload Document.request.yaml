@@ -1,0 +1,38 @@
+$kind: http-request
+name: Upload Document
+method: POST
+url: '{{baseUrl}}/api/documents/upload'
+auth:
+  type: bearer
+  credentials:
+    - key: token
+      value: '{{authToken}}'
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: ''
+      description: 'The document file to upload (PDF, DOCX, etc.)'
+    - key: subject
+      type: text
+      value: '{{subject}}'
+      description: 'Subject/category of the document (required)'
+    - key: title
+      type: text
+      value: '{{title}}'
+      description: 'Title of the document (optional)'
+    - key: visibility
+      type: text
+      value: private
+      description: 'Visibility: private or public (default: private)'
+description: |-
+  Upload a document file. Requires authentication (Bearer token).
+
+  **Required fields:**
+  - file: The document file (multipart)
+  - subject: Subject/category string
+
+  **Optional fields:**
+  - title: Document title
+  - visibility: "private" or "public" (defaults to "private")

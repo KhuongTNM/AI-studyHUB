@@ -1,0 +1,14 @@
+$kind: http-request
+name: Login
+method: POST
+url: 'http://localhost:8080/api/auth/login'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{email}}",
+      "password": "{{password}}"
+    }
