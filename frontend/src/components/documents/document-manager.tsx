@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { useApp, Document, formatBytes } from "@/lib/store"
+import { useApp, Document, DocStatus, formatBytes } from "@/lib/store"
 
 // ─── Upload Progress ──────────────────────────────────────────────────────────
 function UploadProgress({ doc }: { doc: Document }) {
@@ -47,6 +47,23 @@ function UploadProgress({ doc }: { doc: Document }) {
   )
 }
 
+// ─── Status Badge ──────────────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: DocStatus }) {
+  if (status === "ready") return null
+  const styles: Partial<Record<DocStatus, { icon: React.ReactNode; text: string; className: string }>> = {
+    uploading: { icon: <Loader2 className="h-3 w-3 animate-spin" />, text: "Đang tải", className: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+    scanning: { icon: <Loader2 className="h-3 w-3 animate-spin" />, text: "Đang quét", className: "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" },
+    failed: { icon: <AlertCircle className="h-3 w-3" />, text: "Lỗi", className: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+    deleted: { icon: <X className="h-3 w-3" />, text: "Đã xoá", className: "bg-muted text-muted-foreground" },
+  }
+  const s = styles[status]!
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", s.className)}>
+      {s.icon}{s.text}
+    </span>
+  )
+}
+
 // ─── Document Preview Modal ───────────────────────────────────────────────────
 function DocumentPreviewModal({ doc, onClose, onDownload }: { doc: Document; onClose: () => void; onDownload: (id: string) => void }) {
   const { categories } = useApp()
@@ -76,6 +93,7 @@ function DocumentPreviewModal({ doc, onClose, onDownload }: { doc: Document; onC
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-2">
               <h4 className="text-lg font-semibold text-foreground">{doc.name}</h4>
+              <StatusBadge status={doc.status} />
             </div>
             {doc.description && <p className="text-sm text-muted-foreground">{doc.description}</p>}
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -105,7 +123,7 @@ function DocumentPreviewModal({ doc, onClose, onDownload }: { doc: Document; onC
           </div>
         </div>
         <div className="flex gap-2 border-t border-border p-4">
-          <Button className="flex-1 gap-2" onClick={() => onDownload(doc.id)}>
+          <Button className="flex-1 gap-2" onClick={() => onDownload(doc.id)} disabled={doc.status === "failed"}>
             <Download className="h-4 w-4" />Tải xuống
           </Button>
           <Button variant="outline" onClick={onClose}>Đóng</Button>
@@ -291,6 +309,7 @@ function DocumentCard({
             <span>{doc.uploadedAt.toLocaleDateString("vi-VN")}</span>
             <span>•</span>
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">{subject}</span>
+            <StatusBadge status={doc.status} />
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -300,7 +319,7 @@ function DocumentCard({
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onGenerateFlashcards(doc)} title="Tạo flashcard từ tài liệu">
             <BookOpen className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDownload(doc.id)} title="Tải xuống">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDownload(doc.id)} title="Tải xuống" disabled={doc.status === "failed"}>
             <Download className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDelete(doc.id)} title="Xóa">
@@ -311,7 +330,7 @@ function DocumentCard({
               <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-3 w-3" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onPreview(doc)}><Eye className="mr-2 h-4 w-4" />Xem chi tiết</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onPreview(doc)} disabled={doc.status === "failed"}><Eye className="mr-2 h-4 w-4" />Xem chi tiết</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(doc)}><Edit3 className="mr-2 h-4 w-4" />Chỉnh sửa</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -333,7 +352,7 @@ function DocumentCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onPreview(doc)}><Eye className="mr-2 h-4 w-4" />Xem chi tiết</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onPreview(doc)} disabled={doc.status === "failed"}><Eye className="mr-2 h-4 w-4" />Xem chi tiết</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(doc)}><Edit3 className="mr-2 h-4 w-4" />Chỉnh sửa</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(doc.id)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" />Xóa</DropdownMenuItem>
@@ -347,9 +366,12 @@ function DocumentCard({
         <span>•</span>
         <span>{doc.uploadedAt.toLocaleDateString("vi-VN")}</span>
       </div>
-      <span className="mb-3 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-        {subject}
-      </span>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+          {subject}
+        </span>
+        <StatusBadge status={doc.status} />
+      </div>
       <div className="mt-auto flex gap-2">
         <Button size="sm" className="flex-1 gap-1 text-xs" onClick={() => onChat(doc)}>
           💬 Chat AI
@@ -358,7 +380,7 @@ function DocumentCard({
           <BookOpen className="h-3 w-3" />
           Flashcards
         </Button>
-        <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => onDownload(doc.id)} title="Tải xuống">
+        <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => onDownload(doc.id)} title="Tải xuống" disabled={doc.status === "failed"}>
           <Download className="h-3 w-3" />
         </Button>
         <Button size="sm" variant="outline" className="gap-1 text-xs text-destructive hover:text-destructive" onClick={() => onDelete(doc.id)} title="Xóa">
