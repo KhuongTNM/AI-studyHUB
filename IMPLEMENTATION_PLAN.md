@@ -1,137 +1,275 @@
-# AI Study Hub - Implementation Plan
+# Frontend Refactoring — Implement Plan
 
-## 1. Muc tieu
+> Mục tiêu: tách các component > 300 dòng thành các file nhỏ ≤ 150 dòng, dễ đọc và dễ bảo trì hơn.  
+> Không thay đổi logic hay UI — pure structural refactor.
 
-Chuyen prototype hien co thanh cau truc du an ro rang gom:
+---
 
-- `frontend/`: React + TypeScript, chi giu phan giao dien/view.
-- `backend/`: Java Spring Boot skeleton, san sang ket noi Microsoft SQL Server.
-- `database/`: luu schema MSSQL da duoc cung cap.
-- `README.md`: huong dan cau truc, cach chay va mapping nghiep vu chinh.
+## Tổng quan
 
-Du an moi duoc dat tai:
+| File | Dòng hiện tại | Số file sau | Dòng orchestrator |
+|---|---|---|---|
+| `document-manager.tsx` | 666 | 6 | ~130 |
+| `chat-interface.tsx` | 657 | 5 | ~120 |
+| `profile-page.tsx` | 597 | 6 | ~80 |
+| `admin-dashboard.tsx` | 488 | 5 | ~90 |
 
-`E:\Education\Lab\SWP391\AI-studyHUB`
+**Thứ tự thực hiện gợi ý:** document-manager → admin-dashboard → profile-page → chat-interface  
+(từ dễ nhất — phân vùng rõ, ít dependency — đến phức tạp nhất)
 
-Va se duoc dua len GitHub repository:
+---
 
-`https://github.com/KhuongTNM/AI-studyHUB.git`
+## 1. `document-manager.tsx` — 666 dòng
 
-## 2. Nguon dau vao
+File này đã có comment phân vùng sẵn (`// ─── Upload Progress`, v.v.), nên tách ra rất cơ học và ít rủi ro nhất.
 
-- Chu de: `C:\Users\ASUS\Downloads\AI-studyHUB.md`
-- Business rules: `C:\Users\ASUS\Downloads\AI-Study-Hub-Business-Rules-Group07 (1).docx`
-- Prototype: `E:\test\final\AI-github-Prototype.zip` va thu muc da giai nen `E:\test\final\AI-github-Prototype`
-- Database schema: `E:\test\final\ai_study_hub_schema_mssql.sql`
+### Cấu trúc folder sau refactor
 
-## 3. Nghiep vu can phan anh
-
-Du an se duoc to chuc theo cac module cua AI Study Hub:
-
-- Authentication: dang ky, dang nhap, quen mat khau, profile.
-- Document Management: upload, danh sach tai lieu, preview, tim kiem, trash, duyet chia se.
-- Cloud Storage: dung luong user, canh bao tren 80%, preview file.
-- AI Chatbot: chat theo tai lieu hoac kien thuc chung, chat history.
-- Flashcard: tao/xem the ghi nho theo tai lieu.
-- Study Room: phong hoc nhom theo subscription plan.
-- Admin/Sub-admin: quan ly user, khoa/mo khoa, reset password, subscription, activity log.
-
-## 4. Ke hoach frontend
-
-1. Tao `frontend/` bang React + TypeScript theo huong Vite.
-2. Lay y tuong giao dien tu prototype, nhung bo logic nghiep vu/mock action cu.
-3. Tao view-only UI:
-   - Sidebar/navigation.
-   - Header.
-   - Dashboard/Home overview.
-   - Auth forms dang view.
-   - Document manager view.
-   - Cloud storage view.
-   - AI chat view.
-   - Flashcard view.
-   - Study room view.
-   - Profile view.
-   - Admin dashboard view.
-4. Du lieu hien thi la static fixture trong component de minh hoa layout, khong xu ly dang nhap/upload/chat that.
-5. Khong goi API that trong giai do nay; de san `src/api/README.md` hoac comment endpoint sau khi backend day du hon neu can.
-
-## 5. Ke hoach backend
-
-Backend se dung Spring Boot theo cau truc layer ro rang:
-
-```text
-backend/src/main/java/com/aistudyhub/backend/
-  AiStudyHubBackendApplication.java
-  config/       cau hinh he thong: Security, CORS, Beans, Database
-  entity/       map voi bang database bang JPA Entity
-  repository/   truy van database bang Spring Data JPA
-  dto/          object van chuyen du lieu request/response
-  service/      xu ly logic nghiep vu va goi repository
-  controller/   nhan HTTP request va tra JSON response
+```
+src/components/documents/
+├── document-manager.tsx        # orchestrator (~130 dòng)
+├── upload-progress.tsx         # (~30 dòng)
+├── document-preview-modal.tsx  # (~65 dòng)
+├── edit-doc-modal.tsx          # (~50 dòng)
+├── upload-modal.tsx            # (~85 dòng)
+├── document-card.tsx           # (~110 dòng)
+└── trash-page.tsx              # giữ nguyên
 ```
 
-Nguyen tac trien khai:
+### Kế hoạch tách từng file
 
-1. Tao `backend/` Spring Boot Maven project voi Java 17.
-2. Moi bang database can co entity rieng trong `entity/`.
-   - Vi du hien tai: `src/main/java/com/aistudyhub/backend/entity/User.java`
-   - Entity chi phu trach mapping voi database, khong viet logic HTTP.
-3. Moi entity/module can co repository trong `repository/`.
-   - Vi du du kien: `UserRepository extends JpaRepository<User, UUID>`.
-   - Repository chi phu trach truy van database.
-4. Request/response khong tra truc tiep entity neu khong can thiet.
-   - Tao DTO trong `dto/`, vi du `LoginRequest`, `RegisterRequest`, `UserResponse`.
-5. Logic nghiep vu dat trong `service/`.
-   - Vi du: validate dang ky, hash password, kiem tra locked account, tinh storage.
-6. API endpoint dat trong `controller/`.
-   - Controller chi nhan request, validate DTO, goi service va tra JSON.
-7. Cau hinh he thong dat trong `config/`.
-   - `DatabaseConfig.java` da doc database config tu environment/properties.
-   - Cac cau hinh sau se them tai day: CORS, Security/JWT, PasswordEncoder, OpenAPI.
-8. Tao `application.properties` mau cho SQL Server.
-9. Them `pom.xml` voi Spring Boot Web, Data JPA, Validation, SQL Server JDBC driver.
+**`upload-progress.tsx`**
+- Move: component `UploadProgress` (dòng 18–48)
+- Export: `export function UploadProgress({ doc }: { doc: Document })`
 
-Thu tu phat trien API uu tien:
+**`document-preview-modal.tsx`**
+- Move: component `DocumentPreviewModal` (dòng 51–117)
+- Export: `export function DocumentPreviewModal({ doc, onClose, onDownload })`
 
-1. Authentication: register, login, logout/token, profile.
-2. Document Management: upload metadata, list, search, soft delete.
-3. Cloud Storage: storage used/limit, warning tren 80%.
-4. AI Chatbot: chat session, chat message, document context.
-5. Flashcard: CRUD flashcard va status hoc tap.
-6. Study Room: room, member, chat.
-7. Admin/Sub-admin: user management, lock/reset/delete, activity log.
+**`edit-doc-modal.tsx`**
+- Move: component `EditDocModal` (dòng 119–169)
+- Export: `export function EditDocModal({ doc, onClose })`
 
-## 6. Ke hoach database
+**`upload-modal.tsx`**
+- Move: component `UploadModal` (dòng 172–255)
+- Export: `export function UploadModal({ onClose, onUpload })`
 
-1. Tao `database/`.
-2. Copy `ai_study_hub_schema_mssql.sql` vao `database/ai_study_hub_schema_mssql.sql`.
-3. README se huong dan chay schema bang SQL Server Management Studio/Azure Data Studio.
+**`document-card.tsx`**
+- Move: `fileTypeColors` constant + component `DocumentCard` (dòng 258–370)
+- Export: `export const fileTypeColors`, `export function DocumentCard(...)`
 
-## 7. Ke hoach README
+**`document-manager.tsx` (orchestrator)**
+- Giữ lại: `DocumentManager` — state, filter/sort logic, simulateUpload, layout
+- Import các piece từ cùng folder
 
-README goc se gom:
+```typescript
+// document-manager.tsx sau refactor
+import { UploadProgress }        from "./upload-progress"
+import { DocumentPreviewModal }  from "./document-preview-modal"
+import { EditDocModal }          from "./edit-doc-modal"
+import { UploadModal }           from "./upload-modal"
+import { DocumentCard }          from "./document-card"
+```
 
-- Tong quan AI Study Hub.
-- Cau truc thu muc.
-- Cach chay frontend.
-- Cach chay backend.
-- Cach cau hinh SQL Server.
-- Mapping business rules voi module.
-- Ghi chu: frontend hien tai la view-only, backend la skeleton ket noi database.
+---
 
-## 8. Ke hoach GitHub
+## 2. `admin-dashboard.tsx` — 488 dòng
 
-1. Khoi tao git repo trong `E:\Education\Lab\SWP391\AI-studyHUB` neu chua co.
-2. Them remote `origin` tro den `https://github.com/KhuongTNM/AI-studyHUB.git`.
-3. Stage, commit cac file da tao.
-4. Push len branch mac dinh, uu tien `main`.
+Hiệu quả nhanh: object `text` i18n chiếm ~80 dòng, tách ra ngay lập tức giảm được đáng kể.
 
-## 9. Tieu chi hoan thanh
+### Cấu trúc folder sau refactor
 
-- Co file `IMPLEMENTATION_PLAN.md` truoc khi bat dau trien khai.
-- Co cau truc `frontend/`, `backend/`, `database/`.
-- Frontend build duoc ve mat TypeScript/project structure.
-- Backend co Maven project, package layer `config/entity/repository/dto/service/controller`, entity mau va database config.
-- README ro rang de thanh vien nhom tiep tuc phat trien.
-- Du an nam trong `E:\Education\Lab\SWP391\AI-studyHUB`.
-- Neu GitHub authentication/network cho phep, du an duoc push len repository yeu cau.
+```
+src/components/admin/
+├── admin-dashboard.tsx     # orchestrator (~90 dòng)
+├── stats-overview.tsx      # (~40 dòng)
+├── user-table.tsx          # (~120 dòng)
+├── confirm-modal.tsx       # (~45 dòng)
+└── sub-admin-form.tsx      # (~50 dòng)
+
+src/configs/
+└── admin-i18n.ts           # (~90 dòng) — tách từ inline object
+```
+
+### Kế hoạch tách từng file
+
+**`configs/admin-i18n.ts`** — làm trước tiên
+- Move: object `text` với 2 key `vi` / `en` ra file config riêng
+- Dùng lại trong dashboard mà không cần đổi gì khác
+
+```typescript
+// configs/admin-i18n.ts
+export const adminText = {
+  vi: { denied: "Không có quyền truy cập", ... },
+  en: { denied: "Access denied", ... },
+} as const
+
+// admin-dashboard.tsx
+import { adminText } from "@/configs/admin-i18n"
+const text = adminText[language]
+```
+
+**`stats-overview.tsx`**
+- Move: component `Stat` + phần render 4 thẻ thống kê
+- Props: `{ totalUsers, activeUsers, lockedUsers, totalStorageUsed }`
+
+**`user-table.tsx`**
+- Move: component `UserSummary` + phần search + danh sách user với các action (lock/reset/delete/grant)
+- Props: `{ users, documents, onLock, onReset, onDelete, onGrant, onStorageLimit, text }`
+
+**`confirm-modal.tsx`**
+- Move: component `ConfirmModal` (dòng 458–488)
+- Export: `export function ConfirmModal({ pendingAction, onConfirm, onCancel, text })`
+
+**`sub-admin-form.tsx`**
+- Move: phần form tạo tài khoản sub-admin
+- Props: `{ onSubmit, text }` — nhận callback, tự quản lý state form nội bộ
+
+---
+
+## 3. `profile-page.tsx` — 597 dòng
+
+Pattern tab rõ ràng (`"info" | "history" | "security" | "packages"`), tách theo từng tab vào subfolder.
+
+### Cấu trúc folder sau refactor
+
+```
+src/components/profile/
+├── profile-page.tsx          # orchestrator (~80 dòng)
+├── checkout-modal.tsx        # (~100 dòng)
+└── tabs/
+    ├── info-tab.tsx          # (~70 dòng)
+    ├── history-tab.tsx       # (~40 dòng)
+    ├── security-tab.tsx      # (~55 dòng)
+    └── packages-tab.tsx      # (~80 dòng)
+```
+
+### Kế hoạch tách từng file
+
+**`tabs/info-tab.tsx`**
+- Move: tab "info" — avatar initials, form tên hiển thị, storage progress bar
+- Props: `{ user, displayName, setDisplayName, saved, onSave }`
+
+**`tabs/history-tab.tsx`**
+- Move: tab "history" — render danh sách `userLogs`
+- Props: `{ logs: ActivityLog[] }`
+
+**`tabs/security-tab.tsx`**
+- Move: tab "security" — form đổi mật khẩu + validation logic
+- Tự quản lý state `oldPass / newPass / confirmPass` nội bộ
+- Props: `{ onChangePassword: (old, new) => void; error: string; success: string }`
+
+**`tabs/packages-tab.tsx`**
+- Move: tab "packages" — bảng so sánh gói Free/Basic/Pro + nút mua
+- Props: `{ currentUser, packagePrices, onBuy: (tier: PackageTier) => void }`
+
+**`checkout-modal.tsx`**
+- Move: toàn bộ flow checkout (QR/card/wallet, VietQR API call, confirm)
+- Có async logic riêng nên xứng đáng là file độc lập
+- Props: `{ tier, onClose, onSuccess }`
+
+**`profile-page.tsx` (orchestrator)**
+- Giữ lại: tab switcher, shared state (`tab`, `showCheckoutModal`, `selectedTier`)
+- Lắng nghe `sessionStorage` event để mở tab packages từ nơi khác
+
+```typescript
+// profile-page.tsx sau refactor
+import { InfoTab }       from "./tabs/info-tab"
+import { HistoryTab }    from "./tabs/history-tab"
+import { SecurityTab }   from "./tabs/security-tab"
+import { PackagesTab }   from "./tabs/packages-tab"
+import { CheckoutModal } from "./checkout-modal"
+```
+
+---
+
+## 4. `chat-interface.tsx` — 657 dòng
+
+File phức tạp nhất vì Study Room panel lẫn vào cùng component với chat thông thường. Nên tách `study-room-panel.tsx` trước vì nó chiếm ~200 dòng và có state riêng biệt.
+
+### Cấu trúc folder sau refactor
+
+```
+src/components/
+├── chat-interface.tsx          # orchestrator (~120 dòng)
+└── chat/
+    ├── chat-toolbar.tsx        # (~70 dòng)
+    ├── chat-message.tsx        # (~60 dòng)
+    ├── chat-input-bar.tsx      # (~50 dòng)
+    └── study-room-panel.tsx    # (~150 dòng)
+```
+
+### Kế hoạch tách từng file
+
+**`chat/study-room-panel.tsx`** — tách trước tiên
+- Move: toàn bộ UI và logic Study Room (join/create room, members list, room messages, roomInput)
+- State nội bộ: `roomActionTab`, `roomIdInput`, `roomPasswordInput`, `roomError`, `roomInput`
+- Props: `{ rooms, currentRoomId, currentUser, onCreateRoom, onJoinRoom, onLeaveRoom, onCloseRoom, onSendMessage }`
+
+**`chat/chat-toolbar.tsx`**
+- Move: toolbar với nút New Chat, Document picker dropdown, Study Room toggle button
+- Props: `{ onNewChat, documents, selectedDocId, onSelectDoc, showRoomPanel, onToggleRoom }`
+
+**`chat/chat-message.tsx`**
+- Move: render một message bubble (user hoặc AI), nút copy/thumbs up/thumbs down
+- Props: `{ message: ChatMessage; copiedId: string | null; onCopy: (id, content) => void }`
+
+**`chat/chat-input-bar.tsx`**
+- Move: textarea, character counter, nút Send, suggested questions khi chưa có chat
+- Props: `{ input, setInput, isLoading, maxLength, onSend, onKeyDown, showSuggestions, suggestedQuestions }`
+
+**`chat-interface.tsx` (orchestrator)**
+- Giữ lại: `handleSend`, `handleNewChat`, session management, `useEffect` scroll
+- Có thể extract thêm vào `hooks/useChatSession.ts` nếu muốn
+
+```typescript
+// chat-interface.tsx sau refactor
+import { ChatToolbar }      from "./chat/chat-toolbar"
+import { ChatMessage }      from "./chat/chat-message"
+import { ChatInputBar }     from "./chat/chat-input-bar"
+import { StudyRoomPanel }   from "./chat/study-room-panel"
+```
+
+---
+
+## Các cải tiến bổ sung (không bắt buộc)
+
+### Tách hook logic cho chat
+
+Dự án đã có pattern hook tốt (`useAdminState`, `useChatState`...). Có thể mở rộng thêm:
+
+```typescript
+// hooks/useChatSession.ts
+export function useChatSession() {
+  // handleSend, handleNewChat, session state management
+}
+
+// hooks/useStudyRoom.ts  
+export function useStudyRoom() {
+  // join, create, leave, sendMessage
+}
+```
+
+### Barrel export (index.ts)
+
+Mỗi folder component nên có `index.ts` để import gọn hơn:
+
+```typescript
+// components/documents/index.ts
+export { DocumentManager }       from "./document-manager"
+export { DocumentCard }          from "./document-card"
+export { UploadModal }           from "./upload-modal"
+
+// Dùng ở nơi khác:
+import { DocumentManager } from "@/components/documents"
+```
+
+---
+
+## Quy tắc khi thực hiện
+
+1. **Tách từng file một, commit riêng** — đừng tách tất cả cùng lúc, khó review và rollback
+2. **Không thay đổi logic** trong lần refactor này — chỉ move code, không optimize
+3. **Kiểm tra sau mỗi file** — chạy app và test tính năng liên quan trước khi tách file tiếp theo
+4. **Props typing** — khi tách component, định nghĩa rõ ràng interface cho props thay vì dùng inline type
+5. **Không tách UI library** — folder `components/ui/` giữ nguyên, đây là shadcn/ui không cần đụng đến

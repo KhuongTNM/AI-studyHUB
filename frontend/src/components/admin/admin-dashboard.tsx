@@ -2,12 +2,16 @@
 
 import { useMemo, useState } from "react"
 import {
-  HardDrive, KeyRound, LayoutDashboard, Lock, Plus, RotateCcw,
-  Search, Sparkles, Trash2, Unlock, Users,
+  KeyRound, LayoutDashboard, RotateCcw,
+  Sparkles, Trash2, Unlock, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { useApp, formatBytes, type PackageTier, type User } from "@/lib/store"
+import { useApp, type PackageTier, type User } from "@/lib/store"
+import { adminText } from "@/configs/admin-i18n"
+import { StatsOverview } from "./stats-overview"
+import { UserTable } from "./user-table"
+import { ConfirmModal } from "./confirm-modal"
+import { SubAdminForm } from "./sub-admin-form"
 
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
 
@@ -34,73 +38,11 @@ export function AdminDashboard() {
   const isSubAdmin = currentUser?.role === "sub-admin"
   const canManage = isAdmin || isSubAdmin
 
-  const text = language === "vi" ? {
-    denied: "Không có quyền truy cập",
-    deniedBody: "Chỉ Admin hoặc sub-admin mới có thể truy cập trang quản trị.",
-    home: "Về trang chủ",
-    title: "Admin Dashboard",
-    subtitle: "Quản lý tài khoản, thống kê người dùng và giới hạn dung lượng.",
-    totalUsers: "Tổng người dùng",
-    activeUsers: "Đang hoạt động",
-    lockedUsers: "Tài khoản bị khóa",
-    storageUsed: "Dung lượng đã dùng",
-    accounts: "Quản lý tài khoản",
-    search: "Tìm theo tên hoặc email",
-    storageLimit: "Giới hạn dung lượng",
-    reset: "Reset mật khẩu",
-    lock: "Khóa",
-    unlock: "Mở khóa",
-    delete: "Xóa tài khoản",
-    createSubAdmin: "Tạo acc sub-admin",
-    displayName: "Tên hiển thị",
-    password: "Mật khẩu",
-    confirmPassword: "Xác thực mật khẩu Admin",
-    confirm: "Xác nhận",
-    cancel: "Hủy",
-    newPassword: "Mật khẩu mới",
-    save: "Lưu",
-  } : {
-    denied: "Access denied",
-    deniedBody: "Only Admin or sub-admin accounts can open this dashboard.",
-    home: "Back home",
-    title: "Admin Dashboard",
-    subtitle: "Manage accounts, user statistics, and user storage limits.",
-    totalUsers: "Total users",
-    activeUsers: "Active users",
-    lockedUsers: "Locked accounts",
-    storageUsed: "Storage used",
-    accounts: "Account management",
-    search: "Search by name or email",
-    storageLimit: "Storage limit",
-    reset: "Reset password",
-    lock: "Lock",
-    unlock: "Unlock",
-    delete: "Delete account",
-    createSubAdmin: "Create sub-admin",
-    displayName: "Display name",
-    password: "Password",
-    confirmPassword: "Confirm Admin password",
-    confirm: "Confirm",
-    cancel: "Cancel",
-    newPassword: "New password",
-    save: "Save",
-  }
-
-  const filteredUsers = users.filter(user =>
-    !userSearch ||
-    user.displayName.toLowerCase().includes(userSearch.toLowerCase()) ||
-    user.email.toLowerCase().includes(userSearch.toLowerCase())
-  )
+  const text = adminText[language === "vi" ? "vi" : "en"]
 
   const totalStorage = users.reduce((sum, user) => sum + user.storageUsed, 0)
   const activeUsers = users.filter(user => !user.isLocked).length
   const lockedUsers = users.filter(user => user.isLocked).length
-  const docsByUser = useMemo(() => {
-    return users.reduce<Record<string, number>>((acc, user) => {
-      acc[user.id] = documents.filter(doc => doc.uploadedBy === user.id && doc.status !== "deleted").length
-      return acc
-    }, {})
-  }, [documents, users])
 
   if (!canManage || !currentUser) {
     return (
@@ -175,25 +117,21 @@ export function AdminDashboard() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat icon={Users} label={text.totalUsers} value={users.length} />
-          <Stat icon={Users} label={text.activeUsers} value={activeUsers} />
-          <Stat icon={Lock} label={text.lockedUsers} value={lockedUsers} />
-          <Stat icon={HardDrive} label={text.storageUsed} value={formatBytes(totalStorage)} />
-        </div>
+        <StatsOverview
+          totalUsers={users.length}
+          activeUsers={activeUsers}
+          lockedUsers={lockedUsers}
+          totalStorageUsed={totalStorage}
+          text={text}
+        />
 
         {isAdmin && (
-          <section className="mb-6 rounded-lg border border-border bg-card p-4">
-            <h2 className="mb-3 font-semibold text-foreground">{text.createSubAdmin}</h2>
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-              <input value={subAdminForm.displayName} onChange={e => setSubAdminForm({ ...subAdminForm, displayName: e.target.value })} placeholder={text.displayName} className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <input value={subAdminForm.email} onChange={e => setSubAdminForm({ ...subAdminForm, email: e.target.value })} placeholder="subadmin@example.com" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <input type="password" value={subAdminForm.password} onChange={e => setSubAdminForm({ ...subAdminForm, password: e.target.value })} placeholder={text.password} className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <Button disabled={!subAdminForm.displayName || !subAdminForm.email || !subAdminForm.password} onClick={() => requirePassword(text.createSubAdmin, createSubAdmin)}>
-                <Plus className="mr-2 h-4 w-4" />{text.createSubAdmin}
-              </Button>
-            </div>
-          </section>
+          <SubAdminForm
+            form={subAdminForm}
+            onFormChange={setSubAdminForm}
+            onSubmit={() => requirePassword(text.createSubAdmin, createSubAdmin)}
+            text={text}
+          />
         )}
 
         {/* Cấu hình giá gói dịch vụ */}
@@ -237,55 +175,36 @@ export function AdminDashboard() {
         </section>
         )}
 
-        <section className="rounded-lg border border-border bg-card p-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold text-foreground">{text.accounts}</h2>
-            <div className="relative min-w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={text.search} className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm" />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {filteredUsers.map(user => (
-              <div key={user.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background p-3">
-                <UserSummary user={user} docs={docsByUser[user.id] ?? 0} />
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {text.storageLimit}
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    defaultValue={(user.storageLimit / (1024 * 1024 * 1024)).toFixed(1)}
-                    disabled={!canUpdateStorage(user)}
-                    onBlur={e => updateStorageLimit(user, e.target.value)}
-                    className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                  GB
-                </label>
-                <div className="ml-auto flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" disabled={!canTouchAccount(user)} onClick={() => {
-                    setGrantTarget(user)
-                    setGrantTier(user.subscriptionTier || "free")
-                    setGrantDuration(1)
-                  }}>
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />Cấp gói
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={!canTouchAccount(user)} onClick={() => setResetTarget(user)}>
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />{text.reset}
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={!canTouchAccount(user)} onClick={() => requirePassword(user.isLocked ? text.unlock : text.lock, () => runAccountAction(toggleUserLock(user.id), user.isLocked ? "Đã mở khóa tài khoản." : "Đã khóa tài khoản."))}>
-                    {user.isLocked ? <Unlock className="mr-1.5 h-3.5 w-3.5" /> : <Lock className="mr-1.5 h-3.5 w-3.5" />}
-                    {user.isLocked ? text.unlock : text.lock}
-                  </Button>
-                  <Button size="sm" variant="ghost" disabled={!canTouchAccount(user)} className="text-destructive hover:text-destructive" onClick={() => requirePassword(text.delete, () => runAccountAction(deleteUserAccount(user.id), "Đã xóa tài khoản."))}>
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />{text.delete}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <UserTable
+          users={users}
+          documents={documents}
+          userSearch={userSearch}
+          onUserSearchChange={setUserSearch}
+          onLock={(user) =>
+            requirePassword(
+              user.isLocked ? text.unlock : text.lock,
+              () =>
+                runAccountAction(
+                  toggleUserLock(user.id),
+                  user.isLocked ? "Đã mở khóa tài khoản." : "Đã khóa tài khoản."
+                )
+            )
+          }
+          onReset={(user) => setResetTarget(user)}
+          onDelete={(user) =>
+            requirePassword(
+              text.delete,
+              () => runAccountAction(deleteUserAccount(user.id), "Đã xóa tài khoản.")
+            )
+          }
+          onGrant={(user) => {
+            setGrantTarget(user)
+            setGrantTier(user.subscriptionTier || "free")
+            setGrantDuration(1)
+          }}
+          onStorageLimit={updateStorageLimit}
+          text={text}
+        />
 
         {message && <p className="mt-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
       </div>
@@ -455,34 +374,4 @@ function UserSummary({ user, docs }: { user: User; docs: number }) {
   )
 }
 
-function ConfirmModal({
-  title, password, setPassword, passwordLabel, confirmLabel, cancelLabel, onConfirm, onCancel,
-}: {
-  title: string
-  password: string
-  setPassword: (value: string) => void
-  passwordLabel: string
-  confirmLabel: string
-  cancelLabel: string
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder={passwordLabel}
-          className="mt-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-        />
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel}>{cancelLabel}</Button>
-          <Button onClick={onConfirm}>{confirmLabel}</Button>
-        </div>
-      </div>
-    </div>
-  )
-}
+
