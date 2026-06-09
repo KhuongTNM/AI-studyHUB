@@ -3,6 +3,7 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.UserRepository;
@@ -47,7 +48,7 @@ public class DocumentService {
     }
 
     @Transactional
-    public Document upload(UUID userId, MultipartFile file, String subject, String title) {
+    public Document upload(UUID userId, MultipartFile file, String subject, String title, Visibility visibility) {
         if (file.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "File không được để trống.");
         }
@@ -89,6 +90,7 @@ public class DocumentService {
         doc.setFileType(ext);
         doc.setSubject(subject);
         doc.setStatus(DocumentStatus.UPLOADING);
+        doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
         doc.setDownloadCount(0);
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
@@ -123,6 +125,17 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
+    }
+
+    @Transactional
+    public Document updateVisibility(UUID id, UUID userId, Visibility visibility) {
+        Document doc = getById(id);
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền thay đổi tài liệu này.");
+        }
+        doc.setVisibility(visibility);
+        doc.setUpdatedAt(LocalDateTime.now());
+        return documentRepository.save(doc);
     }
 
     @Transactional

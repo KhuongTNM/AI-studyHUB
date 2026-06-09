@@ -16,6 +16,7 @@ public class DocumentResponse {
     private String description;
     private String tags;
     private String status;
+    private String visibility;
     private int downloadCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -32,6 +33,7 @@ public class DocumentResponse {
         r.description = doc.getDescription();
         r.tags = doc.getTags();
         r.status = doc.getStatus().name().toLowerCase();
+        r.visibility = doc.getVisibility().name().toLowerCase();
         r.downloadCount = doc.getDownloadCount();
         r.createdAt = doc.getCreatedAt();
         r.updatedAt = doc.getUpdatedAt();
@@ -48,6 +50,7 @@ public class DocumentResponse {
     public String getDescription() { return description; }
     public String getTags() { return tags; }
     public String getStatus() { return status; }
+    public String getVisibility() { return visibility; }
     public int getDownloadCount() { return downloadCount; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
