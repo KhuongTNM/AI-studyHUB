@@ -9,6 +9,7 @@ public class DocumentResponse {
     private UUID id;
     private UUID userId;
     private String originalName;
+    private String title;
     private String fileUrl;
     private long fileSizeBytes;
     private String fileType;
@@ -26,6 +27,7 @@ public class DocumentResponse {
         r.id = doc.getId();
         r.userId = doc.getUserId();
         r.originalName = doc.getOriginalName();
+        r.title = doc.getTitle();
         r.fileUrl = doc.getFileUrl();
         r.fileSizeBytes = doc.getFileSizeBytes();
         r.fileType = doc.getFileType();
@@ -43,6 +45,7 @@ public class DocumentResponse {
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public String getOriginalName() { return originalName; }
+    public String getTitle() { return title; }
     public String getFileUrl() { return fileUrl; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getFileType() { return fileType; }

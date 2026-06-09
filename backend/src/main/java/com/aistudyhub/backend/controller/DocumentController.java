@@ -67,9 +67,17 @@ public class DocumentController {
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 
+    @GetMapping("/public")
+    public ResponseEntity<List<DocumentResponse>> listPublic() {
+        List<Document> docs = documentService.getPublicDocuments();
+        return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<DocumentResponse> getById(@PathVariable UUID id) {
-        return ResponseEntity.ok(DocumentResponse.from(documentService.getById(id)));
+    public ResponseEntity<DocumentResponse> getById(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(DocumentResponse.from(documentService.getDocumentIfAccessible(id, principal.getId())));
     }
 
     @DeleteMapping("/{id}")
@@ -99,7 +107,7 @@ public class DocumentController {
     public ResponseEntity<Resource> download(
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
-        Document doc = documentService.incrementDownloadCount(id);
+        Document doc = documentService.incrementDownloadCount(id, principal.getId());
         Path filePath = documentService.getFilePath(doc);
         if (!Files.exists(filePath)) {
             return ResponseEntity.notFound().build();

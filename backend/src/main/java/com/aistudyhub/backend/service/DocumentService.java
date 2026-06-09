@@ -85,7 +85,7 @@ public class DocumentService {
         doc.setUserId(userId);
         doc.setOriginalName(originalName);
         doc.setTitle(title != null && !title.isBlank() ? title : originalName);
-        doc.setFileUrl(targetPath.toString());
+        doc.setFileUrl("uploads/" + storedName);
         doc.setFileSizeBytes(file.getSize());
         doc.setFileType(ext);
         doc.setSubject(subject);
@@ -94,6 +94,9 @@ public class DocumentService {
         doc.setDownloadCount(0);
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
+
+        user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
+        userRepository.save(user);
 
         Document saved = documentRepository.save(doc);
         scanProcessor.simulateScan(saved.getId());
@@ -111,8 +114,28 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Document getDocumentIfAccessible(UUID id, UUID userId) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (doc.getDeletedAt() != null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại.");
+        }
+        boolean isOwner = doc.getUserId().equals(userId);
+        boolean isPublicReady = doc.getVisibility() == Visibility.PUBLIC && doc.getStatus() == DocumentStatus.READY;
+        if (!isOwner && !isPublicReady) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài liệu này.");
+        }
+        return doc;
+    }
+
+    @Transactional(readOnly = true)
     public List<Document> getUserDocuments(UUID userId) {
         return documentRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Document> getPublicDocuments() {
+        return documentRepository.findByVisibilityAndDeletedAtIsNullAndStatus(Visibility.PUBLIC, DocumentStatus.READY);
     }
 
     @Transactional
@@ -139,8 +162,8 @@ public class DocumentService {
     }
 
     @Transactional
-    public Document incrementDownloadCount(UUID id) {
-        Document doc = getById(id);
+    public Document incrementDownloadCount(UUID id, UUID userId) {
+        Document doc = getDocumentIfAccessible(id, userId);
         if (doc.getStatus() == DocumentStatus.FAILED) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu này không thể tải xuống do lỗi scan.");
         }
