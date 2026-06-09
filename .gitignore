@@ -8,11 +8,20 @@ frontend/*.tsbuildinfo
 # Backend
 backend/target/
 backend/.mvn/
+*.class
+*.jar
+*.war
+*.log
 
 # IDE
 .idea/
 .vscode/
 *.iml
+.settings/
+.project
+.classpath
+*.swp
+*.swo
 
 # OS
 Thumbs.db
@@ -21,3 +30,7 @@ Thumbs.db
 # Environment
 .env
 *.env.local
+.env.*.local
+
+# Uploads
+uploads/
