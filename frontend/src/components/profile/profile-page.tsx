@@ -1,15 +1,16 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
-import { User, Mail, Lock, Clock, Eye, EyeOff, CheckCircle2, AlertCircle, Camera, Shield, Zap, CreditCard, Sparkles } from "lucide-react"
+import { User, Lock, Clock, Camera, Zap, Sparkles, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp, formatBytes, type PackageTier } from "@/lib/store"
-import {
-  completeSubscriptionPurchaseForDevApi,
-  createSubscriptionPurchaseApi,
-  type SubscriptionPurchase,
-} from "@/services/api/subscription-purchases"
+
+import { InfoTab } from "./tabs/info-tab"
+import { HistoryTab } from "./tabs/history-tab"
+import { SecurityTab } from "./tabs/security-tab"
+import { PackagesTab } from "./tabs/packages-tab"
+import { CheckoutModal } from "./checkout-modal"
 
 type ProfileTab = "info" | "history" | "security" | "packages"
 
@@ -17,22 +18,12 @@ export function ProfilePage() {
   const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices } = useApp()
   const [tab, setTab] = useState<ProfileTab>("info")
   const [displayName, setDisplayName] = useState(currentUser?.displayName ?? "")
-  const [showPass, setShowPass] = useState(false)
-  const [oldPass, setOldPass] = useState("")
-  const [newPass, setNewPass] = useState("")
-  const [confirmPass, setConfirmPass] = useState("")
   const [saved, setSaved] = useState(false)
   const [passError, setPassError] = useState("")
   const [passSuccess, setPassSuccess] = useState("")
 
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [selectedTier, setSelectedTier] = useState<PackageTier | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<"qr" | "card" | "wallet">("qr")
-  const [purchaseSuccess, setPurchaseSuccess] = useState(false)
-  const [purchaseOrder, setPurchaseOrder] = useState<SubscriptionPurchase | null>(null)
-  const [purchaseError, setPurchaseError] = useState("")
-  const [isCreatingPurchase, setIsCreatingPurchase] = useState(false)
-  const [isCompletingPurchase, setIsCompletingPurchase] = useState(false)
 
   useEffect(() => {
     const openPackagesTab = () => {
@@ -71,60 +62,21 @@ export function ProfilePage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const handleChangePassword = () => {
+  const handleChangePassword = (oldPass: string, newPass: string, confirmPass: string) => {
     setPassError("")
     setPassSuccess("")
     if (!oldPass) { setPassError("Nhập mật khẩu hiện tại."); return }
     if (newPass.length < 8) { setPassError("Mật khẩu mới phải có ít nhất 8 ký tự."); return }
     if (!/[a-zA-Z]/.test(newPass) || !/[0-9]/.test(newPass)) { setPassError("Mật khẩu cần chứa chữ và số."); return }
     if (newPass !== confirmPass) { setPassError("Mật khẩu xác nhận không khớp."); return }
+    
+    // In a real app, this would be an API call
     setPassSuccess("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.")
-    setOldPass(""); setNewPass(""); setConfirmPass("")
   }
 
   const openCheckout = (tier: PackageTier) => {
     setSelectedTier(tier)
     setShowCheckoutModal(true)
-    setPaymentMethod("qr")
-    setPurchaseSuccess(false)
-    setPurchaseOrder(null)
-    setPurchaseError("")
-  }
-
-  const createVietQrPurchase = async () => {
-    if (!selectedTier) return
-    setIsCreatingPurchase(true)
-    setPurchaseError("")
-    try {
-      const order = await createSubscriptionPurchaseApi(selectedTier)
-      setPurchaseOrder(order)
-    } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "Không thể tạo thanh toán VietQR.")
-    } finally {
-      setIsCreatingPurchase(false)
-    }
-  }
-
-  const completeVietQrPurchaseForDev = async () => {
-    if (!purchaseOrder) return
-    setIsCompletingPurchase(true)
-    setPurchaseError("")
-    try {
-      const completed = await completeSubscriptionPurchaseForDevApi(purchaseOrder.orderId)
-      setPurchaseOrder(completed)
-      if (completed.user) {
-        updateUser(currentUser.id, {
-          subscriptionTier: completed.user.subscriptionTier,
-          subscriptionExpiresAt: completed.user.subscriptionExpiresAt,
-          storageLimit: completed.user.storageLimit,
-        })
-      }
-      setPurchaseSuccess(true)
-    } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "Không thể xác nhận thanh toán.")
-    } finally {
-      setIsCompletingPurchase(false)
-    }
   }
 
   const tabs: { id: ProfileTab; label: string; icon: React.ElementType }[] = [
@@ -209,388 +161,49 @@ export function ProfilePage() {
         </div>
 
         <div className="p-6">
-          {/* INFO TAB */}
           {tab === "info" && (
-            <div className="max-w-md space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  Tên hiển thị <span className="text-muted-foreground">({displayName.length}/50)</span>
-                </label>
-                <input
-                  id="profile-name"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  maxLength={50}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">Email</label>
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">{currentUser.email}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">Không thể thay đổi (BR-20)</span>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">Dung lượng lưu trữ</label>
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="mb-2 flex justify-between text-xs">
-                    <span className="text-muted-foreground">{formatBytes(currentUser.storageUsed)} đã dùng</span>
-                    <span className="text-muted-foreground">{formatBytes(currentUser.storageLimit)} tổng</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted">
-                    <div
-                      className={cn("h-2 rounded-full transition-all", storagePercent > 80 ? "bg-destructive" : "bg-primary")}
-                      style={{ width: `${storagePercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{storagePercent}% đã sử dụng</p>
-                </div>
-              </div>
-              <Button
-                id="save-profile-btn"
-                onClick={handleSaveInfo}
-                disabled={!displayName.trim() || displayName.length > 50}
-                className="gap-2"
-              >
-                {saved ? <><CheckCircle2 className="h-4 w-4" />Đã lưu!</> : "Lưu thay đổi"}
-              </Button>
-            </div>
+            <InfoTab
+              currentUser={currentUser}
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              saved={saved}
+              onSave={handleSaveInfo}
+              storagePercent={storagePercent}
+            />
           )}
 
-          {/* HISTORY TAB */}
-          {tab === "history" && (
-            <div>
-              <h3 className="mb-4 font-semibold text-foreground">Lịch sử hoạt động</h3>
-              {userLogs.length === 0 ? (
-                <p className="text-muted-foreground">Chưa có hoạt động nào.</p>
-              ) : (
-                <div className="space-y-2">
-                  {userLogs.map(log => (
-                    <div key={log.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <Clock className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">{log.action}</p>
-                        <p className="text-xs text-muted-foreground">{log.target}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {log.timestamp.toLocaleString("vi-VN")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {tab === "history" && <HistoryTab logs={userLogs} />}
 
-          {/* SECURITY TAB */}
           {tab === "security" && (
-            <div className="max-w-md space-y-4">
-              <h3 className="font-semibold text-foreground">Đổi mật khẩu</h3>
-              {passError && (
-                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4" />{passError}
-                </div>
-              )}
-              {passSuccess && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-500/10 p-3 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />{passSuccess}
-                </div>
-              )}
-              {[
-                { id: "old-pass", label: "Mật khẩu hiện tại", value: oldPass, setter: setOldPass },
-                { id: "new-pass", label: "Mật khẩu mới", value: newPass, setter: setNewPass },
-                { id: "confirm-pass", label: "Xác nhận mật khẩu mới", value: confirmPass, setter: setConfirmPass },
-              ].map(field => (
-                <div key={field.id}>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">{field.label}</label>
-                  <div className="relative">
-                    <input
-                      id={field.id}
-                      type={showPass ? "text" : "password"}
-                      value={field.value}
-                      onChange={e => field.setter(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    >
-                      {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <Button id="change-pass-btn" onClick={handleChangePassword}>Đổi mật khẩu</Button>
-              <p className="text-xs text-muted-foreground">
-                Lưu ý: Bạn sẽ bị đăng xuất sau khi đổi mật khẩu 
-              </p>
-            </div>
+            <SecurityTab
+              onChangePassword={handleChangePassword}
+              error={passError}
+              success={passSuccess}
+            />
           )}
 
-          {/* PACKAGES TAB */}
           {tab === "packages" && (
-            <div className="space-y-6">
-              {/* Current Subscription Status */}
-              <div className="rounded-2xl border border-border bg-gradient-to-br from-primary/5 to-violet-500/5 p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary animate-pulse" />
-                  Gói dịch vụ hiện tại
-                </h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">Tên gói:</p>
-                    <p className="text-lg font-bold text-foreground">
-                      {currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now()
-                        ? "Gói đã hết hạn (Free)"
-                        : currentUser.subscriptionTier === "2-4"
-                        ? "Gói 2-4 người (Premium)"
-                        : currentUser.subscriptionTier === "5+"
-                        ? "Gói 5+ người (Enterprise)"
-                        : "Gói Free (Mặc định)"}
-                    </p>
-                  </div>
-                  {currentUser.subscriptionTier && currentUser.subscriptionTier !== "free" && currentUser.subscriptionExpiresAt && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Hạn sử dụng:</p>
-                      <p className="text-lg font-bold text-foreground flex items-center gap-1.5">
-                        <Clock className="h-4 w-4 text-primary" />
-                        {new Date(currentUser.subscriptionExpiresAt).toLocaleDateString("vi-VN")}
-                        {new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now() ? (
-                          <span className="text-xs text-destructive bg-destructive/10 px-2 py-0.5 rounded-full font-medium">Đã hết hạn</span>
-                        ) : (
-                          <span className="text-xs text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-medium">Đang hoạt động</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Package Options */}
-              <div>
-                <h3 className="text-lg font-semibold text-foreground mb-6 text-center">Các gói dịch vụ học tập nhóm</h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {packagePrices.map((pkg) => {
-                    const isActive = currentUser.subscriptionTier === pkg.tier &&
-                                     (!currentUser.subscriptionExpiresAt || new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now());
-                    return (
-                      <div
-                        key={pkg.id}
-                        className={cn(
-                          "relative rounded-2xl border bg-card p-6 flex flex-col justify-between transition-all hover:shadow-lg",
-                          isActive
-                            ? "border-primary ring-2 ring-primary/20 scale-[1.02]"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        {isActive && (
-                          <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground shadow-sm">
-                            Đang sử dụng
-                          </span>
-                        )}
-                        <div>
-                          <h4 className="text-lg font-bold text-foreground mb-1">{pkg.name}</h4>
-                          <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-2xl font-extrabold text-foreground">
-                              {pkg.price === 0 ? "Miễn phí" : `${pkg.price.toLocaleString("vi-VN")}đ`}
-                            </span>
-                            {pkg.price > 0 && <span className="text-xs text-muted-foreground">/tháng</span>}
-                          </div>
-
-                          <ul className="space-y-3 mb-6 text-sm text-muted-foreground border-t border-border pt-4">
-                            <li className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                              <span>AI Chat cá nhân hỏi đáp</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                              <span>
-                                {pkg.tier === "free"
-                                  ? "Không hỗ trợ mở phòng học nhóm"
-                                  : pkg.tier === "2-4"
-                                  ? "Mở phòng học nhóm (tối đa 4 người)"
-                                  : "Mở phòng học nhóm (tối đa 99 người)"}
-                              </span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                              <span>
-                                Dung lượng lưu trữ:{" "}
-                                {pkg.tier === "free" ? "512 MB" : pkg.tier === "2-4" ? "1 GB" : "5 GB"}
-                              </span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                              <span>Tạo flashcards từ tài liệu</span>
-                            </li>
-                          </ul>
-                        </div>
-
-                        {pkg.tier === "free" ? (
-                          <Button variant="outline" className="w-full" disabled>
-                            Mặc định
-                          </Button>
-                        ) : (
-                          <Button
-                            variant={isActive ? "outline" : "default"}
-                            className="w-full"
-                            onClick={() => openCheckout(pkg.tier)}
-                          >
-                            {isActive ? "Gia hạn gói" : "Nâng cấp ngay"}
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <PackagesTab
+              currentUser={currentUser}
+              packagePrices={packagePrices}
+              onBuy={openCheckout}
+            />
           )}
         </div>
       </div>
 
-      {/* Checkout Simulation Modal */}
       {showCheckoutModal && selectedTier && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95">
-            {!purchaseSuccess ? (
-              <>
-                <h3 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-primary" />
-                  Xác nhận mua gói dịch vụ
-                </h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Bạn đang đăng ký gói{" "}
-                  <span className="font-semibold text-foreground">
-                    {selectedTier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"}
-                  </span>{" "}
-                  thời hạn 1 tháng.
-                </p>
-
-                {/* Price Display */}
-                <div className="mb-6 rounded-xl bg-muted p-4 flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground font-medium">Tổng tiền cần thanh toán:</span>
-                  <span className="text-xl font-extrabold text-primary">
-                    {(packagePrices.find(p => p.tier === selectedTier)?.price || 0).toLocaleString("vi-VN")}đ
-                  </span>
-                </div>
-
-                {/* Payment Methods */}
-                <div className="space-y-3 mb-6">
-                  <p className="text-sm font-semibold text-foreground">Chọn phương thức thanh toán:</p>
-                  {[
-                    { id: "qr", label: "VietQR", desc: "Mã QR chuyển khoản ngân hàng cho môi trường dev", disabled: false },
-                    { id: "card", label: "Thẻ ATM / Visa / Mastercard", desc: "Sẽ triển khai sau", disabled: true },
-                    { id: "wallet", label: "Ví điện tử", desc: "Sẽ triển khai sau", disabled: true }
-                  ].map((method) => (
-                    <label
-                      key={method.id}
-                      onClick={() => !method.disabled && setPaymentMethod(method.id as any)}
-                      className={cn(
-                        "flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
-                        paymentMethod === method.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:bg-muted/50",
-                        method.disabled && "cursor-not-allowed opacity-60"
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="payment-method"
-                        checked={paymentMethod === method.id}
-                        disabled={method.disabled}
-                        onChange={() => {}}
-                        className="mt-1 accent-primary"
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{method.label}</p>
-                        <p className="text-xs text-muted-foreground">{method.desc}</p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                {purchaseError && (
-                  <p className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {purchaseError}
-                  </p>
-                )}
-
-                {purchaseOrder && (
-                  <div className="mb-6 space-y-4 rounded-xl border border-border bg-background p-4">
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <p className="text-muted-foreground">Mã đơn</p>
-                        <p className="font-semibold text-foreground">{purchaseOrder.orderId}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Nội dung CK</p>
-                        <p className="font-semibold text-foreground">{purchaseOrder.content}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Ngân hàng</p>
-                        <p className="font-semibold text-foreground">{purchaseOrder.bankCode}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Tài khoản</p>
-                        <p className="font-semibold text-foreground">{purchaseOrder.bankAccount}</p>
-                      </div>
-                    </div>
-                    <img
-                      src={purchaseOrder.qrImageUrl}
-                      alt={`VietQR ${purchaseOrder.orderId}`}
-                      className="mx-auto h-56 w-56 rounded-lg border border-border bg-white object-contain p-2"
-                    />
-                    <p className="text-center text-xs text-muted-foreground">
-                      Dev mode: quét QR hoặc dùng nút mô phỏng callback sau khi kiểm tra thông tin thanh toán.
-                    </p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1" onClick={() => setShowCheckoutModal(false)}>
-                    Hủy bỏ
-                  </Button>
-                  {!purchaseOrder ? (
-                    <Button className="flex-1 gap-2" disabled={isCreatingPurchase} onClick={createVietQrPurchase}>
-                      {isCreatingPurchase ? "Đang tạo QR..." : "Tạo mã VietQR"}
-                    </Button>
-                  ) : (
-                    <Button className="flex-1 gap-2" disabled={isCompletingPurchase} onClick={completeVietQrPurchaseForDev}>
-                      {isCompletingPurchase ? "Đang xác nhận..." : "Dev: giả lập đã thanh toán"}
-                    </Button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-6">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-                  <CheckCircle2 className="h-10 w-10 text-green-600 animate-bounce" />
-                </div>
-                <h3 className="text-xl font-bold text-foreground mb-2">Thanh toán thành công!</h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Tài khoản của bạn đã được nâng cấp lên{" "}
-                  <span className="font-bold text-foreground">
-                    {selectedTier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"}
-                  </span>
-                  . Hạn sử dụng của gói là 1 tháng kể từ hôm nay.
-                </p>
-                <Button className="w-full" onClick={() => {
-                  setShowCheckoutModal(false);
-                  setTab("packages");
-                }}>
-                  Tuyệt vời! Quay lại
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
+        <CheckoutModal
+          selectedTier={selectedTier}
+          packagePrices={packagePrices}
+          currentUser={currentUser}
+          updateUser={updateUser}
+          onClose={() => setShowCheckoutModal(false)}
+          onSuccess={() => {
+            setShowCheckoutModal(false)
+            setTab("packages")
+          }}
+        />
       )}
     </div>
   )
