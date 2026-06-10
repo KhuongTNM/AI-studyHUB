@@ -16,6 +16,8 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -142,10 +144,7 @@ public class DocumentService {
     public void delete(UUID id, UUID userId) {
         Document doc = getById(id);
         if (!doc.getUserId().equals(userId)) {
-            User currentUser = getCurrentUser();
-            if (currentUser.getRole() != User.Role.admin && currentUser.getRole() != User.Role.sub_admin) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa tài liệu này.");
-            }
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa tài liệu này.");
         }
         doc.setStatus(DocumentStatus.DELETED);
         doc.setDeletedAt(LocalDateTime.now());
@@ -171,9 +170,29 @@ public class DocumentService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền khôi phục tài liệu này.");
         }
 
-        long sameNameCount = documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, doc.getOriginalName());
-        if (sameNameCount > 0) {
-            doc.setTitle(doc.getTitle() + " (" + (sameNameCount + 1) + ")");
+        String originalName = doc.getOriginalName();
+        int dot = originalName.lastIndexOf('.');
+        String base = (dot > 0) ? originalName.substring(0, dot) : originalName;
+        String ext = (dot > 0) ? originalName.substring(dot) : "";
+
+        List<Document> existing = documentRepository.findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(userId, base);
+        int maxN = 0;
+        Pattern pattern = Pattern.compile(Pattern.quote(base) + " \\((\\d+)\\)" + Pattern.quote(ext));
+        for (Document d : existing) {
+            Matcher m = pattern.matcher(d.getOriginalName());
+            if (m.matches()) {
+                int n = Integer.parseInt(m.group(1));
+                if (n > maxN) maxN = n;
+            }
+        }
+        if (maxN > 0) {
+            String newName = base + " (" + (maxN + 1) + ")" + ext;
+            doc.setOriginalName(newName);
+            doc.setTitle(newName);
+        } else if (documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, originalName) > 0) {
+            String newName = base + " (2)" + ext;
+            doc.setOriginalName(newName);
+            doc.setTitle(newName);
         }
 
         doc.setStatus(DocumentStatus.READY);
