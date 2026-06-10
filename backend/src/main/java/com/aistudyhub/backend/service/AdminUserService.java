@@ -40,11 +40,20 @@ public class AdminUserService {
                 .toList();
     }
 
+    // ADDED FOR BR-067
+    private void validateNotAdmin(User actor, User target) {
+        if (actor.getRole() == User.Role.sub_admin && target.getRole() == User.Role.admin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Cannot operate on Admin accounts.");
+        }
+    }
+
     @Transactional
     public UserResponse updateStorageLimit(UUID userId, UpdateUserStorageLimitRequest request) {
         User actor = requireAdminOrSubAdmin();
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        validateNotAdmin(actor, target);
 
         if (target.getRole() != User.Role.user) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ được chỉnh dung lượng của tài khoản user.");
@@ -68,6 +77,8 @@ public class AdminUserService {
         User actor = requireAdminOrSubAdmin();
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        validateNotAdmin(actor, target);
 
         if (target.getId().equals(actor.getId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể tự khóa/mở khóa tài khoản hiện tại.");
@@ -94,6 +105,8 @@ public class AdminUserService {
         User actor = requireAdminOrSubAdmin();
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        validateNotAdmin(actor, target);
 
         // BR-062: không được reset mật khẩu của tài khoản Admin (kể cả Admin reset Admin khác)
         if (target.getRole() == User.Role.admin) {
