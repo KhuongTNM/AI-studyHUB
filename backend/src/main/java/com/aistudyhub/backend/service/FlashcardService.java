@@ -75,7 +75,7 @@ public class FlashcardService {
         UUID userId = getCurrentUserId();
         List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
         if (cards.isEmpty()) return List.of();
-        if (!cards.getFirst().getUserId().equals(userId)) {
+        if (!cards.get(0).getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem flashcards này.");
         }
         return cards.stream().map(FlashcardResponse::from).toList();
