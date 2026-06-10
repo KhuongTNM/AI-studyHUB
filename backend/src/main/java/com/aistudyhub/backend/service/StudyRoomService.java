@@ -41,11 +41,11 @@ public class StudyRoomService {
 
         checkCreateRoomPermission(user);
 
-        if (studyRoomRepository.existsByCode(request.getCode())) {
+        if (studyRoomRepository.existsByCode(request.getRoomCode())) {
             throw new ApiException(HttpStatus.CONFLICT, "Mã phòng đã tồn tại.");
         }
 
-        String code = request.getCode().toUpperCase();
+        String code = request.getRoomCode().toUpperCase();
         String passwordHash = request.getPassword() != null && !request.getPassword().isBlank()
                 ? request.getPassword() : null;
 
@@ -89,6 +89,10 @@ public class StudyRoomService {
     }
 
     private short resolveMaxMembers(User user) {
+        if (user.getRole() == User.Role.admin || user.getRole() == User.Role.sub_admin) {
+            return (short) 99;
+        }
+
         Integer planId = user.getSubscriptionPlanId();
         if (planId == null) return 4;
 
