@@ -170,6 +170,12 @@ public class DocumentService {
         if (!doc.getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền khôi phục tài liệu này.");
         }
+
+        long sameNameCount = documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, doc.getOriginalName());
+        if (sameNameCount > 0) {
+            doc.setTitle(doc.getTitle() + " (" + (sameNameCount + 1) + ")");
+        }
+
         doc.setStatus(DocumentStatus.READY);
         doc.setDeletedAt(null);
         doc.setUpdatedAt(LocalDateTime.now());
