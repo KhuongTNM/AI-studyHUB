@@ -13,6 +13,11 @@ public class FlashcardStatusConverter implements AttributeConverter<FlashcardSta
 
     @Override
     public FlashcardStatus convertToEntityAttribute(String dbData) {
-        return FlashcardStatus.fromString(dbData);
+        if (dbData == null) return null;
+        try {
+            return FlashcardStatus.fromString(dbData);
+        } catch (IllegalArgumentException e) {
+            return FlashcardStatus.NEW;
+        }
     }
 }

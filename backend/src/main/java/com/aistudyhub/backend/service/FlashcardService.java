@@ -40,6 +40,9 @@ public class FlashcardService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền cập nhật flashcard này.");
         }
 
+        if (request.getStatus() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Trạng thái không được để trống.");
+        }
         FlashcardStatus newStatus;
         try {
             newStatus = FlashcardStatus.fromString(request.getStatus());
