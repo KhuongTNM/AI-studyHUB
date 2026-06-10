@@ -1,13 +1,16 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.FlashcardResponse;
+import com.aistudyhub.backend.dto.GenerateFlashcardsRequest;
 import com.aistudyhub.backend.dto.UpdateFlashcardStatusRequest;
 import com.aistudyhub.backend.entity.Flashcard;
 import com.aistudyhub.backend.entity.FlashcardStatus;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FlashcardRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -19,9 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class FlashcardService {
 
     private final FlashcardRepository flashcardRepository;
+    private final DocumentRepository documentRepository;
 
-    public FlashcardService(FlashcardRepository flashcardRepository) {
+    public FlashcardService(FlashcardRepository flashcardRepository,
+                            DocumentRepository documentRepository) {
         this.flashcardRepository = flashcardRepository;
+        this.documentRepository = documentRepository;
     }
 
     @Transactional
@@ -44,6 +50,49 @@ public class FlashcardService {
         flashcard.setStatus(newStatus);
         flashcard.setUpdatedAt(LocalDateTime.now());
         return FlashcardResponse.from(flashcardRepository.save(flashcard));
+    }
+
+    @Transactional
+    public List<FlashcardResponse> generateFlashcards(GenerateFlashcardsRequest request) {
+        UUID userId = getCurrentUserId();
+
+        documentRepository.findById(request.getDocumentId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Flashcard> cards = List.of(
+                createCard(userId, request.getDocumentId(), now, "What is the main topic of this document?", "The main topic is..."),
+                createCard(userId, request.getDocumentId(), now, "Explain the key concept discussed.", "The key concept is..."),
+                createCard(userId, request.getDocumentId(), now, "What are the important takeaways?", "The important takeaways are...")
+        );
+        return flashcardRepository.saveAll(cards).stream()
+                .map(FlashcardResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<FlashcardResponse> listFlashcards(UUID documentId) {
+        UUID userId = getCurrentUserId();
+        List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
+        if (cards.isEmpty()) return List.of();
+        if (!cards.getFirst().getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem flashcards này.");
+        }
+        return cards.stream().map(FlashcardResponse::from).toList();
+    }
+
+    private Flashcard createCard(UUID userId, UUID documentId, LocalDateTime now, String question, String answer) {
+        Flashcard card = new Flashcard();
+        card.setId(UUID.randomUUID());
+        card.setUserId(userId);
+        card.setDocumentId(documentId);
+        card.setQuestion(question);
+        card.setAnswer(answer);
+        card.setStatus(FlashcardStatus.NEW);
+        card.setAiGenerated(true);
+        card.setCreatedAt(now);
+        card.setUpdatedAt(now);
+        return card;
     }
 
     private UUID getCurrentUserId() {
