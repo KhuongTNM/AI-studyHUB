@@ -13,6 +13,6 @@ public class FlashcardStatusConverter implements AttributeConverter<FlashcardSta
 
     @Override
     public FlashcardStatus convertToEntityAttribute(String dbData) {
-        return dbData == null ? null : FlashcardStatus.valueOf(dbData.toUpperCase());
+        return FlashcardStatus.fromString(dbData);
     }
 }

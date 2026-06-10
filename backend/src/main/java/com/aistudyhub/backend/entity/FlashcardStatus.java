@@ -11,4 +11,9 @@ public enum FlashcardStatus {
     public String toJson() {
         return name().toLowerCase();
     }
+
+    public static FlashcardStatus fromString(String value) {
+        if (value == null) return null;
+        return valueOf(value.toUpperCase());
+    }
 }

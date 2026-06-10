@@ -42,7 +42,7 @@ public class FlashcardService {
 
         FlashcardStatus newStatus;
         try {
-            newStatus = FlashcardStatus.valueOf(request.getStatus().toUpperCase());
+            newStatus = FlashcardStatus.fromString(request.getStatus());
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Trạng thái không hợp lệ. Chỉ hỗ trợ: new, learning, mastered.");
         }
