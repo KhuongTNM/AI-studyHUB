@@ -16,6 +16,8 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -148,6 +150,55 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
+    }
+
+    // ==================== BR-022/023: SOFT DELETE & RESTORE ====================
+
+    @Transactional(readOnly = true)
+    public List<Document> getTrashDocuments(UUID userId) {
+        return documentRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, DocumentStatus.DELETED);
+    }
+
+    @Transactional
+    public Document restoreDocument(UUID id, UUID userId) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (doc.getStatus() != DocumentStatus.DELETED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu không ở trạng thái đã xóa.");
+        }
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền khôi phục tài liệu này.");
+        }
+
+        String originalName = doc.getOriginalName();
+        int dot = originalName.lastIndexOf('.');
+        String base = (dot > 0) ? originalName.substring(0, dot) : originalName;
+        String ext = (dot > 0) ? originalName.substring(dot) : "";
+
+        List<Document> existing = documentRepository.findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(userId, base);
+        int maxN = 0;
+        Pattern pattern = Pattern.compile(Pattern.quote(base) + " \\((\\d+)\\)" + Pattern.quote(ext));
+        for (Document d : existing) {
+            Matcher m = pattern.matcher(d.getOriginalName());
+            if (m.matches()) {
+                int n = Integer.parseInt(m.group(1));
+                if (n > maxN) maxN = n;
+            }
+        }
+        if (maxN > 0) {
+            String newName = base + " (" + (maxN + 1) + ")" + ext;
+            doc.setOriginalName(newName);
+            doc.setTitle(newName);
+        } else if (documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, originalName) > 0) {
+            String newName = base + " (2)" + ext;
+            doc.setOriginalName(newName);
+            doc.setTitle(newName);
+        }
+
+        doc.setStatus(DocumentStatus.READY);
+        doc.setDeletedAt(null);
+        doc.setUpdatedAt(LocalDateTime.now());
+        return documentRepository.save(doc);
     }
 
     @Transactional

@@ -18,4 +18,11 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     List<Document> findByStatusAndDeletedAtIsNull(DocumentStatus status);
 
     long countByUserIdAndDeletedAtIsNull(UUID userId);
+
+    // ADDED FOR BR-022/023
+    List<Document> findByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, DocumentStatus status);
+
+    long countByUserIdAndDeletedAtIsNullAndOriginalName(UUID userId, String originalName);
+
+    List<Document> findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, String prefix);
 }
