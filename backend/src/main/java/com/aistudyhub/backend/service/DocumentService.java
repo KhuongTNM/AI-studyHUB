@@ -160,11 +160,6 @@ public class DocumentService {
         return documentRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, DocumentStatus.DELETED);
     }
 
-    @Transactional(readOnly = true)
-    public List<Document> getAllTrashDocuments() {
-        return documentRepository.findByStatusOrderByCreatedAtDesc(DocumentStatus.DELETED);
-    }
-
     @Transactional
     public Document restoreDocument(UUID id, UUID userId) {
         Document doc = documentRepository.findById(id)
@@ -173,10 +168,7 @@ public class DocumentService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu không ở trạng thái đã xóa.");
         }
         if (!doc.getUserId().equals(userId)) {
-            User currentUser = getCurrentUser();
-            if (currentUser.getRole() != User.Role.admin && currentUser.getRole() != User.Role.sub_admin) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền khôi phục tài liệu này.");
-            }
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền khôi phục tài liệu này.");
         }
         doc.setStatus(DocumentStatus.READY);
         doc.setDeletedAt(null);

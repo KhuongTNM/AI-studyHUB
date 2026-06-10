@@ -3,7 +3,6 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.DocumentResponse;
 import com.aistudyhub.backend.dto.UpdateVisibilityRequest;
 import com.aistudyhub.backend.entity.Document;
-import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
@@ -78,13 +77,7 @@ public class DocumentController {
     @GetMapping("/trash")
     public ResponseEntity<List<DocumentResponse>> listTrash(
             @AuthenticationPrincipal AuthUserPrincipal principal) {
-        User currentUser = documentService.getCurrentUser();
-        List<Document> docs;
-        if (currentUser.getRole() == User.Role.admin || currentUser.getRole() == User.Role.sub_admin) {
-            docs = documentService.getAllTrashDocuments();
-        } else {
-            docs = documentService.getTrashDocuments(principal.getId());
-        }
+        List<Document> docs = documentService.getTrashDocuments(principal.getId());
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 

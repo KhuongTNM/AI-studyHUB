@@ -21,6 +21,4 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     // ADDED FOR BR-022/023
     List<Document> findByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, DocumentStatus status);
-
-    List<Document> findByStatusOrderByCreatedAtDesc(DocumentStatus status);
 }
