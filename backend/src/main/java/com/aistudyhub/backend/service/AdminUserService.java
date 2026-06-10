@@ -1,10 +1,13 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.GrantSubscriptionRequest;
 import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
 import com.aistudyhub.backend.dto.UserResponse;
+import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import java.math.BigDecimal;
@@ -26,10 +29,12 @@ public class AdminUserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
 
-    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder, SubscriptionPlanRepository subscriptionPlanRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.subscriptionPlanRepository = subscriptionPlanRepository;
     }
 
     @Transactional(readOnly = true)
@@ -45,6 +50,42 @@ public class AdminUserService {
         if (actor.getRole() == User.Role.sub_admin && target.getRole() == User.Role.admin) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Cannot operate on Admin accounts.");
         }
+    }
+
+    // ADDED FOR BR-063
+    @Transactional
+    public UserResponse grantSubscription(UUID userId, GrantSubscriptionRequest request) {
+        User actor = requireAdminOrSubAdmin();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        validateNotAdmin(actor, target);
+
+        String dbPlanName = switch (request.getPlan()) {
+            case "FREE" -> "free";
+            case "2-4" -> "plan_2_4";
+            case "5+" -> "plan_5_plus";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ. Chỉ hỗ trợ: FREE, 2-4, 5+.");
+        };
+
+        SubscriptionPlan plan = subscriptionPlanRepository.findByName(dbPlanName)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+
+        target.setSubscriptionPlanId(plan.getId());
+        target.setStorageLimitBytes(plan.getDefaultStorageBytes());
+
+        if ("free".equals(dbPlanName)) {
+            target.setSubscriptionExpiresAt(null);
+        } else {
+            int months = request.getDurationMonths() != null ? request.getDurationMonths() : 0;
+            if (months < 1) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Thời hạn phải lớn hơn 0 tháng.");
+            }
+            target.setSubscriptionExpiresAt(LocalDateTime.now().plusMonths(months));
+        }
+
+        target.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(target));
     }
 
     @Transactional

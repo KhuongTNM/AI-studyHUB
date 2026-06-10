@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.GrantSubscriptionRequest;
 import com.aistudyhub.backend.dto.LockUserRequest;
 import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -58,5 +60,13 @@ public class AdminUserController {
             @PathVariable UUID userId,
             @Valid @RequestBody ResetUserPasswordRequest request) {
         return ResponseEntity.ok(adminUserService.resetPassword(userId, request));
+    }
+
+    // ADDED FOR BR-063
+    @PostMapping("/{userId}/subscription")
+    public ResponseEntity<UserResponse> grantSubscription(
+            @PathVariable UUID userId,
+            @Valid @RequestBody GrantSubscriptionRequest request) {
+        return ResponseEntity.ok(adminUserService.grantSubscription(userId, request));
     }
 }
