@@ -3,6 +3,7 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.DocumentResponse;
 import com.aistudyhub.backend.dto.UpdateVisibilityRequest;
 import com.aistudyhub.backend.entity.Document;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
@@ -73,6 +74,20 @@ public class DocumentController {
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 
+    // ADDED FOR BR-022/023
+    @GetMapping("/trash")
+    public ResponseEntity<List<DocumentResponse>> listTrash(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        User currentUser = documentService.getCurrentUser();
+        List<Document> docs;
+        if (currentUser.getRole() == User.Role.admin || currentUser.getRole() == User.Role.sub_admin) {
+            docs = documentService.getAllTrashDocuments();
+        } else {
+            docs = documentService.getTrashDocuments(principal.getId());
+        }
+        return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<DocumentResponse> getById(
             @AuthenticationPrincipal AuthUserPrincipal principal,
@@ -100,6 +115,15 @@ public class DocumentController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
         }
         Document doc = documentService.updateVisibility(id, principal.getId(), visibility);
+        return ResponseEntity.ok(DocumentResponse.from(doc));
+    }
+
+    // ADDED FOR BR-022/023
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<DocumentResponse> restore(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id) {
+        Document doc = documentService.restoreDocument(id, principal.getId());
         return ResponseEntity.ok(DocumentResponse.from(doc));
     }
 
