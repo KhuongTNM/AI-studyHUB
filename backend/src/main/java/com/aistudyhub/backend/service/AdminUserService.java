@@ -1,18 +1,24 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.CreateSubAdminRequest;
 import com.aistudyhub.backend.dto.GrantSubscriptionRequest;
 import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
 import com.aistudyhub.backend.dto.UpdateUserStorageLimitRequest;
 import com.aistudyhub.backend.dto.UserResponse;
+import com.aistudyhub.backend.entity.ActivityLog;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.repository.ActivityLogRepository;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -26,15 +32,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminUserService {
 
     private static final BigDecimal BYTES_PER_GB = BigDecimal.valueOf(1024L * 1024L * 1024L);
+    private static final long SUB_ADMIN_STORAGE_LIMIT_BYTES = 1024L * 1024L * 1024L;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final ActivityLogRepository activityLogRepository;
+    private final ObjectMapper objectMapper;
 
-    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder, SubscriptionPlanRepository subscriptionPlanRepository) {
+    public AdminUserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            SubscriptionPlanRepository subscriptionPlanRepository,
+            ActivityLogRepository activityLogRepository,
+            ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.activityLogRepository = activityLogRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -43,6 +59,43 @@ public class AdminUserService {
         return userRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(UserResponse::from)
                 .toList();
+    }
+
+    @Transactional
+    public UserResponse createSubAdmin(CreateSubAdminRequest request) {
+        User admin = requireAdmin();
+
+        String email = request.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Email này đã được đăng ký.");
+        }
+        PasswordPolicyValidator.validate(request.getPassword());
+
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói Free."));
+        LocalDateTime now = LocalDateTime.now();
+
+        User subAdmin = new User();
+        subAdmin.setId(UUID.randomUUID());
+        subAdmin.setEmail(email);
+        subAdmin.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        subAdmin.setDisplayName(request.getDisplayName().trim());
+        subAdmin.setRole(User.Role.sub_admin);
+        subAdmin.setLocked(false);
+        subAdmin.setLoginAttempts((short) 0);
+        subAdmin.setStorageUsedBytes(0L);
+        subAdmin.setStorageLimitBytes(SUB_ADMIN_STORAGE_LIMIT_BYTES);
+        subAdmin.setSubscriptionPlanId(freePlan.getId());
+        subAdmin.setSubscriptionExpiresAt(null);
+        subAdmin.setLanguagePreference(User.LanguagePreference.vi);
+        subAdmin.setThemePreference(User.ThemePreference.light);
+        subAdmin.setCreatedByAdminId(admin.getId());
+        subAdmin.setCreatedAt(now);
+        subAdmin.setUpdatedAt(now);
+
+        User saved = userRepository.save(subAdmin);
+        writeCreateSubAdminLog(admin, saved, now);
+        return UserResponse.from(saved);
     }
 
     // ADDED FOR BR-067
@@ -182,6 +235,43 @@ public class AdminUserService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin hoặc Sub-admin mới được thực hiện thao tác này.");
         }
         return user;
+    }
+
+    private User requireAdmin() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthUserPrincipal principal)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Vui lòng đăng nhập bằng tài khoản Admin.");
+        }
+        User user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        if (user.getRole() != User.Role.admin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin mới được tạo tài khoản sub-admin.");
+        }
+        return user;
+    }
+
+    private void writeCreateSubAdminLog(User admin, User subAdmin, LocalDateTime createdAt) {
+        ActivityLog log = new ActivityLog();
+        log.setId(UUID.randomUUID());
+        log.setActorId(admin.getId());
+        log.setAction("create_sub_admin");
+        log.setTargetType("user");
+        log.setTargetId(subAdmin.getId().toString());
+        log.setDetails(toJson(Map.of(
+                "email", subAdmin.getEmail(),
+                "displayName", subAdmin.getDisplayName(),
+                "storageLimitBytes", subAdmin.getStorageLimitBytes()
+        )));
+        log.setCreatedAt(createdAt);
+        activityLogRepository.save(log);
+    }
+
+    private String toJson(Map<String, Object> details) {
+        try {
+            return objectMapper.writeValueAsString(details);
+        } catch (JsonProcessingException ex) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể ghi nhật ký hoạt động.");
+        }
     }
 
     private long toBytes(BigDecimal storageLimitGb) {

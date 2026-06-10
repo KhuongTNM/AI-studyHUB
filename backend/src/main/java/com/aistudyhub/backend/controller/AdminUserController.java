@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.CreateSubAdminRequest;
 import com.aistudyhub.backend.dto.GrantSubscriptionRequest;
 import com.aistudyhub.backend.dto.LockUserRequest;
 import com.aistudyhub.backend.dto.ResetUserPasswordRequest;
@@ -31,6 +32,11 @@ public class AdminUserController {
     @GetMapping
     public ResponseEntity<List<UserResponse>> getUsers() {
         return ResponseEntity.ok(adminUserService.getUsers());
+    }
+
+    @PostMapping("/sub-admins")
+    public ResponseEntity<UserResponse> createSubAdmin(@Valid @RequestBody CreateSubAdminRequest request) {
+        return ResponseEntity.ok(adminUserService.createSubAdmin(request));
     }
 
     @PatchMapping("/{userId}/storage-limit")

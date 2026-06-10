@@ -91,7 +91,7 @@ export interface AppState {
   toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
   resetUserPassword: (id: string, password: string) => Promise<{ success: boolean; error?: string }>
   deleteUserAccount: (id: string) => { success: boolean; error?: string }
-  createSubAdminAccount: (email: string, password: string, displayName: string) => { success: boolean; error?: string }
+  createSubAdminAccount: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]

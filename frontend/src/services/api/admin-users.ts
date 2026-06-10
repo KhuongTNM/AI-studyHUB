@@ -45,6 +45,24 @@ export async function updateUserStorageLimitApi(userId: string, storageLimitGb: 
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
+/** BR-062: Admin creates a sub-admin account with 1GB storage and persisted activity log. */
+export async function createSubAdminApi(
+  email: string,
+  password: string,
+  displayName: string,
+): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/sub-admins`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ email, password, displayName }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
+}
+
 /** BR-061: Lock (isLocked=true) or unlock (isLocked=false) a user account */
 export async function toggleUserLockApi(userId: string, locked: boolean): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/lock`, {

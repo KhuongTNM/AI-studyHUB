@@ -24,6 +24,10 @@ export const adminText = {
     cancel: "Hủy",
     newPassword: "Mật khẩu mới",
     save: "Lưu",
+    passwordMinLength: "Ít nhất 8 ký tự",
+    passwordLetter: "Có chữ cái",
+    passwordDigit: "Có chữ số",
+    emailInvalid: "Email không đúng định dạng.",
   },
   en: {
     denied: "Access denied",
@@ -50,5 +54,9 @@ export const adminText = {
     cancel: "Cancel",
     newPassword: "New password",
     save: "Save",
+    passwordMinLength: "At least 8 characters",
+    passwordLetter: "Contains a letter",
+    passwordDigit: "Contains a number",
+    emailInvalid: "Email format is invalid.",
   },
 } as const

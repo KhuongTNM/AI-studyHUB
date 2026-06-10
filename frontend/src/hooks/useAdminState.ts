@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAdminUsersApi, resetUserPasswordApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
+import { createSubAdminApi, fetchAdminUsersApi, resetUserPasswordApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
 import { MOCK_USERS } from "@/states/mock-data"
 import type { Document, User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
@@ -167,7 +167,7 @@ export function useAdminState({
   )
 
   const createSubAdminAccount = useCallback(
-    (email: string, password: string, displayName: string) => {
+    async (email: string, password: string, displayName: string) => {
       if (currentUser?.role !== "admin")
         return { success: false, error: "Chỉ Admin mới có thể tạo tài khoản sub-admin." }
       if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
@@ -178,24 +178,17 @@ export function useAdminState({
         return { success: false, error: "Mật khẩu phải chứa ít nhất 1 chữ cái và 1 số." }
       }
 
-      const subAdmin: User = {
-        id: `sub-admin-${Date.now()}`,
-        email,
-        displayName,
-        password,
-        role: "sub-admin",
-        isLocked: false,
-        emailVerified: true,
-        createdAt: new Date(),
-        loginAttempts: 0,
-        lastActive: new Date(),
-        storageUsed: 0,
-        storageLimit: 1024 * 1024 * 1024,
+      try {
+        const subAdmin = await createSubAdminApi(email, password, displayName)
+        setUsers(prev => [subAdmin, ...prev])
+        addLog("Admin tạo tài khoản sub-admin", email, currentUser.id)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể tạo tài khoản sub-admin.",
+        }
       }
-
-      setUsers(prev => [...prev, subAdmin])
-      addLog("Admin tạo tài khoản sub-admin", email, currentUser.id)
-      return { success: true }
     },
     [currentUser, users, addLog],
   )
