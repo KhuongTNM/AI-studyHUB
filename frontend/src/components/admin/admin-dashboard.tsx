@@ -315,8 +315,8 @@ export function AdminDashboard() {
             <div className="mt-6 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setGrantTarget(null)}>Hủy</Button>
               <Button onClick={() => {
-                requirePassword(`Cấp gói ${grantTier === "free" ? "Free" : grantTier === "2-4" ? "2-4 người" : "5+ người"} cho ${grantTarget.email}`, () => {
-                  const res = grantSubscription(grantTarget.id, grantTier, grantDuration)
+                requirePassword(`Cấp gói ${grantTier === "free" ? "Free" : grantTier === "2-4" ? "2-4 người" : "5+ người"} cho ${grantTarget.email}`, async () => {
+                  const res = await grantSubscription(grantTarget.id, grantTier, grantDuration)
                   runAccountAction(res, "Đã cấp gói dịch vụ thành công.")
                   if (res.success) {
                     const storageLimit = grantTier === "free" ? 1024 * 1024 * 512 : grantTier === "2-4" ? 1024 * 1024 * 1024 : 1024 * 1024 * 1024 * 5
