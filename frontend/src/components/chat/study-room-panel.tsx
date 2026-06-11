@@ -3,7 +3,8 @@ import { Users, Lock, LogOut, X, Send, AlertCircle, ChevronDown } from "lucide-r
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getActiveHostPackageTier, getRoomCapacityForHost } from "@/utils/study-room-capacity"
-import type { PackagePrice } from "@/states/types"
+import type { AppState } from "@/lib/store"
+import type { Language, PackagePrice } from "@/states/types"
 
 interface StudyRoomPanelProps {
   mode: "toggle" | "sidebar"
@@ -11,8 +12,8 @@ interface StudyRoomPanelProps {
   packagePrices: PackagePrice[]
   currentRoomId: string | null
   currentUser: any
-  onJoinRoom: (id: string, pass: string) => { success: boolean, error?: string }
-  onCreateRoom: (id: string, pass: string) => { success: boolean, error?: string }
+  onJoinRoom: (id: string, pass: string) => ActionResult | Promise<ActionResult>
+  onCreateRoom: (id: string, pass: string) => ActionResult | Promise<ActionResult>
   onLeaveRoom: () => void
   onCloseRoom: () => void
   onSendMessage: (msg: string) => void
@@ -20,16 +21,19 @@ interface StudyRoomPanelProps {
   setShowRoomPanel: (val: boolean) => void
   showRoomSidebar: boolean
   setShowRoomSidebar: (val: boolean) => void
-  setCurrentPage: (page: string) => void
+  setCurrentPage: (page: AppState["currentPage"]) => void
   openAuthModal: (mode: any) => void
+  language: Language
 }
+
+type ActionResult = { success: boolean, error?: string }
 
 export function StudyRoomPanel({
   mode, rooms, currentRoomId, currentUser, onJoinRoom, onCreateRoom,
   packagePrices,
   onLeaveRoom, onCloseRoom, onSendMessage,
   showRoomPanel, setShowRoomPanel, showRoomSidebar, setShowRoomSidebar,
-  setCurrentPage, openAuthModal
+  setCurrentPage, openAuthModal, language
 }: StudyRoomPanelProps) {
   const [roomActionTab, setRoomActionTab] = useState<"join" | "create">("join")
   const [roomIdInput, setRoomIdInput] = useState("")
@@ -43,6 +47,7 @@ export function StudyRoomPanel({
   const roomMembers = activeRoom?.members ?? []
   const hostPackageTier = getActiveHostPackageTier(currentUser)
   const createRoomCapacity = getRoomCapacityForHost(currentUser, packagePrices)
+  const text = roomText[language]
 
   useEffect(() => {
     roomMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -58,10 +63,10 @@ export function StudyRoomPanel({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-foreground">{activeRoom.id}</span>
-              {activeRoom.password && <Lock className="h-3 w-3 text-muted-foreground" title="Phòng có mật khẩu" />}
+              {activeRoom.password && <Lock className="h-3 w-3 text-muted-foreground" />}
             </div>
             <p className="text-xs text-muted-foreground">
-              Thành viên: {roomMembers.length}/{activeRoom.capacity}
+              {text.members}: {roomMembers.length}/{activeRoom.capacity}
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -69,10 +74,9 @@ export function StudyRoomPanel({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              title={activeRoom.hostId === currentUser?.id ? "Đóng phòng học" : "Rời phòng học"}
               onClick={() => {
                 if (activeRoom.hostId === currentUser?.id) {
-                  if (confirm("Bạn có chắc chắn muốn đóng phòng học này? Tất cả thành viên sẽ bị rời ra.")) {
+                  if (confirm(text.closeConfirm)) {
                     onCloseRoom()
                   }
                 } else {
@@ -96,19 +100,19 @@ export function StudyRoomPanel({
         {/* Room Details & Member list */}
         <div className="border-b border-border bg-muted/30 p-3 text-xs space-y-2">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Chủ phòng:</span>
+            <span className="text-muted-foreground">{text.host}:</span>
             <span className="font-medium text-foreground">{activeRoom.hostName}</span>
           </div>
           {activeRoom.password && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Mật khẩu phòng:</span>
+              <span className="text-muted-foreground">{text.roomPassword}:</span>
               <span className="font-mono font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
                 {activeRoom.password}
               </span>
             </div>
           )}
           <div>
-            <span className="text-muted-foreground block mb-1">Đang online ({roomMembers.length}):</span>
+            <span className="text-muted-foreground block mb-1">{text.online} ({roomMembers.length}):</span>
             <div className="flex flex-wrap gap-1.5">
               {roomMembers.map((m: any) => (
                 <span
@@ -122,7 +126,7 @@ export function StudyRoomPanel({
                 >
                   <Users className="h-2.5 w-2.5" />
                   {m.displayName}
-                  {m.userId === activeRoom.hostId && <span className="text-[9px] font-bold">(Host)</span>}
+                  {m.userId === activeRoom.hostId && <span className="text-[9px] font-bold">({text.hostBadge})</span>}
                 </span>
               ))}
             </div>
@@ -187,7 +191,7 @@ export function StudyRoomPanel({
         >
           <input
             type="text"
-            placeholder="Nhắn cho nhóm..."
+            placeholder={text.messagePlaceholder}
             value={roomInput}
             onChange={(e) => setRoomInput(e.target.value)}
             className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -221,7 +225,7 @@ export function StudyRoomPanel({
         )}
       >
         <Users className="h-3.5 w-3.5" />
-        {currentRoomId ? `Phòng: ${currentRoomId}` : "Học nhóm (Room)"}
+        {currentRoomId ? `${text.room}: ${currentRoomId}` : text.studyRoom}
         <ChevronDown className="h-3 w-3" />
       </Button>
 
@@ -235,7 +239,7 @@ export function StudyRoomPanel({
                 roomActionTab === "join" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Tham gia phòng
+              {text.joinRoom}
             </button>
             <button
               onClick={() => { setRoomActionTab("create"); setRoomError(""); }}
@@ -244,7 +248,7 @@ export function StudyRoomPanel({
                 roomActionTab === "create" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Mở phòng mới
+              {text.createRoom}
             </button>
           </div>
 
@@ -259,7 +263,7 @@ export function StudyRoomPanel({
             {roomActionTab === "create" && currentUser && !createRoomCapacity ? (
               <div className="text-center py-2">
                 <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                  Bạn chưa có gói trả phí còn hiệu lực. Vui lòng nâng cấp lên gói 2-4 người hoặc 5+ người để mở phòng học nhóm.
+                  {text.needPaidPlan}
                 </p>
                 <Button
                   size="sm"
@@ -269,16 +273,16 @@ export function StudyRoomPanel({
                     setCurrentPage("profile")
                   }}
                 >
-                  Nâng cấp ngay
+                  {text.upgradeNow}
                 </Button>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Mã phòng học</label>
+                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">{text.roomCode}</label>
                   <input
                     type="text"
-                    placeholder="Ví dụ: ROOM101"
+                    placeholder={text.roomCodePlaceholder}
                     value={roomIdInput}
                     onChange={e => setRoomIdInput(e.target.value)}
                     className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -286,18 +290,18 @@ export function StudyRoomPanel({
                 </div>
                 {roomActionTab === "create" && createRoomCapacity && (
                   <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                    Sức chứa theo gói host{" "}
+                    {text.capacityPrefix}{" "}
                     <span className="font-semibold text-foreground">
-                      {hostPackageTier === "2-4" ? "2-4 người" : "5+ người"}
+                      {hostPackageTier === "2-4" ? text.plan2To4 : text.plan5Plus}
                     </span>
-                    : tối đa <span className="font-semibold text-foreground">{createRoomCapacity}</span> thành viên, kể cả host.
+                    : {text.capacityMax} <span className="font-semibold text-foreground">{createRoomCapacity}</span> {text.capacitySuffix}
                   </div>
                 )}
                 <div>
-                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Mật khẩu phòng</label>
+                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">{text.roomPassword}</label>
                   <input
                     type="password"
-                    placeholder="Mật khẩu"
+                    placeholder={text.passwordPlaceholder}
                     value={roomPasswordInput}
                     onChange={e => setRoomPasswordInput(e.target.value)}
                     className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -306,36 +310,36 @@ export function StudyRoomPanel({
                 <Button
                   size="sm"
                   className="w-full mt-2"
-                  onClick={() => {
+                  onClick={async () => {
                     setRoomError("")
                     if (!currentUser) {
                       openAuthModal("login")
                       return
                     }
                     if (roomActionTab === "join") {
-                      const res = onJoinRoom(roomIdInput, roomPasswordInput)
+                      const res = await onJoinRoom(roomIdInput, roomPasswordInput)
                       if (res.success) {
                         setShowRoomPanel(false)
                         setShowRoomSidebar(true)
                         setRoomIdInput("")
                         setRoomPasswordInput("")
                       } else {
-                        setRoomError(res.error || "Không thể tham gia phòng.")
+                        setRoomError(res.error || text.joinFailed)
                       }
                     } else {
-                      const res = onCreateRoom(roomIdInput, roomPasswordInput)
+                      const res = await onCreateRoom(roomIdInput, roomPasswordInput)
                       if (res.success) {
                         setShowRoomPanel(false)
                         setShowRoomSidebar(true)
                         setRoomIdInput("")
                         setRoomPasswordInput("")
                       } else {
-                        setRoomError(res.error || "Không thể tạo phòng.")
+                        setRoomError(res.error || text.createFailed)
                       }
                     }
                   }}
                 >
-                  {roomActionTab === "join" ? "Tham gia ngay" : "Tạo phòng"}
+                  {roomActionTab === "join" ? text.joinNow : text.createNow}
                 </Button>
               </>
             )}
@@ -345,3 +349,60 @@ export function StudyRoomPanel({
     </div>
   )
 }
+
+const roomText = {
+  vi: {
+    members: "Thành viên",
+    closeConfirm: "Bạn có chắc chắn muốn đóng phòng học này? Tất cả thành viên sẽ bị rời ra.",
+    host: "Chủ phòng",
+    roomPassword: "Mật khẩu phòng",
+    online: "Đang online",
+    hostBadge: "Host",
+    messagePlaceholder: "Nhắn cho nhóm...",
+    room: "Phòng",
+    studyRoom: "Học nhóm (Room)",
+    joinRoom: "Tham gia phòng",
+    createRoom: "Mở phòng mới",
+    needPaidPlan: "Bạn chưa có gói trả phí còn hiệu lực. Vui lòng nâng cấp lên gói 2-4 người hoặc 5+ người để mở phòng học nhóm.",
+    upgradeNow: "Nâng cấp ngay",
+    roomCode: "Mã phòng học",
+    roomCodePlaceholder: "Ví dụ: ROOM101",
+    capacityPrefix: "Sức chứa theo gói host",
+    plan2To4: "2-4 người",
+    plan5Plus: "5+ người",
+    capacityMax: "tối đa",
+    capacitySuffix: "thành viên, kể cả host.",
+    passwordPlaceholder: "Mật khẩu",
+    joinFailed: "Không thể tham gia phòng.",
+    createFailed: "Không thể tạo phòng.",
+    joinNow: "Tham gia ngay",
+    createNow: "Tạo phòng",
+  },
+  en: {
+    members: "Members",
+    closeConfirm: "Close this study room? All members will be removed.",
+    host: "Host",
+    roomPassword: "Room password",
+    online: "Online",
+    hostBadge: "Host",
+    messagePlaceholder: "Message the group...",
+    room: "Room",
+    studyRoom: "Study room",
+    joinRoom: "Join room",
+    createRoom: "Create room",
+    needPaidPlan: "You need an active paid plan. Upgrade to the 2-4 or 5+ plan to create a study room.",
+    upgradeNow: "Upgrade now",
+    roomCode: "Room code",
+    roomCodePlaceholder: "Example: ROOM101",
+    capacityPrefix: "Host package capacity",
+    plan2To4: "2-4 people",
+    plan5Plus: "5+ people",
+    capacityMax: "up to",
+    capacitySuffix: "members, including host.",
+    passwordPlaceholder: "Password",
+    joinFailed: "Could not join room.",
+    createFailed: "Could not create room.",
+    joinNow: "Join now",
+    createNow: "Create room",
+  },
+} as const

@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { useApp } from "@/lib/store"
 
 export interface Document {
   id: string
@@ -34,13 +35,17 @@ const fileTypeColors: Record<string, string> = {
 }
 
 export function DocumentList({ documents, onSelect, onDelete, onDownload, selectedId }: DocumentListProps) {
+  const { language } = useApp()
+  const text = documentListText[language]
+  const dateLocale = language === "vi" ? "vi-VN" : "en-US"
+
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-        <h3 className="mb-2 text-lg font-semibold text-foreground">Chưa có tài liệu nào</h3>
+        <h3 className="mb-2 text-lg font-semibold text-foreground">{text.emptyTitle}</h3>
         <p className="text-sm text-muted-foreground">
-          Tải lên tài liệu đầu tiên để bắt đầu
+          {text.emptyBody}
         </p>
       </div>
     )
@@ -63,7 +68,7 @@ export function DocumentList({ documents, onSelect, onDelete, onDownload, select
           <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
             <p className="text-xs text-muted-foreground">
-              {doc.type.toUpperCase()} • {doc.size} • {doc.uploadedAt.toLocaleDateString("vi-VN")}
+              {doc.type.toUpperCase()} • {doc.size} • {doc.uploadedAt.toLocaleDateString(dateLocale)}
             </p>
           </div>
           <DropdownMenu>
@@ -75,18 +80,18 @@ export function DocumentList({ documents, onSelect, onDelete, onDownload, select
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSelect(doc); }}>
                 <Eye className="mr-2 h-4 w-4" />
-                Xem
+                {text.view}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDownload(doc.id); }}>
                 <Download className="mr-2 h-4 w-4" />
-                Tải xuống
+                {text.download}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
                 className="text-destructive"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Xóa
+                {text.delete}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -95,3 +100,20 @@ export function DocumentList({ documents, onSelect, onDelete, onDownload, select
     </div>
   )
 }
+
+const documentListText = {
+  vi: {
+    emptyTitle: "Chưa có tài liệu nào",
+    emptyBody: "Tải lên tài liệu đầu tiên để bắt đầu",
+    view: "Xem",
+    download: "Tải xuống",
+    delete: "Xóa",
+  },
+  en: {
+    emptyTitle: "No documents yet",
+    emptyBody: "Upload your first document to get started",
+    view: "View",
+    download: "Download",
+    delete: "Delete",
+  },
+} as const

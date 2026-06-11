@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import { Upload, FileText, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useApp } from "@/lib/store"
 
 export function UploadModal({
   onClose,
@@ -16,6 +17,8 @@ export function UploadModal({
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const { language } = useApp()
+  const text = uploadText[language]
 
   const validTypes = [
     "application/pdf",
@@ -39,7 +42,7 @@ export function UploadModal({
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <h3 className="font-semibold text-foreground">Upload tài liệu</h3>
+          <h3 className="font-semibold text-foreground">{text.title}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -48,12 +51,12 @@ export function UploadModal({
           {/* Subject name */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Môn học <span className="text-destructive">*</span>
+              {text.subject} <span className="text-destructive">*</span>
             </label>
             <input
               value={subject}
               onChange={e => setSubject(e.target.value)}
-              placeholder="Nhập tên môn học"
+              placeholder={text.subjectPlaceholder}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
@@ -80,7 +83,7 @@ export function UploadModal({
           >
             <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
-              Kéo thả hoặc click để chọn file
+              {text.dropOrClick}
             </p>
             <p className="text-xs text-muted-foreground">PDF, DOCX, PPTX</p>
             <input
@@ -120,13 +123,32 @@ export function UploadModal({
             disabled={!selectedFiles.length || !subject.trim()}
           >
             <Upload className="h-4 w-4" />
-            Upload {selectedFiles.length > 0 ? `(${selectedFiles.length} file)` : ""}
+            {text.upload} {selectedFiles.length > 0 ? `(${selectedFiles.length} file)` : ""}
           </Button>
           <Button variant="outline" onClick={onClose}>
-            Hủy
+            {text.cancel}
           </Button>
         </div>
       </div>
     </div>
   )
 }
+
+const uploadText = {
+  vi: {
+    title: "Upload tài liệu",
+    subject: "Môn học",
+    subjectPlaceholder: "Nhập tên môn học",
+    dropOrClick: "Kéo thả hoặc click để chọn file",
+    upload: "Upload",
+    cancel: "Hủy",
+  },
+  en: {
+    title: "Upload document",
+    subject: "Subject",
+    subjectPlaceholder: "Enter subject name",
+    dropOrClick: "Drag and drop or click to choose files",
+    upload: "Upload",
+    cancel: "Cancel",
+  },
+} as const

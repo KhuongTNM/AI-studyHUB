@@ -13,20 +13,21 @@ import { useApp, formatBytes } from "@/lib/store"
 export function CloudStorage() {
   const {
     currentUser, documents, openAuthModal,
-    deleteDocument, downloadDocument,
+    deleteDocument, downloadDocument, language,
   } = useApp()
 
   const [syncing, setSyncing] = useState(false)
   const [syncDone, setSyncDone] = useState(false)
   const [reviewDocId, setReviewDocId] = useState<string | null>(null)
+  const text = cloudText[language]
 
   if (!currentUser) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <Cloud className="h-16 w-16 text-muted-foreground" />
         <h2 className="text-xl font-semibold">Cloud Storage</h2>
-        <p className="text-muted-foreground">Đăng nhập để truy cập cloud storage</p>
-        <Button onClick={() => openAuthModal("login")}>Đăng nhập</Button>
+        <p className="text-muted-foreground">{text.loginToAccess}</p>
+        <Button onClick={() => openAuthModal("login")}>{text.login}</Button>
       </div>
     )
   }
@@ -53,10 +54,10 @@ export function CloudStorage() {
   }
 
   const stats = [
-    { icon: FileText, label: "Tài liệu", value: readyDocs.length, color: "text-primary" },
-    { icon: HardDrive, label: "Đã dùng", value: formatBytes(currentUser.storageUsed), color: "text-blue-500" },
-    { icon: Zap, label: "Lượt tải", value: totalDownloads, color: "text-yellow-500" },
-    { icon: Shield, label: "Mã hóa", value: "AES-256", color: "text-green-500" },
+    { icon: FileText, label: text.documents, value: readyDocs.length, color: "text-primary" },
+    { icon: HardDrive, label: text.used, value: formatBytes(currentUser.storageUsed), color: "text-blue-500" },
+    { icon: Zap, label: text.downloads, value: totalDownloads, color: "text-yellow-500" },
+    { icon: Shield, label: text.encryption, value: "AES-256", color: "text-green-500" },
   ]
 
   return (
@@ -65,7 +66,7 @@ export function CloudStorage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Cloud Storage</h1>
-            <p className="text-sm text-muted-foreground">Tài liệu được đồng bộ và mã hóa an toàn</p>
+            <p className="text-sm text-muted-foreground">{text.subtitle}</p>
           </div>
           <Button
             variant="outline"
@@ -74,7 +75,7 @@ export function CloudStorage() {
             disabled={syncing}
           >
             <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-            {syncing ? "Đang đồng bộ..." : syncDone ? "Đã đồng bộ ✓" : "Đồng bộ"}
+            {syncing ? text.syncing : syncDone ? text.synced : text.sync}
           </Button>
         </div>
       </div>
@@ -94,7 +95,7 @@ export function CloudStorage() {
         {/* Storage bar (BR-026, BR-027) */}
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-foreground">Dung lượng sử dụng</span>
+            <span className="text-sm font-medium text-foreground">{text.storageUsage}</span>
             <span className={cn("text-sm font-semibold", storagePercent >= 80 ? "text-destructive" : "text-muted-foreground")}>
               {storagePercent}%
             </span>
@@ -109,14 +110,14 @@ export function CloudStorage() {
             />
           </div>
           <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
-            <span>{formatBytes(currentUser.storageUsed)} đã dùng</span>
-            <span>{formatBytes(currentUser.storageLimit)} tổng</span>
+            <span>{formatBytes(currentUser.storageUsed)} {text.usedLower}</span>
+            <span>{formatBytes(currentUser.storageLimit)} {text.total}</span>
           </div>
           {/* BR-027: cảnh báo khi vượt 80% */}
           {storagePercent >= 80 && (
             <div className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5" />
-              Bạn đã sử dụng hơn 80% dung lượng. Hãy xoá bớt hoặc nâng cấp gói.
+              {text.storageWarning}
             </div>
           )}
         </div>
@@ -124,7 +125,7 @@ export function CloudStorage() {
         {/* Connection info */}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
           <Wifi className="h-4 w-4 text-green-500" />
-          <span className="text-foreground">Kết nối bảo mật — TLS 1.3</span>
+          <span className="text-foreground">{text.secureConnection} - TLS 1.3</span>
           <CheckCircle2 className="ml-auto h-4 w-4 text-green-500" />
         </div>
 
@@ -132,7 +133,7 @@ export function CloudStorage() {
         {readyDocs.length > 0 && (
           <div>
             <h2 className="mb-3 text-sm font-semibold text-foreground">
-              Tài liệu đã đồng bộ ({readyDocs.length})
+              {text.syncedDocuments} ({readyDocs.length})
             </h2>
             <div className="space-y-2">
               {readyDocs.map(doc => (
@@ -144,7 +145,7 @@ export function CloudStorage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {doc.size} · {doc.downloadCount} lượt tải
+                      {doc.size} · {doc.downloadCount} {text.downloadsLower}
                     </p>
                   </div>
                   <div className="flex gap-1">
@@ -153,7 +154,7 @@ export function CloudStorage() {
                       size="icon"
                       className="h-7 w-7"
                       onClick={() => setReviewDocId(reviewDocId === doc.id ? null : doc.id)}
-                      title="Xem preview"
+                      title={text.preview}
                     >
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
@@ -162,7 +163,7 @@ export function CloudStorage() {
                       size="icon"
                       className="h-7 w-7"
                       onClick={() => handleDownload(doc.id)}
-                      title="Tải xuống"
+                      title={text.download}
                     >
                       <Download className="h-3.5 w-3.5" />
                     </Button>
@@ -171,7 +172,7 @@ export function CloudStorage() {
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
                       onClick={() => deleteDocument(doc.id)}
-                      title="Xoá"
+                      title={text.delete}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -185,8 +186,8 @@ export function CloudStorage() {
         {readyDocs.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Cloud className="mb-3 h-12 w-12 text-muted-foreground" />
-            <p className="font-medium text-foreground">Chưa có tài liệu nào</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload tài liệu để bắt đầu đồng bộ</p>
+            <p className="font-medium text-foreground">{text.noDocuments}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{text.uploadToSync}</p>
           </div>
         )}
 
@@ -202,14 +203,14 @@ export function CloudStorage() {
             <div className="flex min-h-[120px] items-center justify-center rounded-lg bg-muted/50 text-sm text-muted-foreground">
               <div className="text-center">
                 <Upload className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                <p>Preview cho {reviewDoc.type.toUpperCase()} đang phát triển.</p>
+                <p>{text.previewDeveloping} {reviewDoc.type.toUpperCase()}.</p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="mt-2 gap-1"
                   onClick={() => handleDownload(reviewDoc.id)}
                 >
-                  <Download className="h-3 w-3" /> Tải xuống để xem
+                  <Download className="h-3 w-3" /> {text.downloadToView}
                 </Button>
               </div>
             </div>
@@ -219,3 +220,58 @@ export function CloudStorage() {
     </div>
   )
 }
+
+const cloudText = {
+  vi: {
+    loginToAccess: "Đăng nhập để truy cập cloud storage",
+    login: "Đăng nhập",
+    documents: "Tài liệu",
+    used: "Đã dùng",
+    downloads: "Lượt tải",
+    encryption: "Mã hóa",
+    subtitle: "Tài liệu được đồng bộ và mã hóa an toàn",
+    syncing: "Đang đồng bộ...",
+    synced: "Đã đồng bộ",
+    sync: "Đồng bộ",
+    storageUsage: "Dung lượng sử dụng",
+    usedLower: "đã dùng",
+    total: "tổng",
+    storageWarning: "Bạn đã sử dụng hơn 80% dung lượng. Hãy xoá bớt hoặc nâng cấp gói.",
+    secureConnection: "Kết nối bảo mật",
+    syncedDocuments: "Tài liệu đã đồng bộ",
+    downloadsLower: "lượt tải",
+    preview: "Xem preview",
+    download: "Tải xuống",
+    delete: "Xoá",
+    noDocuments: "Chưa có tài liệu nào",
+    uploadToSync: "Upload tài liệu để bắt đầu đồng bộ",
+    previewDeveloping: "Preview cho",
+    downloadToView: "Tải xuống để xem",
+  },
+  en: {
+    loginToAccess: "Log in to access cloud storage",
+    login: "Log in",
+    documents: "Documents",
+    used: "Used",
+    downloads: "Downloads",
+    encryption: "Encryption",
+    subtitle: "Documents are synced and encrypted securely",
+    syncing: "Syncing...",
+    synced: "Synced",
+    sync: "Sync",
+    storageUsage: "Storage usage",
+    usedLower: "used",
+    total: "total",
+    storageWarning: "You have used more than 80% of your storage. Delete files or upgrade your plan.",
+    secureConnection: "Secure connection",
+    syncedDocuments: "Synced documents",
+    downloadsLower: "downloads",
+    preview: "Preview",
+    download: "Download",
+    delete: "Delete",
+    noDocuments: "No documents yet",
+    uploadToSync: "Upload documents to start syncing",
+    previewDeveloping: "Preview for",
+    downloadToView: "Download to view",
+  },
+} as const

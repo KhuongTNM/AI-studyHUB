@@ -46,8 +46,11 @@ export function DocumentCard({
   onGenerateFlashcards: (doc: Document) => void
   categories: ReturnType<typeof useApp>["categories"]
 }) {
+  const { language } = useApp()
+  const text = documentCardText[language]
   const category = categories.find(c => c.id === doc.categoryId)
-  const subject = doc.subject || category?.name || "Chưa đặt"
+  const subject = doc.subject || category?.name || text.uncategorized
+  const dateLocale = language === "vi" ? "vi-VN" : "en-US"
 
   if (viewMode === "list") {
     return (
@@ -65,7 +68,7 @@ export function DocumentCard({
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
             <span>{doc.size}</span>
             <span>•</span>
-            <span>{doc.uploadedAt.toLocaleDateString("vi-VN")}</span>
+            <span>{doc.uploadedAt.toLocaleDateString(dateLocale)}</span>
             <span>•</span>
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
               {subject}
@@ -87,7 +90,7 @@ export function DocumentCard({
             size="icon"
             className="h-7 w-7"
             onClick={() => onGenerateFlashcards(doc)}
-            title="Tạo flashcard từ tài liệu"
+            title={text.createFlashcards}
           >
             <BookOpen className="h-3 w-3" />
           </Button>
@@ -96,7 +99,7 @@ export function DocumentCard({
             size="icon"
             className="h-7 w-7"
             onClick={() => onDownload(doc.id)}
-            title="Tải xuống"
+            title={text.download}
           >
             <Download className="h-3 w-3" />
           </Button>
@@ -105,7 +108,7 @@ export function DocumentCard({
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
             onClick={() => onDelete(doc.id)}
-            title="Xóa"
+            title={text.delete}
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -118,11 +121,11 @@ export function DocumentCard({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onPreview(doc)}>
                 <Eye className="mr-2 h-4 w-4" />
-                Xem chi tiết
+                {text.viewDetails}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(doc)}>
                 <Edit3 className="mr-2 h-4 w-4" />
-                Chỉnh sửa
+                {text.edit}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -151,16 +154,16 @@ export function DocumentCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onPreview(doc)}>
               <Eye className="mr-2 h-4 w-4" />
-              Xem chi tiết
+              {text.viewDetails}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(doc)}>
               <Edit3 className="mr-2 h-4 w-4" />
-              Chỉnh sửa
+              {text.edit}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(doc.id)} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
-              Xóa
+              {text.delete}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -172,7 +175,7 @@ export function DocumentCard({
       <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
         <span>{doc.size}</span>
         <span>•</span>
-        <span>{doc.uploadedAt.toLocaleDateString("vi-VN")}</span>
+        <span>{doc.uploadedAt.toLocaleDateString(dateLocale)}</span>
       </div>
       <span className="mb-3 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         {subject}
@@ -199,7 +202,7 @@ export function DocumentCard({
           variant="outline"
           className="gap-1 text-xs"
           onClick={() => onDownload(doc.id)}
-          title="Tải xuống"
+          title={text.download}
         >
           <Download className="h-3 w-3" />
         </Button>
@@ -208,7 +211,7 @@ export function DocumentCard({
           variant="outline"
           className="gap-1 text-xs text-destructive hover:text-destructive"
           onClick={() => onDelete(doc.id)}
-          title="Xóa"
+          title={text.delete}
         >
           <Trash2 className="h-3 w-3" />
         </Button>
@@ -216,3 +219,22 @@ export function DocumentCard({
     </div>
   )
 }
+
+const documentCardText = {
+  vi: {
+    uncategorized: "Chưa đặt",
+    createFlashcards: "Tạo flashcard từ tài liệu",
+    download: "Tải xuống",
+    delete: "Xóa",
+    viewDetails: "Xem chi tiết",
+    edit: "Chỉnh sửa",
+  },
+  en: {
+    uncategorized: "Uncategorized",
+    createFlashcards: "Create flashcards from document",
+    download: "Download",
+    delete: "Delete",
+    viewDetails: "View details",
+    edit: "Edit",
+  },
+} as const

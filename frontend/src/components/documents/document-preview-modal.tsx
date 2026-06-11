@@ -14,15 +14,16 @@ export function DocumentPreviewModal({
   onClose: () => void
   onDownload: (id: string) => void
 }) {
-  const { categories } = useApp()
+  const { categories, language } = useApp()
   const category = categories.find(c => c.id === doc.categoryId)
+  const text = previewText[language]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <h3 className="font-semibold text-foreground">Chi tiết tài liệu</h3>
+          <h3 className="font-semibold text-foreground">{text.title}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -43,7 +44,7 @@ export function DocumentPreviewModal({
                 {doc.type.toUpperCase()}
               </div>
               <p className="text-xs text-muted-foreground">
-                Preview không khả dụng trong prototype
+                {text.previewUnavailable}
               </p>
             </div>
           </div>
@@ -56,28 +57,28 @@ export function DocumentPreviewModal({
             )}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">Loại file</p>
+                <p className="text-xs text-muted-foreground">{text.fileType}</p>
                 <p className="font-medium text-foreground">{doc.type.toUpperCase()}</p>
               </div>
               <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">Kích thước</p>
+                <p className="text-xs text-muted-foreground">{text.size}</p>
                 <p className="font-medium text-foreground">{doc.size}</p>
               </div>
               <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">Ngày upload</p>
+                <p className="text-xs text-muted-foreground">{text.uploadDate}</p>
                 <p className="font-medium text-foreground">
-                  {doc.uploadedAt.toLocaleDateString("vi-VN")}
+                  {doc.uploadedAt.toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
                 </p>
               </div>
               <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">Lượt tải</p>
+                <p className="text-xs text-muted-foreground">{text.downloads}</p>
                 <p className="font-medium text-foreground">{doc.downloadCount}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Môn học:</span>
+              <span className="text-sm text-muted-foreground">{text.subject}:</span>
               <span className="rounded-full bg-primary/10 px-3 py-0.5 text-sm font-medium text-primary">
-                {doc.subject || category?.name || "Chưa đặt"}
+                {doc.subject || category?.name || text.uncategorized}
               </span>
             </div>
           </div>
@@ -85,13 +86,40 @@ export function DocumentPreviewModal({
         <div className="flex gap-2 border-t border-border p-4">
           <Button className="flex-1 gap-2" onClick={() => onDownload(doc.id)}>
             <Download className="h-4 w-4" />
-            Tải xuống
+            {text.download}
           </Button>
           <Button variant="outline" onClick={onClose}>
-            Đóng
+            {text.close}
           </Button>
         </div>
       </div>
     </div>
   )
 }
+
+const previewText = {
+  vi: {
+    title: "Chi tiết tài liệu",
+    previewUnavailable: "Preview không khả dụng trong prototype",
+    fileType: "Loại file",
+    size: "Kích thước",
+    uploadDate: "Ngày upload",
+    downloads: "Lượt tải",
+    subject: "Môn học",
+    uncategorized: "Chưa đặt",
+    download: "Tải xuống",
+    close: "Đóng",
+  },
+  en: {
+    title: "Document details",
+    previewUnavailable: "Preview is not available in this prototype",
+    fileType: "File type",
+    size: "Size",
+    uploadDate: "Upload date",
+    downloads: "Downloads",
+    subject: "Subject",
+    uncategorized: "Uncategorized",
+    download: "Download",
+    close: "Close",
+  },
+} as const
