@@ -181,6 +181,7 @@ export function useAdminState({
       try {
         const subAdmin = await createSubAdminApi(email, password, displayName)
         setUsers(prev => [subAdmin, ...prev])
+        addLog("Admin tạo tài khoản sub-admin", email, currentUser.id)
         return { success: true }
       } catch (error) {
         return {
