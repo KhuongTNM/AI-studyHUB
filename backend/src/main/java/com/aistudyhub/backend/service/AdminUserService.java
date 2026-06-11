@@ -116,10 +116,14 @@ public class AdminUserService {
 
         validateNotAdmin(actor, target);
 
-        String dbPlanName = switch (request.getPlan()) {
-            case "FREE" -> "free";
-            case "2-4" -> "plan_2_4";
-            case "5+" -> "plan_5_plus";
+        if (actor.getRole() == User.Role.sub_admin && target.getRole() != User.Role.user) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Sub-admin chỉ được cấp subscription cho tài khoản user.");
+        }
+
+        String dbPlanName = switch (request.getPlan().toLowerCase()) {
+            case "free" -> "free";
+            case "2-4", "plan_2_4" -> "plan_2_4";
+            case "5+", "plan_5_plus" -> "plan_5_plus";
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ. Chỉ hỗ trợ: FREE, 2-4, 5+.");
         };
 
@@ -151,8 +155,11 @@ public class AdminUserService {
 
         validateNotAdmin(actor, target);
 
-        if (target.getRole() != User.Role.user) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ được chỉnh dung lượng của tài khoản user.");
+        if (target.getRole() == User.Role.admin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Không thể chỉnh dung lượng của tài khoản Admin.");
+        }
+        if (actor.getRole() == User.Role.sub_admin && target.getRole() != User.Role.user) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Sub-admin chỉ được chỉnh dung lượng của tài khoản user.");
         }
         if (target.getId().equals(actor.getId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể tự chỉnh dung lượng tài khoản hiện tại.");
