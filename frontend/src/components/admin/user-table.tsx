@@ -65,10 +65,12 @@ export function UserTable({
   onGrant,
   onStorageLimit,
   text,
+  isSubAdmin
 }: {
   users: User[]
   documents: any[]
   userSearch: string
+  isSubAdmin: boolean
   onUserSearchChange: (value: string) => void
   onLock: (user: User) => void
   onReset: (user: User) => void
@@ -90,6 +92,8 @@ export function UserTable({
     ).length
     return acc
   }, {})
+
+  const canOperate = (user: User) => isSubAdmin ? user.role === "user" : user.role !== "admin"
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -117,7 +121,7 @@ export function UserTable({
                 min="0.1"
                 step="0.1"
                 defaultValue={(user.storageLimit / (1024 * 1024 * 1024)).toFixed(1)}
-                disabled={user.role !== "user"}
+                disabled={!canOperate(user)}
                 onBlur={e => onStorageLimit(user, e.target.value)}
                 className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60"
               />
@@ -127,7 +131,7 @@ export function UserTable({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={user.role !== "user"}
+                disabled={!canOperate(user)}
                 onClick={() => onGrant(user)}
               >
                 ✨ {text.grantPackage}
@@ -135,7 +139,7 @@ export function UserTable({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={user.role !== "user"}
+                disabled={!canOperate(user)}
                 onClick={() => onReset(user)}
               >
                 ↻ {text.reset}
@@ -143,7 +147,7 @@ export function UserTable({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={user.role !== "user"}
+                disabled={!canOperate(user)}
                 onClick={() => onLock(user)}
               >
                 🔒 {user.isLocked ? text.unlock : text.lock}
@@ -151,7 +155,7 @@ export function UserTable({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={user.role !== "user"}
+                disabled={!canOperate(user)}
                 className="text-destructive hover:text-destructive"
                 onClick={() => onDelete(user)}
               >
