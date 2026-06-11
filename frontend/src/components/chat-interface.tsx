@@ -17,9 +17,9 @@ export function EnhancedChatInterface() {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
     openAuthModal, setCurrentPage,
-    language,
+    language, downloadDocument,
     packagePrices,
-    rooms, currentRoomId, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage
+    rooms, currentRoomId, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage, shareRoomDocument
   } = useApp()
 
   const [input, setInput] = useState("")
@@ -114,6 +114,12 @@ export function EnhancedChatInterface() {
     alert(text.sharedToRoom)
   }
 
+  const handleShareDocumentToRoom = async (documentId: string) => {
+    const doc = documents.find(d => d.id === documentId)
+    if (!doc || !currentRoomId) return { success: false, error: text.shareDocFailed }
+    return shareRoomDocument(doc.id)
+  }
+
   const suggestedQuestions = [
     text.suggestSummary,
     text.suggestFlashcards,
@@ -143,6 +149,9 @@ export function EnhancedChatInterface() {
           onLeaveRoom={leaveRoom}
           onCloseRoom={closeRoom}
           onSendMessage={sendRoomMessage}
+          documents={documents}
+          onShareDocument={handleShareDocumentToRoom}
+          onDownloadDocument={downloadDocument}
           showRoomPanel={showRoomPanel}
           setShowRoomPanel={setShowRoomPanel}
           showRoomSidebar={showRoomSidebar}
@@ -237,6 +246,9 @@ export function EnhancedChatInterface() {
           onLeaveRoom={leaveRoom}
           onCloseRoom={closeRoom}
           onSendMessage={sendRoomMessage}
+          documents={documents}
+          onShareDocument={handleShareDocumentToRoom}
+          onDownloadDocument={downloadDocument}
           showRoomPanel={showRoomPanel}
           setShowRoomPanel={setShowRoomPanel}
           showRoomSidebar={showRoomSidebar}
@@ -254,6 +266,13 @@ const chatText = {
   vi: {
     sharedFromAi: "Chia sẻ từ AI",
     sharedToRoom: "Đã chia sẻ phản hồi của AI vào phòng học nhóm!",
+    sharedDocument: "Tài liệu được chia sẻ",
+    documentName: "Tên tài liệu",
+    subject: "Môn học",
+    visibility: "Quyền xem",
+    publicVisibility: "Public",
+    noSubject: "Chưa đặt môn",
+    shareDocFailed: "Không thể chia sẻ tài liệu vào phòng.",
     suggestSummary: "Tóm tắt nội dung chính của tài liệu này",
     suggestFlashcards: "Tạo flashcard từ tài liệu để ôn tập",
     suggestConcepts: "Các khái niệm quan trọng nhất là gì?",
@@ -266,6 +285,13 @@ const chatText = {
   en: {
     sharedFromAi: "Shared from AI",
     sharedToRoom: "AI response shared to the study room.",
+    sharedDocument: "Shared document",
+    documentName: "Document",
+    subject: "Subject",
+    visibility: "Visibility",
+    publicVisibility: "Public",
+    noSubject: "No subject",
+    shareDocFailed: "Could not share the document to the room.",
     suggestSummary: "Summarize the main ideas in this document",
     suggestFlashcards: "Create flashcards from this document",
     suggestConcepts: "What are the most important concepts?",

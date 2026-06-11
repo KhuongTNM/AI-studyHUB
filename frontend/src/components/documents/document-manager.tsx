@@ -21,12 +21,12 @@ import { DocumentCard } from "./document-card"
 export function DocumentManager() {
   const {
     documents, categories, deleteDocument, updateDocument,
-    uploadDocument, downloadDocument,
+    uploadDocument, downloadDocument, changeDocumentVisibility,
     currentUser, setCurrentPage, generateFlashcardsFromDocument, language,
   } = useApp()
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [selectedSubject, setSelectedSubject] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"date" | "name" | "size">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -38,6 +38,9 @@ export function DocumentManager() {
   const text = documentManagerText[language]
 
   const activeDocs = documents.filter(d => d.status !== "deleted")
+  const subjects = Array.from(
+    new Set(activeDocs.map(d => d.subject?.trim()).filter((subject): subject is string => Boolean(subject))),
+  ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
 
   const filtered = activeDocs
     .filter(d => {
@@ -45,8 +48,8 @@ export function DocumentManager() {
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-      const matchCat = selectedCategory === "all" || d.categoryId === selectedCategory
-      return matchSearch && matchCat
+      const matchSubject = selectedSubject === "all" || d.subject?.trim() === selectedSubject
+      return matchSearch && matchSubject
     })
     .sort((a, b) => {
       let cmp = 0
@@ -84,6 +87,10 @@ export function DocumentManager() {
   const handleDownload = useCallback((id: string) => {
     downloadDocument(id)
   }, [downloadDocument])
+
+  const handleToggleVisibility = useCallback((id: string, isPublic: boolean) => {
+    void changeDocumentVisibility(id, isPublic)
+  }, [changeDocumentVisibility])
 
   const uploadingDocs = documents.filter(d => d.status === "uploading" || d.status === "scanning")
 
@@ -165,17 +172,17 @@ export function DocumentManager() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3 w-3" />
-                  {selectedCategory === "all" ? text.allSubjects : categories.find(c => c.id === selectedCategory)?.name}
+                  {selectedSubject === "all" ? text.allSubjects : selectedSubject}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setSelectedCategory("all")}>{text.allSubjectsFull}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSelectedSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {categories.map(c => (
-                  <DropdownMenuItem key={c.id} onClick={() => setSelectedCategory(c.id)}>
-                    <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
-                    {c.name}
+                {subjects.map(subject => (
+                  <DropdownMenuItem key={subject} onClick={() => setSelectedSubject(subject)}>
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
+                    {subject}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -213,26 +220,25 @@ export function DocumentManager() {
         {activeDocs.length > 0 && (
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
-              onClick={() => setSelectedCategory("all")}
+              onClick={() => setSelectedSubject("all")}
               className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all",
-                selectedCategory === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
+                selectedSubject === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
               )}
             >
               {text.all} ({activeDocs.length})
             </button>
-            {categories.map(c => {
-              const count = activeDocs.filter(d => d.categoryId === c.id).length
+            {subjects.map(subject => {
+              const count = activeDocs.filter(d => d.subject?.trim() === subject).length
               if (count === 0) return null
               return (
                 <button
-                  key={c.id}
-                  onClick={() => setSelectedCategory(c.id)}
+                  key={subject}
+                  onClick={() => setSelectedSubject(subject)}
                   className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all",
-                    selectedCategory === c.id ? "text-white" : "border border-border text-muted-foreground hover:border-primary/40"
+                    selectedSubject === subject ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
                   )}
-                  style={selectedCategory === c.id ? { backgroundColor: c.color } : {}}
                 >
-                  {c.name} ({count})
+                  {subject} ({count})
                 </button>
               )
             })}
@@ -261,7 +267,7 @@ export function DocumentManager() {
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Search className="mb-3 h-10 w-10 text-muted-foreground" />
             <p className="font-medium text-foreground">{text.noResults}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(""); setSelectedCategory("all") }}>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(""); setSelectedSubject("all") }}>
               {text.clearFilters}
             </Button>
           </div>
@@ -282,6 +288,7 @@ export function DocumentManager() {
               onEdit={setEditDoc}
               onDelete={deleteDocument}
               onDownload={handleDownload}
+              onToggleVisibility={handleToggleVisibility}
               onChat={() => setCurrentPage("chat")}
               onGenerateFlashcards={(document) => {
                 generateFlashcardsFromDocument(document.id)

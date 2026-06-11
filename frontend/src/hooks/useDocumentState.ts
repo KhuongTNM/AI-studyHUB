@@ -148,15 +148,19 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
 
   // ── Đổi visibility public/private (BR-018, BR-019) ──────────────────────
   const changeDocumentVisibility = useCallback(
-    (id: string, isPublic: boolean) => {
+    async (id: string, isPublic: boolean): Promise<{ success: boolean; error?: string }> => {
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, isPublic } : d))
-      updateDocumentVisibilityApi(id, isPublic ? "public" : "private")
-        .then(updated => {
-          setDocuments(prev => prev.map(d => d.id === id ? updated : d))
-        })
-        .catch(() => {
-          setDocuments(prev => prev.map(d => d.id === id ? { ...d, isPublic: !isPublic } : d))
-        })
+      try {
+        const updated = await updateDocumentVisibilityApi(id, isPublic ? "public" : "private")
+        setDocuments(prev => prev.map(d => d.id === id ? updated : d))
+        return { success: true }
+      } catch (error) {
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, isPublic: !isPublic } : d))
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể cập nhật chia sẻ tài liệu.",
+        }
+      }
     },
     [],
   )
