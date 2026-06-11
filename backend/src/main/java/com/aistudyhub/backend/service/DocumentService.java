@@ -224,7 +224,8 @@ public class DocumentService {
     }
 
     public Path getFilePath(Document doc) {
-        return Paths.get(doc.getFileUrl());
+        String filename = Paths.get(doc.getFileUrl()).getFileName().toString();
+        return uploadDir.resolve(filename);
     }
 
     private String getExtension(String filename) {

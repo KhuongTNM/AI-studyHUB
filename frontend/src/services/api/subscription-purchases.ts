@@ -79,3 +79,20 @@ export async function completeSubscriptionPurchaseForDevApi(orderId: string): Pr
   return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
 }
 
+/**
+ * GET /api/subscription-purchases/{orderId} — lấy thông tin đơn mua theo orderId.
+ * Dùng để poll trạng thái thanh toán sau khi tạo QR.
+ * Trả về null nếu không tìm thấy (404).
+ */
+export async function getSubscriptionPurchaseApi(
+  orderId: string,
+): Promise<SubscriptionPurchase | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/subscription-purchases/${encodeURIComponent(orderId)}`,
+    { headers: authHeaders() },
+  )
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
+}
+

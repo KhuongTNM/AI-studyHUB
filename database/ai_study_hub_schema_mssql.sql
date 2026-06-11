@@ -33,7 +33,7 @@ CREATE TABLE subscription_plans (
     price                 DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     -- BR-046: 0 = không tạo phòng được; 4 = plan_2_4; 99 = plan_5_plus
     max_room_members      SMALLINT      NOT NULL DEFAULT 0,
-    -- Dung lượng mặc định theo gói (bytes): 512MB / 1GB / 2GB
+    -- Dung lượng mặc định theo gói (bytes): 512MB / 1GB / 5GB
     default_storage_bytes BIGINT        NOT NULL DEFAULT 536870912,
     created_at            DATETIME2     NOT NULL DEFAULT GETDATE(),
     updated_at            DATETIME2     NOT NULL DEFAULT GETDATE()
@@ -45,7 +45,7 @@ INSERT INTO subscription_plans (name, display_name, price, max_room_members, def
 VALUES
     (N'free',        N'Gói Miễn Phí',  0.00,   0,  536870912),   -- 512 MB
     (N'plan_2_4',    N'Gói 2-4 Người', 49000,  4,  1073741824),  -- 1 GB
-    (N'plan_5_plus', N'Gói 5+ Người',  99000,  99, 2147483648);  -- 2 GB
+    (N'plan_5_plus', N'Gói 5+ Người',  99000,  99, 5368709120);  -- 5 GB
 GO
 
 

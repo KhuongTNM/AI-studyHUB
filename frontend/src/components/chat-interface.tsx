@@ -17,6 +17,7 @@ export function EnhancedChatInterface() {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
     openAuthModal, setCurrentPage,
+    language,
     packagePrices,
     rooms, currentRoomId, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage
   } = useApp()
@@ -34,6 +35,7 @@ export function EnhancedChatInterface() {
   const activeSession = chatSessions.find(s => s.id === activeChatId) ?? null
   const messages = activeSession?.messages ?? []
   const selectedDoc = documents.find(d => d.id === selectedDocId)
+  const text = chatText[language]
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -108,15 +110,15 @@ export function EnhancedChatInterface() {
   }
 
   const handleShareToRoom = (content: string) => {
-    sendRoomMessage(`[Chia sẻ từ AI]:\n${content.slice(0, 150)}${content.length > 150 ? "..." : ""}`)
-    alert("Đã chia sẻ phản hồi của AI vào phòng học nhóm!")
+    sendRoomMessage(`[${text.sharedFromAi}]:\n${content.slice(0, 150)}${content.length > 150 ? "..." : ""}`)
+    alert(text.sharedToRoom)
   }
 
   const suggestedQuestions = [
-    "Tóm tắt nội dung chính của tài liệu này",
-    "Tạo flashcard từ tài liệu để ôn tập",
-    "Các khái niệm quan trọng nhất là gì?",
-    "Giải thích chi tiết phần khó nhất",
+    text.suggestSummary,
+    text.suggestFlashcards,
+    text.suggestConcepts,
+    text.suggestExplain,
   ]
 
   return (
@@ -128,6 +130,7 @@ export function EnhancedChatInterface() {
         onSelectDoc={setSelectedDocId}
         showDocPicker={showDocPicker}
         setShowDocPicker={setShowDocPicker}
+        language={language}
       >
         <StudyRoomPanel
           mode="toggle"
@@ -146,6 +149,7 @@ export function EnhancedChatInterface() {
           setShowRoomSidebar={setShowRoomSidebar}
           setCurrentPage={setCurrentPage}
           openAuthModal={openAuthModal}
+          language={language}
         />
       </ChatToolbar>
 
@@ -158,12 +162,12 @@ export function EnhancedChatInterface() {
                   <Sparkles className="h-10 w-10 text-primary" />
                 </div>
                 <h3 className="mb-2 text-xl font-semibold text-foreground">
-                  {selectedDoc ? `Chat với "${selectedDoc.name.slice(0, 30)}"` : "Bắt đầu cuộc trò chuyện"}
+                  {selectedDoc ? `${text.chatWith} "${selectedDoc.name.slice(0, 30)}"` : text.emptyTitle}
                 </h3>
                 <p className="mb-8 max-w-md text-center text-sm text-muted-foreground">
                   {currentUser
-                    ? "Hỏi bất kỳ điều gì — AI sẽ trả lời dựa trên tài liệu bạn chọn."
-                    : "Đăng nhập để lưu lịch sử chat và sử dụng đầy đủ tính năng AI."}
+                    ? text.emptySignedIn
+                    : text.emptySignedOut}
                 </p>
                 <div className="grid w-full max-w-xl gap-2 sm:grid-cols-2">
                   {suggestedQuestions.map((q, i) => (
@@ -218,6 +222,7 @@ export function EnhancedChatInterface() {
             currentUser={currentUser}
             openAuthModal={openAuthModal}
             maxLength={MAX_QUESTION_LENGTH}
+            language={language}
           />
         </div>
 
@@ -238,8 +243,36 @@ export function EnhancedChatInterface() {
           setShowRoomSidebar={setShowRoomSidebar}
           setCurrentPage={setCurrentPage}
           openAuthModal={openAuthModal}
+          language={language}
         />
       </div>
     </div>
   )
 }
+
+const chatText = {
+  vi: {
+    sharedFromAi: "Chia sẻ từ AI",
+    sharedToRoom: "Đã chia sẻ phản hồi của AI vào phòng học nhóm!",
+    suggestSummary: "Tóm tắt nội dung chính của tài liệu này",
+    suggestFlashcards: "Tạo flashcard từ tài liệu để ôn tập",
+    suggestConcepts: "Các khái niệm quan trọng nhất là gì?",
+    suggestExplain: "Giải thích chi tiết phần khó nhất",
+    chatWith: "Chat với",
+    emptyTitle: "Bắt đầu cuộc trò chuyện",
+    emptySignedIn: "Hỏi bất kỳ điều gì - AI sẽ trả lời dựa trên tài liệu bạn chọn.",
+    emptySignedOut: "Đăng nhập để lưu lịch sử chat và sử dụng đầy đủ tính năng AI.",
+  },
+  en: {
+    sharedFromAi: "Shared from AI",
+    sharedToRoom: "AI response shared to the study room.",
+    suggestSummary: "Summarize the main ideas in this document",
+    suggestFlashcards: "Create flashcards from this document",
+    suggestConcepts: "What are the most important concepts?",
+    suggestExplain: "Explain the hardest part in detail",
+    chatWith: "Chat with",
+    emptyTitle: "Start a conversation",
+    emptySignedIn: "Ask anything - AI will answer based on the document you choose.",
+    emptySignedOut: "Log in to save chat history and use all AI features.",
+  },
+} as const

@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class SubscriptionPurchaseService {
 
     private static final int SUBSCRIPTION_DAYS = 30;
+    private static final long PLAN_2_4_STORAGE_BYTES = 1024L * 1024L * 1024L;
+    private static final long PLAN_5_PLUS_STORAGE_BYTES = 5L * 1024L * 1024L * 1024L;
     private static final String PAID = "PAID";
     private static final String PENDING = "PENDING";
     private static final String ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -81,7 +83,7 @@ public class SubscriptionPurchaseService {
                 plan.getName(),
                 plan.getDisplayName(),
                 plan.getPrice().setScale(0, RoundingMode.HALF_UP),
-                plan.getDefaultStorageBytes(),
+                storageLimitBytesFor(plan.getName()),
                 content,
                 PENDING);
         pendingPurchases.put(orderId, purchase);
@@ -141,13 +143,19 @@ public class SubscriptionPurchaseService {
         LocalDateTime startDate = currentExpiry != null && currentExpiry.isAfter(now) ? currentExpiry : now;
         user.setSubscriptionPlanId(purchase.planId());
         user.setSubscriptionExpiresAt(startDate.plusDays(SUBSCRIPTION_DAYS));
-        if (user.getStorageLimitBytes() < purchase.storageLimitBytes()) {
-            user.setStorageLimitBytes(purchase.storageLimitBytes());
-        }
+        user.setStorageLimitBytes(purchase.storageLimitBytes());
         user.setUpdatedAt(now);
         User savedUser = userRepository.save(user);
         pendingPurchases.put(purchase.orderId(), purchase.withStatus(PAID));
         return savedUser;
+    }
+
+    private long storageLimitBytesFor(String planName) {
+        return switch (planName) {
+            case "plan_2_4" -> PLAN_2_4_STORAGE_BYTES;
+            case "plan_5_plus" -> PLAN_5_PLUS_STORAGE_BYTES;
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hỗ trợ mua subscription.");
+        };
     }
 
     private User getCurrentUser() {

@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
 
 export function TrashPage() {
-  const { documents, restoreDocument, updateDocument, currentUser, openAuthModal } = useApp()
+  const { documents, restoreDocument, updateDocument, currentUser, openAuthModal, language } = useApp()
+  const text = trashText[language]
 
   const trashedDocs = documents.filter(d => d.status === "deleted")
 
@@ -14,8 +15,8 @@ export function TrashPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <Trash2 className="h-16 w-16 text-muted-foreground" />
-        <p className="text-muted-foreground">Đăng nhập để xem thùng rác</p>
-        <Button onClick={() => openAuthModal("login")}>Đăng nhập</Button>
+        <p className="text-muted-foreground">{text.loginToView}</p>
+        <Button onClick={() => openAuthModal("login")}>{text.login}</Button>
       </div>
     )
   }
@@ -30,8 +31,8 @@ export function TrashPage() {
       <div className="border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Thùng rác</h1>
-            <p className="text-sm text-muted-foreground">{trashedDocs.length} tài liệu đã xóa</p>
+            <h1 className="text-xl font-bold text-foreground">{text.title}</h1>
+            <p className="text-sm text-muted-foreground">{trashedDocs.length} {text.deletedDocuments}</p>
           </div>
         </div>
       </div>
@@ -40,15 +41,14 @@ export function TrashPage() {
         {trashedDocs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Trash2 className="mb-4 h-14 w-14 text-muted-foreground" />
-            <h3 className="mb-2 font-semibold text-foreground">Thùng rác trống</h3>
-            <p className="text-sm text-muted-foreground">Không có tài liệu nào trong thùng rác</p>
+            <h3 className="mb-2 font-semibold text-foreground">{text.emptyTitle}</h3>
+            <p className="text-sm text-muted-foreground">{text.emptyBody}</p>
           </div>
         ) : (
           <>
             <div className="mb-4 flex items-center gap-2 rounded-lg bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              Tài liệu trong thùng rác sẽ bị xóa vĩnh viễn sau 30 ngày (BR-36).
-              Admin có thể khôi phục tài liệu (BR-37).
+              {text.retentionWarning}
             </div>
             <div className="space-y-2">
               {trashedDocs.map(doc => (
@@ -62,7 +62,7 @@ export function TrashPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground line-through">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground">{doc.size} • Đã xóa</p>
+                    <p className="text-xs text-muted-foreground">{doc.size} • {text.deleted}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -72,7 +72,7 @@ export function TrashPage() {
                       onClick={() => restoreDocument(doc.id)}
                     >
                       <RefreshCw className="h-3 w-3" />
-                      Khôi phục
+                      {text.restore}
                     </Button>
                     <Button
                       size="sm"
@@ -81,7 +81,7 @@ export function TrashPage() {
                       onClick={() => handlePermanentDelete(doc.id)}
                     >
                       <Trash2 className="h-3 w-3" />
-                      Xóa vĩnh viễn
+                      {text.deleteForever}
                     </Button>
                   </div>
                 </div>
@@ -93,3 +93,30 @@ export function TrashPage() {
     </div>
   )
 }
+
+const trashText = {
+  vi: {
+    loginToView: "Đăng nhập để xem thùng rác",
+    login: "Đăng nhập",
+    title: "Thùng rác",
+    deletedDocuments: "tài liệu đã xóa",
+    emptyTitle: "Thùng rác trống",
+    emptyBody: "Không có tài liệu nào trong thùng rác",
+    retentionWarning: "Tài liệu trong thùng rác sẽ bị xóa vĩnh viễn sau 30 ngày (BR-36). Admin có thể khôi phục tài liệu (BR-37).",
+    deleted: "Đã xóa",
+    restore: "Khôi phục",
+    deleteForever: "Xóa vĩnh viễn",
+  },
+  en: {
+    loginToView: "Log in to view trash",
+    login: "Log in",
+    title: "Trash",
+    deletedDocuments: "deleted documents",
+    emptyTitle: "Trash is empty",
+    emptyBody: "There are no documents in trash",
+    retentionWarning: "Documents in trash are permanently deleted after 30 days (BR-36). Admins can restore documents (BR-37).",
+    deleted: "Deleted",
+    restore: "Restore",
+    deleteForever: "Delete forever",
+  },
+} as const

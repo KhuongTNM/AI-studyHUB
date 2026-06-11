@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { useApp, Document, formatBytes } from "@/lib/store"
+import { useApp, Document } from "@/lib/store"
 import { UploadProgress } from "./upload-progress"
 import { DocumentPreviewModal } from "./document-preview-modal"
 import { EditDocModal } from "./edit-doc-modal"
@@ -19,7 +19,12 @@ import { DocumentCard } from "./document-card"
 
 // ─── Main Document Manager ────────────────────────────────────────────────────
 export function DocumentManager() {
-  const { documents, categories, addDocument, deleteDocument, updateDocument, currentUser, setCurrentPage, generateFlashcardsFromDocument } = useApp()
+  const {
+    documents, categories, deleteDocument, updateDocument,
+    uploadDocument, downloadDocument,
+    currentUser, setCurrentPage, generateFlashcardsFromDocument, language,
+  } = useApp()
+
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"date" | "name" | "size">("date")
@@ -29,6 +34,8 @@ export function DocumentManager() {
   const [editDoc, setEditDoc] = useState<Document | null>(null)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const text = documentManagerText[language]
 
   const activeDocs = documents.filter(d => d.status !== "deleted")
 
@@ -49,53 +56,34 @@ export function DocumentManager() {
       return sortOrder === "desc" ? -cmp : cmp
     })
 
-  const simulateUpload = useCallback((files: File[], subject: string) => {
+  /**
+   * Gọi API thật upload tài liệu (BR-013 đến BR-018).
+   * Thay thế hoàn toàn simulateUpload cũ.
+   */
+  const handleUpload = useCallback(async (files: File[], subject: string) => {
     if (!currentUser) return
-    files.forEach(file => {
-      const ext = file.name.split(".").pop() as "pdf" | "docx" | "pptx"
-      const newDoc: Document = {
-        id: `doc-${Date.now()}-${Math.random()}`,
-        name: file.name,
-        type: ext,
-        size: formatBytes(file.size),
-        sizeBytes: file.size,
-        uploadedAt: new Date(),
-        uploadedBy: currentUser.id,
-        categoryId: "",
-        subject,
-        status: "uploading",
-        uploadProgress: 0,
-        tags: [],
-        downloadCount: 0,
-        isPublic: false,
-        shareStatus: "none",
+    setUploadError(null)
+
+    // Upload từng file tuần tự
+    for (const file of files) {
+      const result = await uploadDocument(file, subject)
+      if (!result.success && result.error) {
+        setUploadError(result.error)
+        break
       }
-      addDocument(newDoc)
-      let progress = 0
-      const interval = setInterval(() => {
-        progress += Math.random() * 20 + 5
-        if (progress >= 100) {
-          progress = 100
-          clearInterval(interval)
-          updateDocument(newDoc.id, { status: "scanning", uploadProgress: 100 })
-          setTimeout(() => updateDocument(newDoc.id, { status: "ready", uploadProgress: 100 }), 1200)
-        } else {
-          updateDocument(newDoc.id, { uploadProgress: Math.round(progress) })
-        }
-      }, 200)
-    })
-  }, [currentUser, addDocument, updateDocument])
+    }
+  }, [currentUser, uploadDocument])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-    // When dragging directly, open modal with default category
     setShowUploadModal(true)
   }, [])
 
-  const handleDownload = (id: string) => {
-    updateDocument(id, { downloadCount: (documents.find(d => d.id === id)?.downloadCount ?? 0) + 1 })
-  }
+  /** Tải file từ server và tăng downloadCount qua API (BR-021) */
+  const handleDownload = useCallback((id: string) => {
+    downloadDocument(id)
+  }, [downloadDocument])
 
   const uploadingDocs = documents.filter(d => d.status === "uploading" || d.status === "scanning")
 
@@ -105,21 +93,31 @@ export function DocumentManager() {
       <div className="border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Tài liệu của tôi</h1>
-            <p className="text-sm text-muted-foreground">{activeDocs.length} tài liệu</p>
+            <h1 className="text-xl font-bold text-foreground">{text.title}</h1>
+            <p className="text-sm text-muted-foreground">{activeDocs.length} {activeDocs.length === 1 ? text.document : text.documents}</p>
           </div>
           <Button className="gap-2" onClick={() => setShowUploadModal(true)} disabled={!currentUser}>
             <Upload className="h-4 w-4" />
-            Upload tài liệu
+            {text.uploadDocument}
           </Button>
         </div>
+
+        {/* Upload error banner */}
+        {uploadError && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <span className="flex-1">{uploadError}</span>
+            <button onClick={() => setUploadError(null)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         {/* Upload progress */}
         {uploadingDocs.length > 0 && (
           <div className="mb-4 space-y-2">
-            <h3 className="text-sm font-medium text-foreground">Đang tải lên</h3>
+            <h3 className="text-sm font-medium text-foreground">{text.processing}</h3>
             {uploadingDocs.map(doc => <UploadProgress key={doc.id} doc={doc} />)}
           </div>
         )}
@@ -136,10 +134,10 @@ export function DocumentManager() {
             )}
           >
             <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">Kéo & thả tài liệu vào đây</p>
-            <p className="text-xs text-muted-foreground">Hỗ trợ: PDF, DOCX, PPTX</p>
+            <p className="text-sm font-medium text-foreground">{text.dropHere}</p>
+            <p className="text-xs text-muted-foreground">{text.supportedFiles}</p>
             <Button className="mt-3 gap-2" variant="outline" onClick={() => setShowUploadModal(true)}>
-              <Upload className="h-4 w-4" /> Chọn file
+              <Upload className="h-4 w-4" /> {text.chooseFile}
             </Button>
           </div>
         )}
@@ -152,7 +150,7 @@ export function DocumentManager() {
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Tìm kiếm tài liệu..."
+                placeholder={text.searchPlaceholder}
                 className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
               {searchQuery && (
@@ -167,12 +165,12 @@ export function DocumentManager() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3 w-3" />
-                  {selectedCategory === "all" ? "Tất cả môn" : categories.find(c => c.id === selectedCategory)?.name}
+                  {selectedCategory === "all" ? text.allSubjects : categories.find(c => c.id === selectedCategory)?.name}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setSelectedCategory("all")}>Tất cả môn học</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSelectedCategory("all")}>{text.allSubjectsFull}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {categories.map(c => (
                   <DropdownMenuItem key={c.id} onClick={() => setSelectedCategory(c.id)}>
@@ -187,15 +185,15 @@ export function DocumentManager() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
-                  <ArrowUpDown className="h-3 w-3" />Sắp xếp<ChevronDown className="h-3 w-3" />
+                  <ArrowUpDown className="h-3 w-3" />{text.sort}<ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => { setSortBy("date"); setSortOrder("desc") }}>Mới nhất</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("date"); setSortOrder("asc") }}>Cũ nhất</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("asc") }}>Tên A-Z</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("desc") }}>Tên Z-A</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("size"); setSortOrder("desc") }}>Lớn nhất</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("date"); setSortOrder("desc") }}>{text.newest}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("date"); setSortOrder("asc") }}>{text.oldest}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("asc") }}>{text.nameAsc}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("name"); setSortOrder("desc") }}>{text.nameDesc}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("size"); setSortOrder("desc") }}>{text.largest}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -220,7 +218,7 @@ export function DocumentManager() {
                 selectedCategory === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
               )}
             >
-              Tất cả ({activeDocs.length})
+              {text.all} ({activeDocs.length})
             </button>
             {categories.map(c => {
               const count = activeDocs.filter(d => d.categoryId === c.id).length
@@ -254,7 +252,7 @@ export function DocumentManager() {
             onClick={() => setShowUploadModal(true)}
           >
             <Upload className="h-4 w-4" />
-            Kéo file hoặc click để upload thêm
+            {text.dropMore}
           </div>
         )}
 
@@ -262,9 +260,9 @@ export function DocumentManager() {
         {filtered.length === 0 && activeDocs.length > 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Search className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="font-medium text-foreground">Không tìm thấy tài liệu</p>
+            <p className="font-medium text-foreground">{text.noResults}</p>
             <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(""); setSelectedCategory("all") }}>
-              Xóa bộ lọc
+              {text.clearFilters}
             </Button>
           </div>
         )}
@@ -296,14 +294,14 @@ export function DocumentManager() {
 
         {!currentUser && (
           <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-6 text-center">
-            <p className="font-medium text-foreground">Đăng nhập để quản lý tài liệu của bạn</p>
+            <p className="font-medium text-foreground">{text.loginToManage}</p>
           </div>
         )}
       </div>
 
       {/* Modals */}
       {showUploadModal && (
-        <UploadModal onClose={() => setShowUploadModal(false)} onUpload={simulateUpload} />
+        <UploadModal onClose={() => setShowUploadModal(false)} onUpload={handleUpload} />
       )}
       {previewDoc && (
         <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} onDownload={handleDownload} />
@@ -312,3 +310,54 @@ export function DocumentManager() {
     </div>
   )
 }
+
+const documentManagerText = {
+  vi: {
+    title: "Tài liệu của tôi",
+    document: "tài liệu",
+    documents: "tài liệu",
+    uploadDocument: "Upload tài liệu",
+    processing: "Đang xử lý",
+    dropHere: "Kéo & thả tài liệu vào đây",
+    supportedFiles: "Hỗ trợ: PDF, DOCX, PPTX",
+    chooseFile: "Chọn file",
+    searchPlaceholder: "Tìm kiếm tài liệu...",
+    allSubjects: "Tất cả môn",
+    allSubjectsFull: "Tất cả môn học",
+    sort: "Sắp xếp",
+    newest: "Mới nhất",
+    oldest: "Cũ nhất",
+    nameAsc: "Tên A-Z",
+    nameDesc: "Tên Z-A",
+    largest: "Lớn nhất",
+    all: "Tất cả",
+    dropMore: "Kéo file hoặc click để upload thêm",
+    noResults: "Không tìm thấy tài liệu",
+    clearFilters: "Xóa bộ lọc",
+    loginToManage: "Đăng nhập để quản lý tài liệu của bạn",
+  },
+  en: {
+    title: "My Documents",
+    document: "document",
+    documents: "documents",
+    uploadDocument: "Upload document",
+    processing: "Processing",
+    dropHere: "Drag and drop documents here",
+    supportedFiles: "Supported: PDF, DOCX, PPTX",
+    chooseFile: "Choose file",
+    searchPlaceholder: "Search documents...",
+    allSubjects: "All subjects",
+    allSubjectsFull: "All subjects",
+    sort: "Sort",
+    newest: "Newest",
+    oldest: "Oldest",
+    nameAsc: "Name A-Z",
+    nameDesc: "Name Z-A",
+    largest: "Largest",
+    all: "All",
+    dropMore: "Drag files here or click to upload more",
+    noResults: "No documents found",
+    clearFilters: "Clear filters",
+    loginToManage: "Log in to manage your documents",
+  },
+} as const

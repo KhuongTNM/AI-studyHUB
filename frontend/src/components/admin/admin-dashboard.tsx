@@ -1,15 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import {
-  KeyRound, LayoutDashboard, RotateCcw,
-  Sparkles, Trash2, Unlock, Lock,
+  KeyRound, LayoutDashboard, Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp, type PackageTier, type User } from "@/lib/store"
 import { adminText } from "@/configs/admin-i18n"
-import { cn } from "@/lib/utils"
-import { formatBytes } from "@/utils/format"
 import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
@@ -78,8 +75,11 @@ export function AdminDashboard() {
   const canUpdateStorage = (target: User) => canTouchAccount(target) && target.role === "user"
 
   const runAccountAction = (result: { success: boolean; error?: string }, successText: string) => {
-    setMessage(result.success ? successText : result.error ?? "Không thể thực hiện thao tác.")
+    setMessage(result.success ? successText : result.error ?? text.actionFailed)
   }
+
+  const formatAdminText = (template: string, values: Record<string, string | number>) =>
+    Object.entries(values).reduce((value, [key, replacement]) => value.replace(`{${key}}`, String(replacement)), template)
 
   const updateStorageLimit = async (user: User, value: string) => {
     const gb = Number(value)
@@ -87,15 +87,15 @@ export function AdminDashboard() {
       const currentGb = user.storageLimit / (1024 * 1024 * 1024)
       if (Math.abs(gb - currentGb) < 0.001) return
       const result = await updateUserStorageLimit(user.id, gb)
-      runAccountAction(result, `Đã cập nhật dung lượng cho ${user.email}.`)
+      runAccountAction(result, formatAdminText(text.storageUpdated, { email: user.email }))
     } else {
-      setMessage("Giới hạn dung lượng phải lớn hơn 0 GB.")
+      setMessage(text.storagePositive)
     }
   }
 
   const createSubAdmin = async () => {
     const result = await createSubAdminAccount(subAdminForm.email, subAdminForm.password, subAdminForm.displayName)
-    runAccountAction(result, "Đã tạo tài khoản sub-admin.")
+    runAccountAction(result, text.createSubAdminSuccess)
     if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
   }
 
@@ -142,7 +142,7 @@ export function AdminDashboard() {
         <section className="mb-6 rounded-lg border border-border bg-card p-4">
           <h2 className="mb-3 font-semibold text-foreground flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Cấu hình giá các gói dịch vụ
+            {text.packagePrices}
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             {packagePrices.filter(p => p.tier !== "free").map(pkg => {
@@ -150,7 +150,9 @@ export function AdminDashboard() {
                 <div key={pkg.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
                   <div>
                     <p className="text-sm font-semibold text-foreground">{pkg.name}</p>
-                    <p className="text-xs text-muted-foreground">Tối đa {pkg.maxUsers} người tham gia phòng</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatAdminText(text.maxRoomMembers, { count: pkg.maxUsers })}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -161,15 +163,15 @@ export function AdminDashboard() {
                       onBlur={e => {
                         const newPrice = Number(e.target.value)
                         if (!isNaN(newPrice) && newPrice >= 0) {
-                          requirePassword(`Cập nhật giá ${pkg.name}`, async (password) => {
+                          requirePassword(formatAdminText(text.updatePrice, { name: pkg.name }), async (password) => {
                             const result = await updatePackagePrice(pkg.tier, newPrice, password)
-                            runAccountAction(result, `Đã cập nhật giá ${pkg.name}.`)
+                            runAccountAction(result, formatAdminText(text.priceUpdated, { name: pkg.name }))
                           })
                         }
                       }}
                       className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
-                    <span className="text-xs text-muted-foreground">VND/tháng</span>
+                    <span className="text-xs text-muted-foreground">{text.perMonthVnd}</span>
                   </div>
                 </div>
               )
@@ -189,7 +191,7 @@ export function AdminDashboard() {
               async () =>
                 runAccountAction(
                   await toggleUserLock(user.id),
-                  user.isLocked ? "Đã mở khóa tài khoản." : "Đã khóa tài khoản."
+                  user.isLocked ? text.accountUnlocked : text.accountLocked
                 )
             )
           }
@@ -197,7 +199,7 @@ export function AdminDashboard() {
           onDelete={(user) =>
             requirePassword(
               text.delete,
-              () => runAccountAction(deleteUserAccount(user.id), "Đã xóa tài khoản.")
+              () => runAccountAction(deleteUserAccount(user.id), text.accountDeleted)
             )
           }
           onGrant={(user) => {
@@ -245,13 +247,13 @@ export function AdminDashboard() {
               {/* BR-002 inline checklist */}
               <ul className="mt-2 space-y-1">
                 <li className={"flex items-center gap-1.5 text-xs " + (hasMinLength ? "text-green-600" : "text-destructive")}>
-                  <span>{hasMinLength ? "✓" : "✗"}</span> Tối thiểu 8 ký tự
+                  <span>{hasMinLength ? "✓" : "✗"}</span> {text.min8}
                 </li>
                 <li className={"flex items-center gap-1.5 text-xs " + (hasLetter ? "text-green-600" : "text-destructive")}>
-                  <span>{hasLetter ? "✓" : "✗"}</span> Có ít nhất 1 chữ cái (a-z, A-Z)
+                  <span>{hasLetter ? "✓" : "✗"}</span> {text.hasLetterRule}
                 </li>
                 <li className={"flex items-center gap-1.5 text-xs " + (hasDigit ? "text-green-600" : "text-destructive")}>
-                  <span>{hasDigit ? "✓" : "✗"}</span> Có ít nhất 1 chữ số (0-9)
+                  <span>{hasDigit ? "✓" : "✗"}</span> {text.hasDigitRule}
                 </li>
               </ul>
             </div>
@@ -262,13 +264,13 @@ export function AdminDashboard() {
                 const result = await resetUserPassword(resetTarget.id, newPassword)
                 setResetLoading(false)
                 if (result.success) {
-                  setMessage("Đã reset mật khẩu thành công.")
+                  setMessage(text.resetSuccess)
                   setResetTarget(null)
                   setNewPassword("Reset1234")
                 } else {
-                  setMessage(result.error ?? "Không thể reset mật khẩu.")
+                  setMessage(result.error ?? text.resetFailed)
                 }
-              }}><KeyRound className="mr-2 h-4 w-4" />{resetLoading ? "Đang xử lý..." : text.save}</Button>
+              }}><KeyRound className="mr-2 h-4 w-4" />{resetLoading ? text.processing : text.save}</Button>
             </div>
           </div>
         </div>
@@ -279,52 +281,55 @@ export function AdminDashboard() {
       {grantTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-foreground">Cấp gói dịch vụ cho: {grantTarget.email}</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              {formatAdminText(text.grantTitle, { email: grantTarget.email })}
+            </h3>
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Chọn gói dịch vụ</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">{text.choosePackage}</label>
                 <select
                   value={grantTier}
                   onChange={e => setGrantTier(e.target.value as any)}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  <option value="free">Gói Free (Hủy gói)</option>
-                  <option value="2-4">Gói 2-4 người</option>
-                  <option value="5+">Gói 5+ người</option>
+                  <option value="free">{text.freeCancelPlan}</option>
+                  <option value="2-4">{text.package2To4People}</option>
+                  <option value="5+">{text.package5PlusPeople}</option>
                 </select>
               </div>
 
               {grantTier !== "free" && (
                 <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Thời hạn sử dụng (Gia hạn thêm)</label>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">{text.durationLabel}</label>
                   <select
                     value={grantDuration}
                     onChange={e => setGrantDuration(Number(e.target.value))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    <option value={1}>1 tháng</option>
-                    <option value={3}>3 tháng</option>
-                    <option value={6}>6 tháng</option>
-                    <option value={12}>12 tháng</option>
+                    <option value={1}>{text.month1}</option>
+                    <option value={3}>{text.month3}</option>
+                    <option value={6}>{text.month6}</option>
+                    <option value={12}>{text.month12}</option>
                   </select>
                 </div>
               )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setGrantTarget(null)}>Hủy</Button>
+              <Button variant="outline" onClick={() => setGrantTarget(null)}>{text.cancel}</Button>
               <Button onClick={() => {
-                requirePassword(`Cấp gói ${grantTier === "free" ? "Free" : grantTier === "2-4" ? "2-4 người" : "5+ người"} cho ${grantTarget.email}`, () => {
-                  const res = grantSubscription(grantTarget.id, grantTier, grantDuration)
-                  runAccountAction(res, "Đã cấp gói dịch vụ thành công.")
+                const planLabel = grantTier === "free" ? "Free" : grantTier === "2-4" ? text.plan2To4 : text.plan5Plus
+                requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async () => {
+                  const res = await grantSubscription(grantTarget.id, grantTier, grantDuration)
+                  runAccountAction(res, text.grantSuccess)
                   if (res.success) {
                     const storageLimit = grantTier === "free" ? 1024 * 1024 * 512 : grantTier === "2-4" ? 1024 * 1024 * 1024 : 1024 * 1024 * 1024 * 5
                     updateUser(grantTarget.id, { storageLimit })
                   }
                 })
                 setGrantTarget(null)
-              }}>Xác nhận</Button>
+              }}>{text.confirm}</Button>
             </div>
           </div>
         </div>
@@ -332,47 +337,4 @@ export function AdminDashboard() {
     </div>
   )
 }
-
-function Stat({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-        <Icon className="h-5 w-5 text-primary" />
-      </div>
-      <p className="text-2xl font-bold text-foreground">{value}</p>
-      <p className="text-sm text-muted-foreground">{label}</p>
-    </div>
-  )
-}
-
-function UserSummary({ user, docs }: { user: User; docs: number }) {
-  const getPackageLabel = (u: User) => {
-    if (u.role === "admin" || u.role === "sub-admin") return "Vô hạn"
-    if (u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() < Date.now()) return "Free (Hết hạn)"
-    if (u.subscriptionTier === "2-4") return "2-4 người"
-    if (u.subscriptionTier === "5+") return "5+ người"
-    return "Free"
-  }
-
-  return (
-    <div className="min-w-64 flex-1">
-      <div className="flex items-center gap-3">
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white", user.role === "admin" ? "bg-orange-500" : user.role === "sub-admin" ? "bg-amber-500" : user.isLocked ? "bg-muted-foreground" : "bg-primary")}>
-          {user.displayName.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-medium text-foreground">{user.displayName}</p>
-            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">{user.role}</span>
-            {user.isLocked && <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">locked</span>}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {user.email} • {formatBytes(user.storageUsed)} used • {docs} files • Gói: <span className="font-semibold text-primary">{getPackageLabel(user)}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 
