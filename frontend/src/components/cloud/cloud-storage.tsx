@@ -11,7 +11,11 @@ import { cn } from "@/lib/utils"
 import { useApp, formatBytes } from "@/lib/store"
 
 export function CloudStorage() {
-  const { currentUser, documents, openAuthModal, deleteDocument, updateDocument } = useApp()
+  const {
+    currentUser, documents, openAuthModal,
+    deleteDocument, downloadDocument,
+  } = useApp()
+
   const [syncing, setSyncing] = useState(false)
   const [syncDone, setSyncDone] = useState(false)
   const [reviewDocId, setReviewDocId] = useState<string | null>(null)
@@ -40,8 +44,12 @@ export function CloudStorage() {
     setTimeout(() => setSyncDone(false), 3000)
   }
 
+  /**
+   * Tải file từ server và tăng downloadCount qua POST /api/documents/{id}/download (BR-021).
+   * Trước đây chỉ cập nhật local state; giờ gọi API thật.
+   */
   const handleDownload = (id: string) => {
-    updateDocument(id, { downloadCount: (documents.find(d => d.id === id)?.downloadCount ?? 0) + 1 })
+    downloadDocument(id)
   }
 
   const stats = [
@@ -60,183 +68,154 @@ export function CloudStorage() {
             <p className="text-sm text-muted-foreground">Tài liệu được đồng bộ và mã hóa an toàn</p>
           </div>
           <Button
-            id="sync-btn"
             variant="outline"
+            className="gap-2"
             onClick={handleSync}
             disabled={syncing}
-            className={cn("gap-2", syncDone && "border-green-500 text-green-600")}
           >
-            {syncing ? (
-              <><RefreshCw className="h-4 w-4 animate-spin" />Đang đồng bộ...</>
-            ) : syncDone ? (
-              <><CheckCircle2 className="h-4 w-4" />Đã đồng bộ!</>
-            ) : (
-              <><RefreshCw className="h-4 w-4" />Đồng bộ</>
-            )}
+            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+            {syncing ? "Đang đồng bộ..." : syncDone ? "Đã đồng bộ ✓" : "Đồng bộ"}
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Storage Overview */}
-        <div className="mb-6 rounded-2xl border border-border bg-gradient-to-br from-primary/10 to-primary/5 p-6">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-              <Cloud className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">Dung lượng Cloud</h3>
-              <p className="text-sm text-muted-foreground">
-                {formatBytes(currentUser.storageUsed)} / {formatBytes(currentUser.storageLimit)}
-              </p>
-            </div>
-          </div>
-          <div className="h-3 w-full overflow-hidden rounded-full bg-white/50">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                storagePercent > 80 ? "bg-destructive" : storagePercent > 60 ? "bg-yellow-500" : "bg-primary"
-              )}
-              style={{ width: `${storagePercent}%` }}
-            />
-          </div>
-          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-            <span>{storagePercent}% đã sử dụng</span>
-            <span>{formatBytes(currentUser.storageLimit - currentUser.storageUsed)} còn trống</span>
-          </div>
-          {storagePercent > 80 && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              Dung lượng sắp đầy! Hãy xóa bớt tài liệu hoặc nâng cấp gói.
-            </div>
-          )}
-        </div>
-
-        {/* Stats Grid */}
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {stats.map(stat => (
-            <div key={stat.label} className="rounded-xl border border-border bg-card p-4 text-center">
-              <stat.icon className={cn("mx-auto mb-2 h-6 w-6", stat.color)} />
-              <p className="text-lg font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {stats.map(({ icon: Icon, label, value, color }) => (
+            <div key={label} className="rounded-xl border border-border bg-card p-4">
+              <Icon className={cn("mb-2 h-5 w-5", color)} />
+              <p className="text-lg font-bold text-foreground">{value}</p>
+              <p className="text-xs text-muted-foreground">{label}</p>
             </div>
           ))}
         </div>
 
-        {/* Security Info */}
-        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/20">
-          <h4 className="mb-2 flex items-center gap-2 font-semibold text-green-800 dark:text-green-400">
-            <Shield className="h-4 w-4" />
-            Bảo mật dữ liệu
-          </h4>
-          <ul className="space-y-1 text-sm text-green-700 dark:text-green-500">
-            <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5" />Mã hóa AES-256 trong quá trình truyền tải (BR-50)</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5" />Backup tự động mỗi 24 giờ (BR-51)</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5" />Chỉ bạn mới truy cập được file của mình (BR-52)</li>
-          </ul>
+        {/* Storage bar (BR-026, BR-027) */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-foreground">Dung lượng sử dụng</span>
+            <span className={cn("text-sm font-semibold", storagePercent >= 80 ? "text-destructive" : "text-muted-foreground")}>
+              {storagePercent}%
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                storagePercent >= 80 ? "bg-destructive" : storagePercent >= 60 ? "bg-yellow-500" : "bg-primary"
+              )}
+              style={{ width: `${Math.min(storagePercent, 100)}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
+            <span>{formatBytes(currentUser.storageUsed)} đã dùng</span>
+            <span>{formatBytes(currentUser.storageLimit)} tổng</span>
+          </div>
+          {/* BR-027: cảnh báo khi vượt 80% */}
+          {storagePercent >= 80 && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Bạn đã sử dụng hơn 80% dung lượng. Hãy xoá bớt hoặc nâng cấp gói.
+            </div>
+          )}
         </div>
 
-        {/* File List */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold text-foreground">Files trên Cloud ({readyDocs.length})</h3>
-            <div className="flex items-center gap-1 text-xs text-green-600">
-              <Wifi className="h-3 w-3" />
-              Đã đồng bộ
+        {/* Connection info */}
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+          <Wifi className="h-4 w-4 text-green-500" />
+          <span className="text-foreground">Kết nối bảo mật — TLS 1.3</span>
+          <CheckCircle2 className="ml-auto h-4 w-4 text-green-500" />
+        </div>
+
+        {/* Document list */}
+        {readyDocs.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">
+              Tài liệu đã đồng bộ ({readyDocs.length})
+            </h2>
+            <div className="space-y-2">
+              {readyDocs.map(doc => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-all"
+                >
+                  <FileText className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {doc.size} · {doc.downloadCount} lượt tải
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setReviewDocId(reviewDocId === doc.id ? null : doc.id)}
+                      title="Xem preview"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => handleDownload(doc.id)}
+                      title="Tải xuống"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={() => deleteDocument(doc.id)}
+                      title="Xoá"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="space-y-2">
-            {readyDocs.map(doc => (
-              <div
-                key={doc.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/30 hover:shadow-sm"
-              >
-                <div className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
-                  doc.type === "pdf" ? "bg-red-100 text-red-600" :
-                  doc.type === "docx" ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-600"
-                )}>
-                  {doc.type.toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
-                  <p className="text-xs text-muted-foreground">{doc.size} • {doc.uploadedAt.toLocaleDateString("vi-VN")}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 text-xs text-green-600 mr-1">
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
-                      <CheckCircle2 className="h-3 w-3 text-green-600" />
-                    </div>
-                    <span className="hidden sm:inline">Đã sync</span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() => setReviewDocId(doc.id)}
-                    title="Review file"
-                  >
-                    <Eye className="h-3 w-3" />
-                    <span className="hidden sm:inline">Review</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() => handleDownload(doc.id)}
-                    title="Tải về"
-                  >
-                    <Download className="h-3 w-3" />
-                    <span className="hidden sm:inline">Tải về</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:border-destructive/50"
-                    onClick={() => deleteDocument(doc.id)}
-                    title="Xóa"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    <span className="hidden sm:inline">Xóa</span>
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {readyDocs.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                <p className="font-medium text-foreground">Chưa có file nào trên cloud</p>
-                <p className="text-sm text-muted-foreground">Upload tài liệu để lưu trữ an toàn</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        )}
 
-      {reviewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Review file</h3>
-              <Button variant="ghost" size="icon" onClick={() => setReviewDocId(null)}>
+        {readyDocs.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Cloud className="mb-3 h-12 w-12 text-muted-foreground" />
+            <p className="font-medium text-foreground">Chưa có tài liệu nào</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload tài liệu để bắt đầu đồng bộ</p>
+          </div>
+        )}
+
+        {/* Inline preview (BR-029) */}
+        {reviewDoc && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Preview: {reviewDoc.name}</h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setReviewDocId(null)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center">
-              <div className={cn(
-                "mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl text-sm font-bold",
-                reviewDoc.type === "pdf" ? "bg-red-100 text-red-600" :
-                reviewDoc.type === "docx" ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-600"
-              )}>
-                {reviewDoc.type.toUpperCase()}
+            <div className="flex min-h-[120px] items-center justify-center rounded-lg bg-muted/50 text-sm text-muted-foreground">
+              <div className="text-center">
+                <Upload className="mx-auto mb-2 h-8 w-8 opacity-40" />
+                <p>Preview cho {reviewDoc.type.toUpperCase()} đang phát triển.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 gap-1"
+                  onClick={() => handleDownload(reviewDoc.id)}
+                >
+                  <Download className="h-3 w-3" /> Tải xuống để xem
+                </Button>
               </div>
-              <p className="font-medium text-foreground">{reviewDoc.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{reviewDoc.size} • {reviewDoc.uploadedAt.toLocaleDateString("vi-VN")}</p>
-              <p className="mt-3 text-sm text-muted-foreground">Bản prototype hiển thị thông tin file để review nhanh trước khi tải xuống.</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

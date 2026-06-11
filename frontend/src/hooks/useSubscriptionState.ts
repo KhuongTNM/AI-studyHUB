@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/services/api/subscription-plans"
+import { grantSubscriptionApi } from "@/services/api/admin-users"
 import { DEFAULT_PACKAGE_PRICES } from "@/states/mock-data"
 import type { PackagePrice, PackageTier, User } from "@/states/types"
 import type { Dispatch, SetStateAction } from "react"
@@ -14,6 +15,12 @@ interface SubscriptionStateDeps {
   addLog: (action: string, target: string, userId: string) => void
 }
 
+function tierToPlanName(tier: PackageTier): string {
+  if (tier === "2-4") return "plan_2_4"
+  if (tier === "5+") return "plan_5_plus"
+  return "free"
+}
+
 export function useSubscriptionState({
   currentUser,
   setCurrentUser,
@@ -23,7 +30,7 @@ export function useSubscriptionState({
 }: SubscriptionStateDeps) {
   const [packagePrices, setPackagePrices] = useState<PackagePrice[]>(DEFAULT_PACKAGE_PRICES)
 
-  // Sync package prices from backend when user changes
+  // Đồng bộ giá gói từ backend khi user thay đổi
   useEffect(() => {
     let cancelled = false
     fetchSubscriptionPlansApi()
@@ -31,8 +38,7 @@ export function useSubscriptionState({
         if (cancelled) return
         setPackagePrices(prev =>
           prev.map(pkg => {
-            const planName =
-              pkg.tier === "2-4" ? "plan_2_4" : pkg.tier === "5+" ? "plan_5_plus" : "free"
+            const planName = tierToPlanName(pkg.tier)
             const plan = plans.find(item => item.name === planName)
             if (!plan) return pkg
             return {
@@ -46,7 +52,7 @@ export function useSubscriptionState({
         )
       })
       .catch(() => {
-        // keep mock prices when backend is not available
+        // Giữ giá mock nếu backend không khả dụng
       })
     return () => {
       cancelled = true
@@ -79,8 +85,18 @@ export function useSubscriptionState({
     [currentUser, addLog],
   )
 
+  /**
+   * BR-063: Admin/Sub-admin cấp gói subscription cho user qua API.
+   *
+   * Gọi POST /api/admin/users/{userId}/subscription để persist lên server,
+   * đồng thời cập nhật local state ngay để UI phản hồi tức thì.
+   */
   const grantSubscription = useCallback(
-    (userId: string, tier: PackageTier, durationMonths: number) => {
+    async (
+      userId: string,
+      tier: PackageTier,
+      durationMonths: number,
+    ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) {
         return { success: false, error: "Không có quyền thực hiện." }
       }
@@ -90,32 +106,42 @@ export function useSubscriptionState({
         return { success: false, error: "Sub-admin không thể cấp gói cho Admin." }
       }
 
-      const expiresAt =
-        tier === "free"
-          ? undefined
-          : new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000)
+      try {
+        const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths)
 
-      setUsers(prev =>
-        prev.map(u =>
-          u.id === userId
-            ? { ...u, subscriptionTier: tier, subscriptionExpiresAt: expiresAt }
-            : u,
-        ),
-      )
+        setUsers(prev => prev.map(u => (u.id === userId ? updatedUser : u)))
+        if (currentUser.id === userId) setCurrentUser(updatedUser)
 
-      if (currentUser.id === userId) {
-        setCurrentUser(prev =>
-          prev ? { ...prev, subscriptionTier: tier, subscriptionExpiresAt: expiresAt } : prev,
+        const tierName = tier === "free" ? "Free" : tier === "2-4" ? "2-4 người" : "5+ người"
+        addLog(
+          `Cấp gói ${tierName} (${durationMonths} tháng)`,
+          targetUser.email,
+          currentUser.id,
         )
+        return { success: true }
+      } catch (error) {
+        // Fallback: cập nhật local nếu API thất bại
+        const expiresAt =
+          tier === "free"
+            ? undefined
+            : new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000)
+        setUsers(prev =>
+          prev.map(u =>
+            u.id === userId
+              ? { ...u, subscriptionTier: tier, subscriptionExpiresAt: expiresAt }
+              : u,
+          ),
+        )
+        if (currentUser.id === userId) {
+          setCurrentUser(prev =>
+            prev ? { ...prev, subscriptionTier: tier, subscriptionExpiresAt: expiresAt } : prev,
+          )
+        }
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể cấp gói. Đã cập nhật cục bộ.",
+        }
       }
-
-      const tierName = tier === "free" ? "Free" : tier === "2-4" ? "2-4 người" : "5+ người"
-      addLog(
-        `Cấp gói ${tierName} (${durationMonths} tháng)`,
-        targetUser.email,
-        currentUser.id,
-      )
-      return { success: true }
     },
     [currentUser, users, setCurrentUser, setUsers, addLog],
   )
@@ -125,9 +151,7 @@ export function useSubscriptionState({
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
       const expiresAt =
-        tier === "free"
-          ? undefined
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        tier === "free" ? undefined : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 
       setUsers(prev =>
         prev.map(u =>

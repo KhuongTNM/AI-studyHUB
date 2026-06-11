@@ -10,20 +10,23 @@
  *  - The useApp() consumer hook
  *
  * Each domain's state/logic lives in its own hook:
- *  useActivityLogs   → activityLogs
- *  useUIState        → darkMode, language, page, auth modal
- *  useAuthState      → currentUser, login, register
- *  useDocumentState  → documents, categories
- *  useChatState      → chatSessions, activeChatId
- *  useFlashcardState → flashcards
- *  useAdminState     → users list, admin actions
+ *  useActivityLogs      → activityLogs
+ *  useUIState           → darkMode, language, page, auth modal
+ *  useAuthState         → currentUser, login, register
+ *  useDocumentState     → documents, categories  (needs currentUser)
+ *  useChatState         → chatSessions, activeChatId
+ *  useFlashcardState    → flashcards              (needs documents)
+ *  useAdminState        → users list, admin actions
  *  useSubscriptionState → packagePrices, subscription actions
- *  useStudyRoomState → rooms
+ *  useStudyRoomState    → rooms
  */
 
 import React, { createContext, useCallback, useContext, type ReactNode } from "react"
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
-import type { Language, PackagePrice, PackageTier, StudyRoom, User, Category, ChatSession, Document, Flashcard, ActivityLog } from "@/states/types"
+import type {
+  Language, PackagePrice, PackageTier, StudyRoom, User,
+  Category, ChatSession, Document, Flashcard, ActivityLog,
+} from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
 import { useUIState } from "./useUIState"
@@ -62,8 +65,20 @@ export interface AppState {
   categories: Category[]
   addDocument: (doc: Document) => void
   updateDocument: (id: string, updates: Partial<Document>) => void
+  /** Upload file thật lên backend — thay thế simulateUpload (BR-013 đến BR-018) */
+  uploadDocument: (
+    file: File,
+    subject: string,
+    visibility?: "private" | "public",
+  ) => Promise<{ success: boolean; error?: string }>
+  /** Soft-delete tài liệu và gọi DELETE /api/documents/{id} (BR-022) */
   deleteDocument: (id: string) => void
+  /** Khôi phục từ Trash và gọi POST /api/documents/{id}/restore (BR-023) */
   restoreDocument: (id: string) => void
+  /** Đổi visibility và gọi PUT /api/documents/{id}/visibility (BR-018) */
+  changeDocumentVisibility: (id: string, isPublic: boolean) => void
+  /** Tải xuống file và tăng downloadCount qua POST /api/documents/{id}/download (BR-021) */
+  downloadDocument: (id: string) => void
   addCategory: (name: string, color: string) => void
   deleteCategory: (id: string) => void
 
@@ -79,8 +94,12 @@ export interface AppState {
   flashcardSelectedDocumentId: string | "all"
   addFlashcards: (cards: Flashcard[]) => void
   deleteFlashcard: (id: string) => void
+  /** Cập nhật status qua PATCH /api/flashcards/{id}/status (BR-038) */
   updateFlashcardStatus: (id: string, status: Flashcard["status"]) => void
+  /** AI tạo flashcard qua POST /api/flashcards/generate, fallback mock (BR-036) */
   generateFlashcardsFromDocument: (docId: string) => void
+  /** Load flashcard từ API theo document (BR-039) */
+  loadFlashcardsForDocument: (docId: string) => Promise<void>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -96,13 +115,15 @@ export interface AppState {
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
   updatePackagePrice: (tier: PackageTier, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => { success: boolean; error?: string }
+  /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
+  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
 
   // ── Study Rooms ───────────────────────────────────────────────────────────
   rooms: StudyRoom[]
   currentRoomId: string | null
-  createRoom: (roomId: string, password?: string) => { success: boolean; error?: string }
+  /** Tạo phòng qua POST /api/study-rooms (BR-041) */
+  createRoom: (roomId: string, password?: string) => Promise<{ success: boolean; error?: string }>
   joinRoom: (roomId: string, password?: string) => { success: boolean; error?: string }
   leaveRoom: () => void
   closeRoom: () => void
@@ -116,22 +137,25 @@ const AppContext = createContext<AppState | null>(null)
 // ─── Provider ───────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // ── 1. Leaf hooks with no deps ─────────────────────────────────────────
+  // ── 1. Leaf hooks với không có deps ────────────────────────────────────
   const logs = useActivityLogs()
   const ui = useUIState()
-  const docs = useDocumentState()
   const chat = useChatState()
 
-  // ── 2. Auth (needs ui setters so login/register can sync language & close modal) ──
+  // ── 2. Auth (cần ui setters để đồng bộ language & đóng modal) ──────────
   const auth = useAuthState({
     setLanguageState: ui.setLanguageState,
     closeAuthModal: ui.closeAuthModal,
   })
 
-  // ── 3. Flashcards (needs documents for generation) ─────────────────────
+  // ── 3. Documents (cần currentUser để load và upload) ────────────────────
+  //    NOTE: đã chuyển sau auth so với thứ tự cũ
+  const docs = useDocumentState({ currentUser: auth.currentUser })
+
+  // ── 4. Flashcards (cần documents để tạo mock fallback) ─────────────────
   const flashcards = useFlashcardState({ documents: docs.documents })
 
-  // ── 4. Admin (needs currentUser + cross-domain setters) ────────────────
+  // ── 5. Admin (cần currentUser + cross-domain setters) ──────────────────
   const admin = useAdminState({
     currentUser: auth.currentUser,
     setCurrentUser: auth.setCurrentUser,
@@ -139,7 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addLog: logs.addLog,
   })
 
-  // ── 5. Subscription (needs user list + cross-domain setters) ───────────
+  // ── 6. Subscription (cần user list + cross-domain setters) ─────────────
   const subscription = useSubscriptionState({
     currentUser: auth.currentUser,
     setCurrentUser: auth.setCurrentUser,
@@ -148,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addLog: logs.addLog,
   })
 
-  // ── 6. Study rooms (needs currentUser for auth checks) ─────────────────
+  // ── 7. Study rooms (cần currentUser cho auth checks) ───────────────────
   const studyRoom = useStudyRoomState({
     currentUser: auth.currentUser,
     packagePrices: subscription.packagePrices,
@@ -159,8 +183,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /**
    * logout — clears auth state AND resets unrelated UI state (chat, page).
-   * Kept here because it touches 3 domains; putting it in any single hook
-   * would create an inappropriate dependency.
    */
   const logout = useCallback(() => {
     auth.logoutUser()
@@ -169,8 +191,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [auth, chat, ui])
 
   /**
-   * setLanguage — updates the language preference locally and syncs with
-   * the backend. Spans UI, auth, and admin domains.
+   * setLanguage — updates the language preference locally and syncs with the backend.
    */
   const setLanguage = useCallback(
     (nextLanguage: Language) => {
@@ -223,8 +244,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         categories: docs.categories,
         addDocument: docs.addDocument,
         updateDocument: docs.updateDocument,
+        uploadDocument: docs.uploadDocument,
         deleteDocument: docs.deleteDocument,
         restoreDocument: docs.restoreDocument,
+        changeDocumentVisibility: docs.changeDocumentVisibility,
+        downloadDocument: docs.downloadDocument,
         addCategory: docs.addCategory,
         deleteCategory: docs.deleteCategory,
 
@@ -242,6 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteFlashcard: flashcards.deleteFlashcard,
         updateFlashcardStatus: flashcards.updateFlashcardStatus,
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
+        loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
         setFlashcardSelectedDocumentId: flashcards.setFlashcardSelectedDocumentId,
 
         // Admin

@@ -91,3 +91,26 @@ export async function resetUserPasswordApi(userId: string, newPassword: string):
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
+
+/**
+ * BR-063: Admin/Sub-admin cấp gói subscription trực tiếp cho user.
+ *
+ * @param plan  Tên gói: "plan_2_4" | "plan_5_plus" | "free"
+ * @param durationMonths  Số tháng hiệu lực
+ */
+export async function grantSubscriptionApi(
+  userId: string,
+  plan: string,
+  durationMonths: number,
+): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/subscription`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ plan, durationMonths }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
+}

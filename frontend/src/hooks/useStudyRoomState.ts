@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react"
 import { MOCK_ROOMS } from "@/states/mock-data"
+import { createStudyRoomApi } from "@/services/api/study-rooms"
 import { getRoomCapacityForHost } from "@/utils/study-room-capacity"
 import type { PackagePrice, RoomMessage, StudyRoom, User } from "@/states/types"
 
@@ -15,31 +16,48 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
   const [rooms, setRooms] = useState<StudyRoom[]>(MOCK_ROOMS)
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null)
 
+  /**
+   * Tạo phòng học nhóm mới.
+   *
+   * Gọi POST /api/study-rooms để persist phòng lên server (BR-041),
+   * sau đó cập nhật local state để UI phản hồi ngay (BR-042 đến BR-045).
+   */
   const createRoom = useCallback(
-    (roomId: string, password?: string) => {
+    async (roomId: string, password?: string): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
       const capacity = getRoomCapacityForHost(currentUser, packagePrices)
-
       if (!capacity) {
         return { success: false, error: "Vui lòng nâng cấp gói để có quyền tạo phòng học." }
       }
-      if (!roomId.trim()) {
-        return { success: false, error: "Mã phòng không được để trống." }
-      }
 
       const trimmedId = roomId.trim().toUpperCase()
+      if (!trimmedId) return { success: false, error: "Mã phòng không được để trống." }
       if (rooms.some(r => r.id === trimmedId)) {
         return { success: false, error: "Mã phòng này đã tồn tại." }
       }
 
+      // Gọi API để kiểm tra / persist phòng trên server
+      try {
+        await createStudyRoomApi(trimmedId, password)
+      } catch (error) {
+        // Nếu server báo lỗi (ví dụ mã phòng đã tồn tại toàn cục), trả về lỗi
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể tạo phòng học.",
+        }
+      }
+
+      // Tạo phòng trong local state để real-time UI hoạt động
       const newRoom: StudyRoom = {
         id: trimmedId,
         password: password || undefined,
         hostId: currentUser.id,
         hostName: currentUser.displayName,
         capacity,
-        members: [{ userId: currentUser.id, displayName: currentUser.displayName, joinedAt: new Date() }],
+        members: [
+          { userId: currentUser.id, displayName: currentUser.displayName, joinedAt: new Date() },
+        ],
         messages: [
           {
             id: `msg-sys-${Date.now()}`,
@@ -56,7 +74,7 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
       setCurrentRoomId(trimmedId)
       addLog("Tạo phòng học nhóm", trimmedId, currentUser.id)
 
-      // Simulated mock member joining after 4 seconds
+      // Mô phỏng thành viên tham gia sau 4 giây (demo)
       setTimeout(() => {
         setRooms(prev =>
           prev.map(r => {
@@ -66,7 +84,10 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
                 ? { userId: "user-1", displayName: "Demo Student" }
                 : { userId: "user-2", displayName: "AnhNV" }
 
-            if (r.members.some(member => member.userId === simUser.userId) || r.members.length >= r.capacity) {
+            if (
+              r.members.some(m => m.userId === simUser.userId) ||
+              r.members.length >= r.capacity
+            ) {
               return r
             }
 
@@ -145,7 +166,7 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
       setCurrentRoomId(targetRoomId)
       addLog("Tham gia phòng học nhóm", targetRoomId, currentUser.id)
 
-      // Simulated host greeting after 2 seconds
+      // Mô phỏng host chào hỏi sau 2 giây
       setTimeout(() => {
         setRooms(prev =>
           prev.map(r => {
@@ -154,7 +175,7 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
               id: `msg-sim-${Date.now()}`,
               senderId: r.hostId,
               senderName: r.hostName,
-              content: `Chào ${currentUser.displayName}! Chào mừng bạn vào phòng cùng thảo luận nhé. Bạn cần hỗ trợ gì không?`,
+              content: `Chào ${currentUser.displayName}! Chào mừng bạn vào phòng cùng thảo luận nhé.`,
               timestamp: new Date(),
             }
             return { ...r, messages: [...r.messages, simulatedMsg] }
@@ -167,13 +188,10 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
     [currentUser, rooms, addLog],
   )
 
-  /** Host closes the room entirely; members just leave. */
   const closeRoom = useCallback(() => {
     if (!currentUser || !currentRoomId) return
-
     const targetRoom = rooms.find(r => r.id === currentRoomId)
     if (!targetRoom || targetRoom.hostId !== currentUser.id) return
-
     setRooms(prev => prev.filter(r => r.id !== currentRoomId))
     setCurrentRoomId(null)
     addLog("Đóng phòng học nhóm (Host)", currentRoomId, currentUser.id)
@@ -181,11 +199,9 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
 
   const leaveRoom = useCallback(() => {
     if (!currentUser || !currentRoomId) return
-
     const targetRoom = rooms.find(r => r.id === currentRoomId)
     if (!targetRoom) return
 
-    // If the user is the host, close the room instead
     if (targetRoom.hostId === currentUser.id) {
       closeRoom()
       return
@@ -227,12 +243,9 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
       }
 
       setRooms(prev =>
-        prev.map(r =>
-          r.id === currentRoomId ? { ...r, messages: [...r.messages, newMsg] } : r,
-        ),
+        prev.map(r => r.id === currentRoomId ? { ...r, messages: [...r.messages, newMsg] } : r),
       )
 
-      // Simulate replies for greeting / study keywords
       const lower = content.toLowerCase()
       const isGreeting = lower.includes("chào") || lower.includes("hello") || lower.includes("hi")
       const isStudy =
@@ -243,7 +256,7 @@ export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyR
       const delay = isGreeting ? 2500 : 3000
       const replyContent = isGreeting
         ? `Chào ${currentUser.displayName}! Hôm nay bạn định ôn tập nội dung gì thế?`
-        : `Mình có tài liệu giải tích khá hay ở phần Tài liệu của tôi đó, bạn đã xem thử chưa?`
+        : `Mình có tài liệu khá hay trong phần Tài liệu của tôi đó, bạn đã xem thử chưa?`
 
       setTimeout(() => {
         setRooms(prev =>
