@@ -8,6 +8,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { useApp, type PackageTier, type User } from "@/lib/store"
 import { adminText } from "@/configs/admin-i18n"
+import { cn } from "@/lib/utils"
+import { formatBytes } from "@/utils/format"
 import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
@@ -91,8 +93,8 @@ export function AdminDashboard() {
     }
   }
 
-  const createSubAdmin = () => {
-    const result = createSubAdminAccount(subAdminForm.email, subAdminForm.password, subAdminForm.displayName)
+  const createSubAdmin = async () => {
+    const result = await createSubAdminAccount(subAdminForm.email, subAdminForm.password, subAdminForm.displayName)
     runAccountAction(result, "Đã tạo tài khoản sub-admin.")
     if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
   }
@@ -129,7 +131,8 @@ export function AdminDashboard() {
           <SubAdminForm
             form={subAdminForm}
             onFormChange={setSubAdminForm}
-            onSubmit={() => requirePassword(text.createSubAdmin, createSubAdmin)}
+            onSubmit={createSubAdmin}
+            message={message}
             text={text}
           />
         )}
@@ -183,9 +186,9 @@ export function AdminDashboard() {
           onLock={(user) =>
             requirePassword(
               user.isLocked ? text.unlock : text.lock,
-              () =>
+              async () =>
                 runAccountAction(
-                  toggleUserLock(user.id),
+                  await toggleUserLock(user.id),
                   user.isLocked ? "Đã mở khóa tài khoản." : "Đã khóa tài khoản."
                 )
             )
@@ -205,8 +208,6 @@ export function AdminDashboard() {
           onStorageLimit={updateStorageLimit}
           text={text}
         />
-
-        {message && <p className="mt-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
       </div>
 
       {pendingAction && (
