@@ -33,6 +33,8 @@ public class AdminUserService {
 
     private static final BigDecimal BYTES_PER_GB = BigDecimal.valueOf(1024L * 1024L * 1024L);
     private static final long SUB_ADMIN_STORAGE_LIMIT_BYTES = 1024L * 1024L * 1024L;
+    private static final long PLAN_2_4_STORAGE_BYTES = 1024L * 1024L * 1024L;
+    private static final long PLAN_5_PLUS_STORAGE_BYTES = 5L * 1024L * 1024L * 1024L;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -125,7 +127,7 @@ public class AdminUserService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
         target.setSubscriptionPlanId(plan.getId());
-        target.setStorageLimitBytes(plan.getDefaultStorageBytes());
+        target.setStorageLimitBytes(storageLimitBytesFor(dbPlanName, plan));
 
         if ("free".equals(dbPlanName)) {
             target.setSubscriptionExpiresAt(null);
@@ -272,6 +274,14 @@ public class AdminUserService {
         } catch (JsonProcessingException ex) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể ghi nhật ký hoạt động.");
         }
+    }
+
+    private long storageLimitBytesFor(String planName, SubscriptionPlan plan) {
+        return switch (planName) {
+            case "plan_2_4" -> PLAN_2_4_STORAGE_BYTES;
+            case "plan_5_plus" -> PLAN_5_PLUS_STORAGE_BYTES;
+            default -> plan.getDefaultStorageBytes();
+        };
     }
 
     private long toBytes(BigDecimal storageLimitGb) {
