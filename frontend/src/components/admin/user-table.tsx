@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatBytes, type User } from "@/lib/store"
 
-function UserSummary({ user, docs }: { user: User; docs: number }) {
+function UserSummary({ user, docs, text }: { user: User; docs: number; text: any }) {
   const getPackageLabel = (u: User) => {
-    if (u.role === "admin" || u.role === "sub-admin") return "Vô hạn"
+    if (u.role === "admin" || u.role === "sub-admin") return text.unlimited
     if (u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() < Date.now())
-      return "Free (Hết hạn)"
-    if (u.subscriptionTier === "2-4") return "2-4 người"
-    if (u.subscriptionTier === "5+") return "5+ người"
+      return text.expiredFree
+    if (u.subscriptionTier === "2-4") return text.plan2To4
+    if (u.subscriptionTier === "5+") return text.plan5Plus
     return "Free"
   }
 
@@ -40,12 +40,12 @@ function UserSummary({ user, docs }: { user: User; docs: number }) {
             </span>
             {user.isLocked && (
               <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-                locked
+                {text.locked}
               </span>
             )}
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            {user.email} • {formatBytes(user.storageUsed)} used • {docs} files • Gói:{" "}
+            {user.email} • {formatBytes(user.storageUsed)} {text.used} • {docs} {text.files} • {text.packageLabel}:{" "}
             <span className="font-semibold text-primary">{getPackageLabel(user)}</span>
           </p>
         </div>
@@ -109,7 +109,7 @@ export function UserTable({
       <div className="space-y-3">
         {filteredUsers.map(user => (
           <div key={user.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background p-3">
-            <UserSummary user={user} docs={docsByUser[user.id] ?? 0} />
+            <UserSummary user={user} docs={docsByUser[user.id] ?? 0} text={text} />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               {text.storageLimit}
               <input
@@ -130,7 +130,7 @@ export function UserTable({
                 disabled={user.role !== "user"}
                 onClick={() => onGrant(user)}
               >
-                ✨ Cấp gói
+                ✨ {text.grantPackage}
               </Button>
               <Button
                 size="sm"

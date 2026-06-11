@@ -15,7 +15,7 @@ import { CheckoutModal } from "./checkout-modal"
 type ProfileTab = "info" | "history" | "security" | "packages"
 
 export function ProfilePage() {
-  const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices } = useApp()
+  const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices, language } = useApp()
   const [tab, setTab] = useState<ProfileTab>("info")
   const [displayName, setDisplayName] = useState(currentUser?.displayName ?? "")
   const [saved, setSaved] = useState(false)
@@ -24,6 +24,7 @@ export function ProfilePage() {
 
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [selectedTier, setSelectedTier] = useState<PackageTier | null>(null)
+  const text = profileText[language]
 
   useEffect(() => {
     const openPackagesTab = () => {
@@ -43,9 +44,9 @@ export function ProfilePage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <User className="h-16 w-16 text-muted-foreground" />
-        <h2 className="text-xl font-semibold text-foreground">Chưa đăng nhập</h2>
-        <p className="text-muted-foreground">Đăng nhập để xem hồ sơ cá nhân</p>
-        <Button onClick={() => openAuthModal("login")}>Đăng nhập ngay</Button>
+        <h2 className="text-xl font-semibold text-foreground">{text.notLoggedIn}</h2>
+        <p className="text-muted-foreground">{text.loginToView}</p>
+        <Button onClick={() => openAuthModal("login")}>{text.loginNow}</Button>
       </div>
     )
   }
@@ -65,13 +66,13 @@ export function ProfilePage() {
   const handleChangePassword = (oldPass: string, newPass: string, confirmPass: string) => {
     setPassError("")
     setPassSuccess("")
-    if (!oldPass) { setPassError("Nhập mật khẩu hiện tại."); return }
-    if (newPass.length < 8) { setPassError("Mật khẩu mới phải có ít nhất 8 ký tự."); return }
-    if (!/[a-zA-Z]/.test(newPass) || !/[0-9]/.test(newPass)) { setPassError("Mật khẩu cần chứa chữ và số."); return }
-    if (newPass !== confirmPass) { setPassError("Mật khẩu xác nhận không khớp."); return }
+    if (!oldPass) { setPassError(text.currentPasswordRequired); return }
+    if (newPass.length < 8) { setPassError(text.passwordMin); return }
+    if (!/[a-zA-Z]/.test(newPass) || !/[0-9]/.test(newPass)) { setPassError(text.passwordLetterNumber); return }
+    if (newPass !== confirmPass) { setPassError(text.passwordMismatch); return }
     
     // In a real app, this would be an API call
-    setPassSuccess("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.")
+    setPassSuccess(text.passwordChanged)
   }
 
   const openCheckout = (tier: PackageTier) => {
@@ -80,16 +81,16 @@ export function ProfilePage() {
   }
 
   const tabs: { id: ProfileTab; label: string; icon: React.ElementType }[] = [
-    { id: "info", label: "Thông tin", icon: User },
-    { id: "packages", label: "Gói dịch vụ", icon: Zap },
-    { id: "history", label: "Lịch sử", icon: Clock },
-    { id: "security", label: "Bảo mật", icon: Lock },
+    { id: "info", label: text.info, icon: User },
+    { id: "packages", label: text.packages, icon: Zap },
+    { id: "history", label: text.history, icon: Clock },
+    { id: "security", label: text.security, icon: Lock },
   ]
 
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border bg-background px-6 py-4">
-        <h1 className="text-xl font-bold text-foreground">Hồ sơ cá nhân</h1>
+        <h1 className="text-xl font-bold text-foreground">{text.title}</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -115,11 +116,11 @@ export function ProfilePage() {
                   "rounded-full px-2 py-0.5 text-xs font-medium",
                   currentUser.role === "admin" || currentUser.role === "sub-admin" ? "bg-orange-100 text-orange-700" : "bg-primary/10 text-primary"
                 )}>
-                  {currentUser.role === "admin" ? "Admin" : currentUser.role === "sub-admin" ? "Sub-admin" : "Sinh viên"}
+                  {currentUser.role === "admin" ? "Admin" : currentUser.role === "sub-admin" ? "Sub-admin" : text.student}
                 </span>
                 {currentUser.emailVerified && (
                   <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                    <CheckCircle2 className="h-3 w-3" /> Đã xác thực
+                    <CheckCircle2 className="h-3 w-3" /> {text.verified}
                   </span>
                 )}
               </div>
@@ -129,9 +130,9 @@ export function ProfilePage() {
           {/* Stats */}
           <div className="mt-6 grid grid-cols-3 gap-3">
             {[
-              { label: "Dung lượng đã dùng", value: formatBytes(currentUser.storageUsed) },
-              { label: "Hoạt động gần đây", value: userLogs.length + " thao tác" },
-              { label: "Ngày tham gia", value: currentUser.createdAt.toLocaleDateString("vi-VN") },
+              { label: text.storageUsed, value: formatBytes(currentUser.storageUsed) },
+              { label: text.recentActivity, value: `${userLogs.length} ${text.actions}` },
+              { label: text.joinedDate, value: currentUser.createdAt.toLocaleDateString(language === "vi" ? "vi-VN" : "en-US") },
             ].map(stat => (
               <div key={stat.label} className="rounded-xl border border-border bg-card/50 p-3 text-center">
                 <p className="text-sm font-semibold text-foreground">{stat.value}</p>
@@ -187,6 +188,7 @@ export function ProfilePage() {
               currentUser={currentUser}
               packagePrices={packagePrices}
               onBuy={openCheckout}
+              language={language}
             />
           )}
         </div>
@@ -208,3 +210,48 @@ export function ProfilePage() {
     </div>
   )
 }
+
+const profileText = {
+  vi: {
+    notLoggedIn: "Chưa đăng nhập",
+    loginToView: "Đăng nhập để xem hồ sơ cá nhân",
+    loginNow: "Đăng nhập ngay",
+    currentPasswordRequired: "Nhập mật khẩu hiện tại.",
+    passwordMin: "Mật khẩu mới phải có ít nhất 8 ký tự.",
+    passwordLetterNumber: "Mật khẩu cần chứa chữ và số.",
+    passwordMismatch: "Mật khẩu xác nhận không khớp.",
+    passwordChanged: "Đổi mật khẩu thành công! Vui lòng đăng nhập lại.",
+    info: "Thông tin",
+    packages: "Gói dịch vụ",
+    history: "Lịch sử",
+    security: "Bảo mật",
+    title: "Hồ sơ cá nhân",
+    student: "Sinh viên",
+    verified: "Đã xác thực",
+    storageUsed: "Dung lượng đã dùng",
+    recentActivity: "Hoạt động gần đây",
+    actions: "thao tác",
+    joinedDate: "Ngày tham gia",
+  },
+  en: {
+    notLoggedIn: "Not signed in",
+    loginToView: "Log in to view your profile",
+    loginNow: "Log in now",
+    currentPasswordRequired: "Enter your current password.",
+    passwordMin: "New password must be at least 8 characters.",
+    passwordLetterNumber: "Password must contain letters and numbers.",
+    passwordMismatch: "Password confirmation does not match.",
+    passwordChanged: "Password changed successfully. Please log in again.",
+    info: "Info",
+    packages: "Packages",
+    history: "History",
+    security: "Security",
+    title: "Profile",
+    student: "Student",
+    verified: "Verified",
+    storageUsed: "Storage used",
+    recentActivity: "Recent activity",
+    actions: "actions",
+    joinedDate: "Joined",
+  },
+} as const
