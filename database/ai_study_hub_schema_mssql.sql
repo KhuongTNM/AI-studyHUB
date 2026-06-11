@@ -347,10 +347,13 @@ CREATE TABLE study_room_messages (
                      CONSTRAINT fk_srmsg_user
                      REFERENCES users(id) ON DELETE SET NULL,
     content      NVARCHAR(MAX)    NOT NULL,
-    -- BR-051: 'user' = người dùng; 'system' = thông báo hệ thống
-    message_type NVARCHAR(10)     NOT NULL DEFAULT N'user'
+    -- BR-051: 'user' = người dùng; 'system' = thông báo hệ thống; 'document' = chia sẻ tài liệu trong phòng
+    message_type NVARCHAR(20)     NOT NULL DEFAULT N'user'
                      CONSTRAINT chk_srmsg_type
-                     CHECK (message_type IN (N'user', N'system')),
+                     CHECK (message_type IN (N'user', N'system', N'document')),
+    document_id  UNIQUEIDENTIFIER NULL
+                     CONSTRAINT fk_srmsg_document
+                     REFERENCES documents(id) ON DELETE NO ACTION,
     created_at   DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO

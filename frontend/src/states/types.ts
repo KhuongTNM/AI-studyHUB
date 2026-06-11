@@ -34,6 +34,13 @@ export interface RoomMessage {
   senderName: string
   content: string
   timestamp: Date
+  messageType?: "user" | "system" | "document"
+  documentId?: string
+  documentName?: string
+  documentSubject?: string
+  documentType?: string
+  documentVisibility?: "public" | "private"
+  documentDownloadable?: boolean
 }
 
 export interface StudyRoom {

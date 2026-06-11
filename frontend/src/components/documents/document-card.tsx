@@ -5,6 +5,7 @@ import {
   MoreVertical,
   Trash2,
   Eye,
+  EyeOff,
   Edit3,
   BookOpen,
 } from "lucide-react"
@@ -32,6 +33,7 @@ export function DocumentCard({
   onEdit,
   onDelete,
   onDownload,
+  onToggleVisibility,
   onChat,
   onGenerateFlashcards,
   categories,
@@ -42,6 +44,7 @@ export function DocumentCard({
   onEdit: (doc: Document) => void
   onDelete: (id: string) => void
   onDownload: (id: string) => void
+  onToggleVisibility: (id: string, isPublic: boolean) => void
   onChat: (doc: Document) => void
   onGenerateFlashcards: (doc: Document) => void
   categories: ReturnType<typeof useApp>["categories"]
@@ -93,6 +96,15 @@ export function DocumentCard({
             title={text.createFlashcards}
           >
             <BookOpen className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onToggleVisibility(doc.id, !doc.isPublic)}
+            title={doc.isPublic ? text.makePrivate : text.makePublic}
+          >
+            {doc.isPublic ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
           </Button>
           <Button
             variant="ghost"
@@ -161,6 +173,10 @@ export function DocumentCard({
               {text.edit}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onToggleVisibility(doc.id, !doc.isPublic)}>
+              {doc.isPublic ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+              {doc.isPublic ? text.makePrivate : text.makePublic}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onDelete(doc.id)} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               {text.delete}
@@ -180,6 +196,19 @@ export function DocumentCard({
       <span className="mb-3 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         {subject}
       </span>
+      <button
+        type="button"
+        onClick={() => onToggleVisibility(doc.id, !doc.isPublic)}
+        className={cn(
+          "mb-3 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors",
+          doc.isPublic
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+            : "border-border bg-muted text-muted-foreground hover:bg-muted/80",
+        )}
+      >
+        {doc.isPublic ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+        {doc.isPublic ? text.publicStatus : text.privateStatus}
+      </button>
       <div className="mt-auto flex gap-2">
         <Button
           size="sm"
@@ -228,6 +257,10 @@ const documentCardText = {
     delete: "Xóa",
     viewDetails: "Xem chi tiết",
     edit: "Chỉnh sửa",
+    publicStatus: "Public",
+    privateStatus: "Private",
+    makePublic: "Đặt Public",
+    makePrivate: "Đặt Private",
   },
   en: {
     uncategorized: "Uncategorized",
@@ -236,5 +269,9 @@ const documentCardText = {
     delete: "Delete",
     viewDetails: "View details",
     edit: "Edit",
+    publicStatus: "Public",
+    privateStatus: "Private",
+    makePublic: "Make Public",
+    makePrivate: "Make Private",
   },
 } as const
