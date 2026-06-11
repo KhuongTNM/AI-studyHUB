@@ -2,14 +2,16 @@
 
 import { useCallback, useState } from "react"
 import { MOCK_ROOMS } from "@/states/mock-data"
-import type { RoomMessage, StudyRoom, User } from "@/states/types"
+import { getRoomCapacityForHost } from "@/utils/study-room-capacity"
+import type { PackagePrice, RoomMessage, StudyRoom, User } from "@/states/types"
 
 interface StudyRoomStateDeps {
   currentUser: User | null
+  packagePrices: PackagePrice[]
   addLog: (action: string, target: string, userId: string) => void
 }
 
-export function useStudyRoomState({ currentUser, addLog }: StudyRoomStateDeps) {
+export function useStudyRoomState({ currentUser, packagePrices, addLog }: StudyRoomStateDeps) {
   const [rooms, setRooms] = useState<StudyRoom[]>(MOCK_ROOMS)
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null)
 
@@ -17,15 +19,9 @@ export function useStudyRoomState({ currentUser, addLog }: StudyRoomStateDeps) {
     (roomId: string, password?: string) => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
-      const isPaid =
-        currentUser.role === "admin" ||
-        currentUser.role === "sub-admin" ||
-        (currentUser.subscriptionTier &&
-          currentUser.subscriptionTier !== "free" &&
-          currentUser.subscriptionExpiresAt &&
-          new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now())
+      const capacity = getRoomCapacityForHost(currentUser, packagePrices)
 
-      if (!isPaid) {
+      if (!capacity) {
         return { success: false, error: "Vui lòng nâng cấp gói để có quyền tạo phòng học." }
       }
       if (!roomId.trim()) {
@@ -37,14 +33,12 @@ export function useStudyRoomState({ currentUser, addLog }: StudyRoomStateDeps) {
         return { success: false, error: "Mã phòng này đã tồn tại." }
       }
 
-      const cap = currentUser.subscriptionTier === "2-4" ? 4 : 99
-
       const newRoom: StudyRoom = {
         id: trimmedId,
         password: password || undefined,
         hostId: currentUser.id,
         hostName: currentUser.displayName,
-        capacity: cap,
+        capacity,
         members: [{ userId: currentUser.id, displayName: currentUser.displayName, joinedAt: new Date() }],
         messages: [
           {
@@ -72,6 +66,10 @@ export function useStudyRoomState({ currentUser, addLog }: StudyRoomStateDeps) {
                 ? { userId: "user-1", displayName: "Demo Student" }
                 : { userId: "user-2", displayName: "AnhNV" }
 
+            if (r.members.some(member => member.userId === simUser.userId) || r.members.length >= r.capacity) {
+              return r
+            }
+
             const joinMsg: RoomMessage = {
               id: `msg-sys-sim-${Date.now()}`,
               senderId: "system",
@@ -98,7 +96,7 @@ export function useStudyRoomState({ currentUser, addLog }: StudyRoomStateDeps) {
 
       return { success: true }
     },
-    [currentUser, rooms, addLog],
+    [currentUser, packagePrices, rooms, addLog],
   )
 
   const joinRoom = useCallback(

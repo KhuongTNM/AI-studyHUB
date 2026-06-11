@@ -17,6 +17,7 @@ export function EnhancedChatInterface() {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
     openAuthModal, setCurrentPage,
+    packagePrices,
     rooms, currentRoomId, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage
   } = useApp()
 
@@ -131,6 +132,7 @@ export function EnhancedChatInterface() {
         <StudyRoomPanel
           mode="toggle"
           rooms={rooms}
+          packagePrices={packagePrices}
           currentRoomId={currentRoomId}
           currentUser={currentUser}
           onJoinRoom={joinRoom}
@@ -222,6 +224,7 @@ export function EnhancedChatInterface() {
         <StudyRoomPanel
           mode="sidebar"
           rooms={rooms}
+          packagePrices={packagePrices}
           currentRoomId={currentRoomId}
           currentUser={currentUser}
           onJoinRoom={joinRoom}

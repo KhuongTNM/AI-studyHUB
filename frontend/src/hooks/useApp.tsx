@@ -151,6 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── 6. Study rooms (needs currentUser for auth checks) ─────────────────
   const studyRoom = useStudyRoomState({
     currentUser: auth.currentUser,
+    packagePrices: subscription.packagePrices,
     addLog: logs.addLog,
   })
 

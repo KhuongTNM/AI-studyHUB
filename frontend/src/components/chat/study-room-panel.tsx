@@ -2,10 +2,13 @@
 import { Users, Lock, LogOut, X, Send, AlertCircle, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { getActiveHostPackageTier, getRoomCapacityForHost } from "@/utils/study-room-capacity"
+import type { PackagePrice } from "@/states/types"
 
 interface StudyRoomPanelProps {
   mode: "toggle" | "sidebar"
   rooms: any[]
+  packagePrices: PackagePrice[]
   currentRoomId: string | null
   currentUser: any
   onJoinRoom: (id: string, pass: string) => { success: boolean, error?: string }
@@ -23,6 +26,7 @@ interface StudyRoomPanelProps {
 
 export function StudyRoomPanel({
   mode, rooms, currentRoomId, currentUser, onJoinRoom, onCreateRoom,
+  packagePrices,
   onLeaveRoom, onCloseRoom, onSendMessage,
   showRoomPanel, setShowRoomPanel, showRoomSidebar, setShowRoomSidebar,
   setCurrentPage, openAuthModal
@@ -37,6 +41,8 @@ export function StudyRoomPanel({
   const activeRoom = rooms.find(r => r.id === currentRoomId) ?? null
   const roomMessages = activeRoom?.messages ?? []
   const roomMembers = activeRoom?.members ?? []
+  const hostPackageTier = getActiveHostPackageTier(currentUser)
+  const createRoomCapacity = getRoomCapacityForHost(currentUser, packagePrices)
 
   useEffect(() => {
     roomMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -250,10 +256,10 @@ export function StudyRoomPanel({
           )}
 
           <div className="space-y-3">
-            {roomActionTab === "create" && currentUser && currentUser.subscriptionTier === "free" && currentUser.role !== "admin" && currentUser.role !== "sub-admin" ? (
+            {roomActionTab === "create" && currentUser && !createRoomCapacity ? (
               <div className="text-center py-2">
                 <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                  Bạn đang sử dụng gói <span className="font-semibold text-foreground">Free</span>. Vui lòng nâng cấp lên gói 2-4 người hoặc 5+ người để mở phòng học nhóm.
+                  Bạn chưa có gói trả phí còn hiệu lực. Vui lòng nâng cấp lên gói 2-4 người hoặc 5+ người để mở phòng học nhóm.
                 </p>
                 <Button
                   size="sm"
@@ -278,6 +284,15 @@ export function StudyRoomPanel({
                     className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
+                {roomActionTab === "create" && createRoomCapacity && (
+                  <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                    Sức chứa theo gói host{" "}
+                    <span className="font-semibold text-foreground">
+                      {hostPackageTier === "2-4" ? "2-4 người" : "5+ người"}
+                    </span>
+                    : tối đa <span className="font-semibold text-foreground">{createRoomCapacity}</span> thành viên, kể cả host.
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Mật khẩu phòng</label>
                   <input
