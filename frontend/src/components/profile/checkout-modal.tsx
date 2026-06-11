@@ -3,6 +3,7 @@ import { CreditCard, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type PackageTier } from "@/lib/store"
+import type { Language } from "@/states/types"
 import {
   completeSubscriptionPurchaseForDevApi,
   createSubscriptionPurchaseApi,
@@ -14,6 +15,7 @@ interface CheckoutModalProps {
   packagePrices: any[]
   currentUser: any
   updateUser: (id: string, data: any) => void
+  language: Language
   onClose: () => void
   onSuccess: () => void
 }
@@ -23,6 +25,7 @@ export function CheckoutModal({
   packagePrices,
   currentUser,
   updateUser,
+  language,
   onClose,
   onSuccess
 }: CheckoutModalProps) {
@@ -32,6 +35,8 @@ export function CheckoutModal({
   const [purchaseError, setPurchaseError] = useState("")
   const [isCreatingPurchase, setIsCreatingPurchase] = useState(false)
   const [isCompletingPurchase, setIsCompletingPurchase] = useState(false)
+  const text = checkoutText[language]
+  const selectedPlanName = selectedTier === "2-4" ? text.plan2To4 : text.plan5Plus
 
   const createVietQrPurchase = async () => {
     setIsCreatingPurchase(true)
@@ -40,7 +45,7 @@ export function CheckoutModal({
       const order = await createSubscriptionPurchaseApi(selectedTier)
       setPurchaseOrder(order)
     } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "Không thể tạo thanh toán VietQR.")
+      setPurchaseError(error instanceof Error ? error.message : text.createPaymentFailed)
     } finally {
       setIsCreatingPurchase(false)
     }
@@ -62,7 +67,7 @@ export function CheckoutModal({
       }
       setPurchaseSuccess(true)
     } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "Không thể xác nhận thanh toán.")
+      setPurchaseError(error instanceof Error ? error.message : text.confirmPaymentFailed)
     } finally {
       setIsCompletingPurchase(false)
     }
@@ -75,19 +80,19 @@ export function CheckoutModal({
           <>
             <h3 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-primary" />
-              Xác nhận mua gói dịch vụ
+              {text.title}
             </h3>
             <p className="text-sm text-muted-foreground mb-6">
-              Bạn đang đăng ký gói{" "}
+              {text.confirmPrefix}{" "}
               <span className="font-semibold text-foreground">
-                {selectedTier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"}
+                {selectedPlanName}
               </span>{" "}
-              thời hạn 1 tháng.
+              {text.confirmSuffix}
             </p>
 
             {/* Price Display */}
             <div className="mb-6 rounded-xl bg-muted p-4 flex justify-between items-center">
-              <span className="text-sm text-muted-foreground font-medium">Tổng tiền cần thanh toán:</span>
+              <span className="text-sm text-muted-foreground font-medium">{text.total}</span>
               <span className="text-xl font-extrabold text-primary">
                 {(packagePrices.find(p => p.tier === selectedTier)?.price || 0).toLocaleString("vi-VN")}đ
               </span>
@@ -95,11 +100,11 @@ export function CheckoutModal({
 
             {/* Payment Methods */}
             <div className="space-y-3 mb-6">
-              <p className="text-sm font-semibold text-foreground">Chọn phương thức thanh toán:</p>
+              <p className="text-sm font-semibold text-foreground">{text.selectPayment}</p>
               {[
-                { id: "qr", label: "VietQR", desc: "Mã QR chuyển khoản ngân hàng cho môi trường dev", disabled: false },
-                { id: "card", label: "Thẻ ATM / Visa / Mastercard", desc: "Sẽ triển khai sau", disabled: true },
-                { id: "wallet", label: "Ví điện tử", desc: "Sẽ triển khai sau", disabled: true }
+                { id: "qr", label: "VietQR", desc: text.vietQrDesc, disabled: false },
+                { id: "card", label: text.cardLabel, desc: text.comingSoon, disabled: true },
+                { id: "wallet", label: text.walletLabel, desc: text.comingSoon, disabled: true }
               ].map((method) => (
                 <label
                   key={method.id}
@@ -138,19 +143,19 @@ export function CheckoutModal({
               <div className="mb-6 space-y-4 rounded-xl border border-border bg-background p-4">
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <p className="text-muted-foreground">Mã đơn</p>
+                    <p className="text-muted-foreground">{text.orderCode}</p>
                     <p className="font-semibold text-foreground">{purchaseOrder.orderId}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Nội dung CK</p>
+                    <p className="text-muted-foreground">{text.transferContent}</p>
                     <p className="font-semibold text-foreground">{purchaseOrder.content}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Ngân hàng</p>
+                    <p className="text-muted-foreground">{text.bank}</p>
                     <p className="font-semibold text-foreground">{purchaseOrder.bankCode}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Tài khoản</p>
+                    <p className="text-muted-foreground">{text.account}</p>
                     <p className="font-semibold text-foreground">{purchaseOrder.bankAccount}</p>
                   </div>
                 </div>
@@ -160,7 +165,7 @@ export function CheckoutModal({
                   className="mx-auto h-56 w-56 rounded-lg border border-border bg-white object-contain p-2"
                 />
                 <p className="text-center text-xs text-muted-foreground">
-                  Dev mode: quét QR hoặc dùng nút mô phỏng callback sau khi kiểm tra thông tin thanh toán.
+                  {text.devMode}
                 </p>
               </div>
             )}
@@ -168,15 +173,15 @@ export function CheckoutModal({
             {/* Actions */}
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={onClose}>
-                Hủy bỏ
+                {text.cancel}
               </Button>
               {!purchaseOrder ? (
                 <Button className="flex-1 gap-2" disabled={isCreatingPurchase} onClick={createVietQrPurchase}>
-                  {isCreatingPurchase ? "Đang tạo QR..." : "Tạo mã VietQR"}
+                  {isCreatingPurchase ? text.creatingQr : text.createQr}
                 </Button>
               ) : (
                 <Button className="flex-1 gap-2" disabled={isCompletingPurchase} onClick={completeVietQrPurchaseForDev}>
-                  {isCompletingPurchase ? "Đang xác nhận..." : "Dev: giả lập đã thanh toán"}
+                  {isCompletingPurchase ? text.confirming : text.devComplete}
                 </Button>
               )}
             </div>
@@ -186,16 +191,16 @@ export function CheckoutModal({
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
               <CheckCircle2 className="h-10 w-10 text-green-600 animate-bounce" />
             </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">Thanh toán thành công!</h3>
+            <h3 className="text-xl font-bold text-foreground mb-2">{text.successTitle}</h3>
             <p className="text-sm text-muted-foreground mb-6">
-              Tài khoản của bạn đã được nâng cấp lên{" "}
+              {text.successPrefix}{" "}
               <span className="font-bold text-foreground">
-                {selectedTier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"}
+                {selectedPlanName}
               </span>
-              . Hạn sử dụng của gói là 1 tháng kể từ hôm nay.
+              {text.successSuffix}
             </p>
             <Button className="w-full" onClick={onSuccess}>
-              Tuyệt vời! Quay lại
+              {text.back}
             </Button>
           </div>
         )}
@@ -203,3 +208,64 @@ export function CheckoutModal({
     </div>
   )
 }
+
+const checkoutText = {
+  vi: {
+    title: "Xác nhận mua gói dịch vụ",
+    confirmPrefix: "Bạn đang đăng ký gói",
+    confirmSuffix: "thời hạn 1 tháng.",
+    plan2To4: "Gói 2-4 người",
+    plan5Plus: "Gói 5+ người",
+    total: "Tổng tiền cần thanh toán:",
+    selectPayment: "Chọn phương thức thanh toán:",
+    vietQrDesc: "Mã QR chuyển khoản ngân hàng cho môi trường dev",
+    cardLabel: "Thẻ ATM / Visa / Mastercard",
+    walletLabel: "Ví điện tử",
+    comingSoon: "Sẽ triển khai sau",
+    orderCode: "Mã đơn",
+    transferContent: "Nội dung CK",
+    bank: "Ngân hàng",
+    account: "Tài khoản",
+    devMode: "Dev mode: quét QR hoặc dùng nút mô phỏng callback sau khi kiểm tra thông tin thanh toán.",
+    cancel: "Hủy bỏ",
+    creatingQr: "Đang tạo QR...",
+    createQr: "Tạo mã VietQR",
+    confirming: "Đang xác nhận...",
+    devComplete: "Dev: giả lập đã thanh toán",
+    successTitle: "Thanh toán thành công!",
+    successPrefix: "Tài khoản của bạn đã được nâng cấp lên",
+    successSuffix: ". Hạn sử dụng của gói là 1 tháng kể từ hôm nay.",
+    back: "Tuyệt vời! Quay lại",
+    createPaymentFailed: "Không thể tạo thanh toán VietQR.",
+    confirmPaymentFailed: "Không thể xác nhận thanh toán.",
+  },
+  en: {
+    title: "Confirm subscription purchase",
+    confirmPrefix: "You are subscribing to the",
+    confirmSuffix: "for 1 month.",
+    plan2To4: "2-4 people plan",
+    plan5Plus: "5+ people plan",
+    total: "Total payment:",
+    selectPayment: "Select payment method:",
+    vietQrDesc: "Bank transfer QR code for the dev environment",
+    cardLabel: "ATM / Visa / Mastercard card",
+    walletLabel: "E-wallet",
+    comingSoon: "Coming later",
+    orderCode: "Order ID",
+    transferContent: "Transfer content",
+    bank: "Bank",
+    account: "Account",
+    devMode: "Dev mode: scan the QR code or use the simulated callback button after checking payment details.",
+    cancel: "Cancel",
+    creatingQr: "Creating QR...",
+    createQr: "Create VietQR code",
+    confirming: "Confirming...",
+    devComplete: "Dev: simulate paid",
+    successTitle: "Payment successful",
+    successPrefix: "Your account has been upgraded to the",
+    successSuffix: ". The package is valid for 1 month from today.",
+    back: "Back to packages",
+    createPaymentFailed: "Could not create VietQR payment.",
+    confirmPaymentFailed: "Could not confirm payment.",
+  },
+} as const

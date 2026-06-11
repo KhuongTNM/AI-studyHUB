@@ -58,6 +58,12 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
           {packagePrices.map((pkg) => {
             const isActive = currentUser.subscriptionTier === pkg.tier &&
               (!currentUser.subscriptionExpiresAt || new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now())
+            const planName =
+              pkg.tier === "2-4"
+                ? text.plan2To4Card
+                : pkg.tier === "5+"
+                ? text.plan5PlusCard
+                : text.freeCard
             return (
               <div
                 key={pkg.id}
@@ -72,7 +78,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                   </span>
                 )}
                 <div>
-                  <h4 className="mb-1 text-lg font-bold text-foreground">{pkg.name}</h4>
+                  <h4 className="mb-1 text-lg font-bold text-foreground">{planName}</h4>
                   <div className="mb-4 flex items-baseline gap-1">
                     <span className="text-2xl font-extrabold text-foreground">
                       {pkg.price === 0 ? text.freePrice : `${pkg.price.toLocaleString("vi-VN")}đ`}
@@ -138,6 +144,9 @@ const packagesText = {
     plan2To4: "Gói 2-4 người (Premium)",
     plan5Plus: "Gói 5+ người (Enterprise)",
     freePlan: "Gói Free (Mặc định)",
+    freeCard: "Gói Miễn Phí",
+    plan2To4Card: "Gói 2-4 Người",
+    plan5PlusCard: "Gói 5+ Người",
     expiry: "Hạn sử dụng:",
     expired: "Đã hết hạn",
     active: "Đang hoạt động",
@@ -162,6 +171,9 @@ const packagesText = {
     plan2To4: "2-4 people plan (Premium)",
     plan5Plus: "5+ people plan (Enterprise)",
     freePlan: "Free plan (Default)",
+    freeCard: "Free plan",
+    plan2To4Card: "2-4 people plan",
+    plan5PlusCard: "5+ people plan",
     expiry: "Expires:",
     expired: "Expired",
     active: "Active",

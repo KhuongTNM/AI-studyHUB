@@ -200,6 +200,7 @@ export function ProfilePage() {
           packagePrices={packagePrices}
           currentUser={currentUser}
           updateUser={updateUser}
+          language={language}
           onClose={() => setShowCheckoutModal(false)}
           onSuccess={() => {
             setShowCheckoutModal(false)
