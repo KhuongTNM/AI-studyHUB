@@ -1,10 +1,10 @@
 ﻿import { useState, useRef, useEffect } from "react"
-import { Users, Lock, LogOut, X, Send, AlertCircle, ChevronDown } from "lucide-react"
+import { Users, Lock, LogOut, X, Send, AlertCircle, ChevronDown, FileText, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getActiveHostPackageTier, getRoomCapacityForHost } from "@/utils/study-room-capacity"
 import type { AppState } from "@/lib/store"
-import type { Language, PackagePrice } from "@/states/types"
+import type { Document, Language, PackagePrice } from "@/states/types"
 
 interface StudyRoomPanelProps {
   mode: "toggle" | "sidebar"
@@ -17,6 +17,9 @@ interface StudyRoomPanelProps {
   onLeaveRoom: () => void
   onCloseRoom: () => void
   onSendMessage: (msg: string) => void
+  documents?: Document[]
+  onShareDocument?: (documentId: string) => Promise<ActionResult>
+  onDownloadDocument?: (documentId: string) => void
   showRoomPanel: boolean
   setShowRoomPanel: (val: boolean) => void
   showRoomSidebar: boolean
@@ -32,6 +35,7 @@ export function StudyRoomPanel({
   mode, rooms, currentRoomId, currentUser, onJoinRoom, onCreateRoom,
   packagePrices,
   onLeaveRoom, onCloseRoom, onSendMessage,
+  documents = [], onShareDocument, onDownloadDocument,
   showRoomPanel, setShowRoomPanel, showRoomSidebar, setShowRoomSidebar,
   setCurrentPage, openAuthModal, language
 }: StudyRoomPanelProps) {
@@ -40,6 +44,10 @@ export function StudyRoomPanel({
   const [roomPasswordInput, setRoomPasswordInput] = useState("")
   const [roomError, setRoomError] = useState("")
   const [roomInput, setRoomInput] = useState("")
+  const [shareSubject, setShareSubject] = useState("all")
+  const [shareDocumentId, setShareDocumentId] = useState("")
+  const [shareError, setShareError] = useState("")
+  const [isSharingDocument, setIsSharingDocument] = useState(false)
   const roomMessagesEndRef = useRef<HTMLDivElement>(null)
 
   const activeRoom = rooms.find(r => r.id === currentRoomId) ?? null
@@ -48,6 +56,20 @@ export function StudyRoomPanel({
   const hostPackageTier = getActiveHostPackageTier(currentUser)
   const createRoomCapacity = getRoomCapacityForHost(currentUser, packagePrices)
   const text = roomText[language]
+  const shareableDocuments = documents.filter(doc => doc.status === "ready")
+  const shareSubjects = Array.from(
+    new Set(shareableDocuments.map(doc => doc.subject?.trim()).filter((subject): subject is string => Boolean(subject))),
+  ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
+  const filteredShareDocuments =
+    shareSubject === "all"
+      ? shareableDocuments
+      : shareableDocuments.filter(doc => doc.subject?.trim() === shareSubject)
+
+  useEffect(() => {
+    if (shareDocumentId && !filteredShareDocuments.some(doc => doc.id === shareDocumentId)) {
+      setShareDocumentId("")
+    }
+  }, [filteredShareDocuments, shareDocumentId])
 
   useEffect(() => {
     roomMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -133,6 +155,86 @@ export function StudyRoomPanel({
           </div>
         </div>
 
+        {/* Room document sharing */}
+        <div className="border-b border-border bg-background p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Share2 className="h-3.5 w-3.5 text-primary" />
+            {text.shareDocument}
+          </div>
+          {shareError && (
+            <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-destructive/10 p-2 text-[11px] text-destructive">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span>{shareError}</span>
+            </div>
+          )}
+          {shareableDocuments.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
+              {text.noReadyDocuments}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <select
+                value={shareSubject}
+                onChange={event => {
+                  setShareSubject(event.target.value)
+                  setShareDocumentId("")
+                  setShareError("")
+                }}
+                className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">{text.allSubjects}</option>
+                {shareSubjects.map(subject => (
+                  <option key={subject} value={subject}>{subject}</option>
+                ))}
+              </select>
+              <select
+                value={shareDocumentId}
+                onChange={event => {
+                  setShareDocumentId(event.target.value)
+                  setShareError("")
+                }}
+                className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">{text.selectDocument}</option>
+                {filteredShareDocuments.map(doc => (
+                  <option key={doc.id} value={doc.id} disabled={!doc.isPublic}>
+                    {doc.name}{doc.isPublic ? ` - ${text.publicLabel}` : ` - ${text.privateLabel}`}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full gap-1.5 text-xs"
+                disabled={!shareDocumentId || isSharingDocument}
+                onClick={async () => {
+                  const selectedDoc = documents.find(doc => doc.id === shareDocumentId)
+                  if (!shareDocumentId || !onShareDocument || !selectedDoc) return
+                  if (!selectedDoc.isPublic) {
+                    setShareError(text.privateCannotShare)
+                    return
+                  }
+                  setShareError("")
+                  setIsSharingDocument(true)
+                  const result = await onShareDocument(shareDocumentId)
+                  setIsSharingDocument(false)
+                  if (result.success) {
+                    setShareDocumentId("")
+                  } else {
+                    setShareError(result.error || text.shareFailed)
+                  }
+                }}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                {isSharingDocument ? text.sharing : text.shareToRoom}
+              </Button>
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                {text.shareVisibilityNote}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Room Chat Messages */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-muted/10">
           {roomMessages.map((msg: any) => {
@@ -148,6 +250,8 @@ export function StudyRoomPanel({
             }
 
             const isSelf = msg.senderId === currentUser?.id;
+            const isDocumentMessage = msg.messageType === "document" && msg.documentId;
+            const documentDownloadable = msg.documentDownloadable !== false && msg.documentVisibility !== "private";
             return (
               <div
                 key={msg.id}
@@ -167,7 +271,37 @@ export function StudyRoomPanel({
                       : "bg-muted text-foreground rounded-tl-none"
                   )}
                 >
-                  <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  {isDocumentMessage ? (
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-semibold">{text.shareDocument}</p>
+                          <p className="truncate">{msg.documentName ?? msg.content}</p>
+                          <p className="text-[10px] opacity-80">
+                            {text.subject}: {msg.documentSubject || text.noSubject}
+                          </p>
+                          {!documentDownloadable && (
+                            <p className="text-[10px] font-medium opacity-80">
+                              {text.privateSharedNotice}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={isSelf ? "secondary" : "outline"}
+                        className="h-7 w-full text-[11px]"
+                        disabled={!documentDownloadable}
+                        onClick={() => onDownloadDocument?.(msg.documentId)}
+                      >
+                        {documentDownloadable ? text.downloadShared : text.downloadDisabled}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  )}
                 </div>
                 <span className="text-[9px] text-muted-foreground/60 px-1">
                   {new Date(msg.timestamp).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
@@ -377,6 +511,22 @@ const roomText = {
     createFailed: "Không thể tạo phòng.",
     joinNow: "Tham gia ngay",
     createNow: "Tạo phòng",
+    shareDocument: "Chia sẻ tài liệu",
+    allSubjects: "Tất cả môn học",
+    selectDocument: "Chọn tài liệu",
+    noReadyDocuments: "Bạn chưa có tài liệu sẵn sàng để chia sẻ.",
+    shareToRoom: "Chia sẻ vào phòng",
+    sharing: "Đang chia sẻ...",
+    shareFailed: "Không thể chia sẻ tài liệu.",
+    publicLabel: "Public",
+    privateLabel: "Private",
+    shareVisibilityNote: "Chỉ tài liệu Public mới được chia sẻ vào phòng.",
+    privateCannotShare: "Tài liệu Private không thể chia sẻ. Hãy đổi sang Public trong Tài liệu của tôi trước.",
+    privateSharedNotice: "Tài liệu này đã chuyển sang Private.",
+    subject: "Môn học",
+    noSubject: "Chưa đặt môn",
+    downloadShared: "Tải tài liệu",
+    downloadDisabled: "Không thể tải",
   },
   en: {
     members: "Members",
@@ -404,5 +554,21 @@ const roomText = {
     createFailed: "Could not create room.",
     joinNow: "Join now",
     createNow: "Create room",
+    shareDocument: "Share document",
+    allSubjects: "All subjects",
+    selectDocument: "Select document",
+    noReadyDocuments: "No ready documents available to share.",
+    shareToRoom: "Share to room",
+    sharing: "Sharing...",
+    shareFailed: "Could not share document.",
+    publicLabel: "Public",
+    privateLabel: "Private",
+    shareVisibilityNote: "Only Public documents can be shared to the room.",
+    privateCannotShare: "Private documents cannot be shared. Change it to Public in My Documents first.",
+    privateSharedNotice: "This document is now Private.",
+    subject: "Subject",
+    noSubject: "No subject",
+    downloadShared: "Download document",
+    downloadDisabled: "Download unavailable",
   },
 } as const

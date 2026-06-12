@@ -68,11 +68,12 @@ export function AdminDashboard() {
 
   const canTouchAccount = (target: User) => {
     if (target.id === currentUser.id) return false
-    if (isSubAdmin && target.role === "admin") return false
+    if (target.role === "admin") return false
+    if (isSubAdmin && target.role !== "user") return false
     return true
   }
 
-  const canUpdateStorage = (target: User) => canTouchAccount(target) && target.role === "user"
+  const canUpdateStorage = (target: User) => canTouchAccount(target)
 
   const runAccountAction = (result: { success: boolean; error?: string }, successText: string) => {
     setMessage(result.success ? successText : result.error ?? text.actionFailed)
@@ -184,6 +185,7 @@ export function AdminDashboard() {
           users={users}
           documents={documents}
           userSearch={userSearch}
+          isSubAdmin={isSubAdmin}
           onUserSearchChange={setUserSearch}
           onLock={(user) =>
             requirePassword(

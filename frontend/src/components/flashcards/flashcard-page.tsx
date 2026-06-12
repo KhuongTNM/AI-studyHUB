@@ -12,6 +12,8 @@ export function FlashcardPage() {
     flashcards,
     addFlashcards,
     generateFlashcardsFromDocument,
+    updateFlashcardStatus,
+    loadFlashcardsForDocument,
     flashcardSelectedDocumentId,
     setFlashcardSelectedDocumentId,
     language,
@@ -38,6 +40,10 @@ export function FlashcardPage() {
     viewAnswer: "Xem đáp án",
     hideAnswer: "Ẩn đáp án",
     copy: "Sao chép",
+    statusLabel: "Trạng thái",
+    statusNew: "Mới",
+    statusLearning: "Đang học",
+    statusMastered: "Đã thuộc",
   } : {
     title: "Study Flashcards",
     description: "Build and review quick learning cards to remember key concepts faster.",
@@ -53,6 +59,10 @@ export function FlashcardPage() {
     viewAnswer: "Show answer",
     hideAnswer: "Hide answer",
     copy: "Copy",
+    statusLabel: "Status",
+    statusNew: "New",
+    statusLearning: "Learning",
+    statusMastered: "Mastered",
   }
 
   const availableDocs = [{ id: "all", name: text.allDocs }, ...documents.map(doc => ({ id: doc.id, name: doc.name }))]
@@ -65,6 +75,12 @@ export function FlashcardPage() {
     if (selectedDocId === "all") return flashcards
     return flashcards.filter(card => card.documentId === selectedDocId)
   }, [flashcards, selectedDocId])
+
+  useEffect(() => {
+    if (selectedDocId !== "all") {
+      void loadFlashcardsForDocument(selectedDocId)
+    }
+  }, [selectedDocId, loadFlashcardsForDocument])
 
   useEffect(() => {
     if (activeIndex >= filteredCards.length) {
@@ -86,6 +102,7 @@ export function FlashcardPage() {
       answer: answer.trim(),
       documentId: selectedDocId === "all" ? undefined : selectedDocId,
       createdAt: new Date(),
+      status: "new",
     }
     addFlashcards([newCard])
     setQuestion("")
@@ -200,6 +217,10 @@ export function FlashcardPage() {
                   <span>{filteredCards[activeIndex].documentId ? documents.find(doc => doc.id === filteredCards[activeIndex].documentId)?.name : (language === "vi" ? "Tổng quát" : "General")}</span>
                   <span>•</span>
                   <span>{new Date(filteredCards[activeIndex].createdAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</span>
+                  <span>•</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                    {statusText(filteredCards[activeIndex].status ?? "new", text)}
+                  </span>
                 </div>
 
                 <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -221,6 +242,24 @@ export function FlashcardPage() {
                     <Copy className="h-4 w-4" />
                     {text.copy}
                   </Button>
+                  <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-background p-1">
+                    <span className="px-2 text-xs font-medium text-muted-foreground">{text.statusLabel}</span>
+                    {(["new", "learning", "mastered"] as const).map(status => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => updateFlashcardStatus(filteredCards[activeIndex].id, status)}
+                        className={cn(
+                          "rounded-lg px-2 py-1 text-xs font-medium transition-colors",
+                          (filteredCards[activeIndex].status ?? "new") === status
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        {statusText(status, text)}
+                      </button>
+                    ))}
+                  </div>
                   <div className="ml-auto flex items-center gap-2">
                     <Button
                       size="sm"
@@ -299,4 +338,13 @@ export function FlashcardPage() {
       </div>
     </div>
   )
+}
+
+function statusText(
+  status: "new" | "learning" | "mastered",
+  text: { statusNew: string; statusLearning: string; statusMastered: string },
+) {
+  if (status === "learning") return text.statusLearning
+  if (status === "mastered") return text.statusMastered
+  return text.statusNew
 }

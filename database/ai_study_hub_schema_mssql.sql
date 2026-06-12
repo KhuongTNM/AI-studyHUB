@@ -347,10 +347,13 @@ CREATE TABLE study_room_messages (
                      CONSTRAINT fk_srmsg_user
                      REFERENCES users(id) ON DELETE SET NULL,
     content      NVARCHAR(MAX)    NOT NULL,
-    -- BR-051: 'user' = người dùng; 'system' = thông báo hệ thống
-    message_type NVARCHAR(10)     NOT NULL DEFAULT N'user'
+    -- BR-051: 'user' = người dùng; 'system' = thông báo hệ thống; 'document' = chia sẻ tài liệu trong phòng
+    message_type NVARCHAR(20)     NOT NULL DEFAULT N'user'
                      CONSTRAINT chk_srmsg_type
-                     CHECK (message_type IN (N'user', N'system')),
+                     CHECK (message_type IN (N'user', N'system', N'document')),
+    document_id  UNIQUEIDENTIFIER NULL
+                     CONSTRAINT fk_srmsg_document
+                     REFERENCES documents(id) ON DELETE NO ACTION,
     created_at   DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
@@ -553,3 +556,41 @@ GROUP BY
     sp.display_name,
     u.subscription_expires_at;
 GO
+
+-- =============================================================
+-- MERGED COMPATIBILITY MIGRATION
+-- Safe to run after the full schema; needed only for existing DBs.
+-- =============================================================
+
+USE AIStudyHub;
+GO
+
+IF COL_LENGTH('study_room_messages', 'document_id') IS NULL
+BEGIN
+    ALTER TABLE study_room_messages
+        ADD document_id UNIQUEIDENTIFIER NULL;
+
+    ALTER TABLE study_room_messages
+        ADD CONSTRAINT fk_srmsg_document
+        FOREIGN KEY (document_id) REFERENCES documents(id);
+END;
+GO
+
+DECLARE @constraintName NVARCHAR(128);
+SELECT @constraintName = cc.name
+FROM sys.check_constraints cc
+JOIN sys.tables t ON cc.parent_object_id = t.object_id
+WHERE t.name = 'study_room_messages'
+  AND cc.name = 'chk_srmsg_type';
+
+IF @constraintName IS NOT NULL
+BEGIN
+    ALTER TABLE study_room_messages DROP CONSTRAINT chk_srmsg_type;
+END;
+GO
+
+ALTER TABLE study_room_messages
+    ADD CONSTRAINT chk_srmsg_type
+    CHECK (message_type IN (N'user', N'system', N'document'));
+GO
+

@@ -76,7 +76,7 @@ export interface AppState {
   /** Khôi phục từ Trash và gọi POST /api/documents/{id}/restore (BR-023) */
   restoreDocument: (id: string) => void
   /** Đổi visibility và gọi PUT /api/documents/{id}/visibility (BR-018) */
-  changeDocumentVisibility: (id: string, isPublic: boolean) => void
+  changeDocumentVisibility: (id: string, isPublic: boolean) => Promise<{ success: boolean; error?: string }>
   /** Tải xuống file và tăng downloadCount qua POST /api/documents/{id}/download (BR-021) */
   downloadDocument: (id: string) => void
   addCategory: (name: string, color: string) => void
@@ -124,10 +124,11 @@ export interface AppState {
   currentRoomId: string | null
   /** Tạo phòng qua POST /api/study-rooms (BR-041) */
   createRoom: (roomId: string, password?: string) => Promise<{ success: boolean; error?: string }>
-  joinRoom: (roomId: string, password?: string) => { success: boolean; error?: string }
+  joinRoom: (roomId: string, password?: string) => Promise<{ success: boolean; error?: string }>
   leaveRoom: () => void
   closeRoom: () => void
   sendRoomMessage: (content: string) => void
+  shareRoomDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -293,6 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         leaveRoom: studyRoom.leaveRoom,
         closeRoom: studyRoom.closeRoom,
         sendRoomMessage: studyRoom.sendRoomMessage,
+        shareRoomDocument: studyRoom.shareRoomDocument,
       }}
     >
       {children}
