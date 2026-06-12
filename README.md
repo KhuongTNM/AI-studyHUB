@@ -210,9 +210,9 @@ Backend chạy tại: **http://localhost:8080**
 
 | Email | Mật khẩu | Vai trò |
 |-------|-----------|---------|
-| `admin@aistudyhub.com` | `Admin123` | admin |
-| `student@aistudyhub.com` | `Student123` | user |
-| `subadmin@aistudyhub.com` | `SubAdmin123` | sub_admin |
+| `admin@gmail.com` | `Admin123` | admin |
+| `student@gmail.com` | `Admin123` | user |
+| `subAdmin@gmail.com` | `Admin123` | sub_admin |
 
 #### Bước 3 — Frontend (cổng 3000)
 
