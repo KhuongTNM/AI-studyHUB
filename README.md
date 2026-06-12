@@ -201,15 +201,6 @@ npm run dev
 http://localhost:3000
 ```
 
-## API Authentication
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/auth/register` | Register account and return JWT |
-| `POST` | `/api/auth/login` | Login |
-| `POST` | `/api/auth/logout` | Logout with `Authorization: Bearer <token>` |
-| `GET` | `/api/auth/me` | Get current user |
-
 ## Notes
 
 - Backend must be running before frontend API features can work.
