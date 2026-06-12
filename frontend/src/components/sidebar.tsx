@@ -3,7 +3,7 @@
 import { useState } from "react"
 import {
   MessageCircle, FolderOpen, Plus, FileText, Sparkles, Cloud,
-  ChevronDown, ChevronRight, GraduationCap, LayoutGrid, Home, Trash2,
+  ChevronDown, ChevronRight, LayoutGrid, Home, Trash2,
   BookOpen,
   LayoutDashboard, User, LogIn, HardDrive, X, Clock,
 } from "lucide-react"
@@ -85,10 +85,19 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     <aside className="flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
-          <GraduationCap className="h-5 w-5 text-primary-foreground" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+          <svg
+            viewBox="0 0 48 48"
+            aria-hidden="true"
+            className="h-7 w-7 text-primary-foreground"
+          >
+            <path
+              fill="currentColor"
+              d="M14.4 5.5h19.2L43.2 24l-9.6 18.5H14.4L4.8 24 14.4 5.5Zm3.5 6.1L11.8 24l6.1 12.4h12.8l-4.1-6.2h-5.1L18.2 24l3.3-6.2h10.8l5.4 10.6L40.1 24l-6.5-12.4H17.9Zm5 10.4-1.1 2 2 3.8h7.7l-3-5.8h-5.6Z"
+            />
+          </svg>
         </div>
-        <span className="text-lg font-bold text-sidebar-foreground">AI Study Hub</span>
+        <span className="text-lg font-bold text-sidebar-foreground">StudyHub</span>
         <Button variant="outline" size="icon" className="ml-auto h-8 w-8" onClick={() => setCurrentPage("home")}>
           <Home className="h-4 w-4" />
         </Button>
