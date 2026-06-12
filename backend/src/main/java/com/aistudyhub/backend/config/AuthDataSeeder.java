@@ -38,9 +38,9 @@ public class AuthDataSeeder implements ApplicationRunner {
         SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new IllegalStateException("Free subscription plan is not configured."));
         List<SeedUser> seeds = List.of(
-                new SeedUser("admin@aistudyhub.com", "Admin123", "Admin System", User.Role.admin),
-                new SeedUser("subadmin@aistudyhub.com", "SubAdmin123", "Sub Admin", User.Role.sub_admin),
-                new SeedUser("student@aistudyhub.com", "Student123", "Demo Student", User.Role.user));
+                new SeedUser("admin@gmail.com", "Admin123", "System Admin", User.Role.admin),
+                new SeedUser("subadmin@gmail.com", "Admin123", "Sub Admin", User.Role.sub_admin),
+                new SeedUser("student@gmail.com", "Admin123", "Student", User.Role.user));
 
         for (SeedUser seed : seeds) {
             User user = new User();
