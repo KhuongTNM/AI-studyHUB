@@ -12,15 +12,15 @@ Repository: [https://github.com/KhuongTNM/AI-studyHUB](https://github.com/Khuong
 Install these before running the project:
 
 | Tool | Suggested version | Purpose |
-|------|-------------------|---------|
-| Java JDK | 17+ | Run Spring Boot backend |
-| Apache Maven | 3.9+ | Install/build/run backend dependencies |
-| Node.js | 18+ LTS | Run frontend |
-| npm | Comes with Node.js | Install frontend dependencies |
-| SQL Server | 2019+ or Express | Local database |
-| SSMS / Azure Data Studio | Latest | Run database SQL script |
+|---------|-----------------|----------|
+| [Java JDK](https://adoptium.net/) | 17+ | Backend Spring Boot |
+| [Apache Maven](https://maven.apache.org/download.cgi) | 3.9+ | Build/chạy backend (`mvn`) |
+| [Node.js](https://nodejs.org/) | 18+ (LTS) | Frontend Next.js |
+| npm | đi kèm Node.js | Cài dependency frontend |
+| [SQL Server](https://www.microsoft.com/sql-server) | 2019+ hoặc Express | Database `AIStudyHub` |
+| SSMS hoặc Azure Data Studio | mới nhất | Chạy script schema |
 
-Check tools in cmd/PowerShell:
+Kiểm tra nhanh trong terminal:
 
 ```bash
 java -version
