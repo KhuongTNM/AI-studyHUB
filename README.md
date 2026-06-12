@@ -210,9 +210,9 @@ Backend chạy tại: **http://localhost:8080**
 
 | Email | Mật khẩu | Vai trò |
 |-------|-----------|---------|
-| `admin@aistudyhub.com` | `Admin123` | admin |
-| `student@aistudyhub.com` | `Student123` | user |
-| `subadmin@aistudyhub.com` | `SubAdmin123` | sub_admin |
+| `admin@gmail.com` | `Admin123` | admin |
+| `student@gmail.com` | `Admin123` | user |
+| `subAdmin@gmail.com` | `Admin123` | sub_admin |
 
 #### Bước 3 — Frontend (cổng 3000)
 
@@ -261,19 +261,6 @@ HTTP Response <- Controller <- Service <- Repository <- Entity/Database
 | `security/` | JWT filter, principal |
 
 Quy tắc: không đặt logic nghiệp vụ trong `controller`; frontend **không** gọi database trực tiếp.
-
-## Business Rules Mapping
-
-Nguồn: `AI-Study-Hub-Business-Rules-Group07 (1).docx`.
-
-- **BR-001 → BR-012:** Authentication (email, password, role, login attempts, khóa tài khoản)
-- **BR-013 → BR-026:** Document Management
-- **BR-027 → BR-031:** Cloud Storage
-- **BR-032 → BR-037:** AI Chatbot
-- **BR-038 → BR-042:** Flashcard
-- **BR-043 → BR-051:** Study Room
-- **BR-052 → BR-057:** Profile & Settings
-- **BR-058 → BR-070:** Admin / Sub-admin
 
 ## Ghi chú hiện tại
 
