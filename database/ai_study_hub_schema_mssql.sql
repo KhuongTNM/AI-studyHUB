@@ -105,16 +105,63 @@ CREATE INDEX idx_users_is_locked    ON users(is_locked);
 GO
 
 -- Seed: tài khoản Admin mặc định
--- ⚠️ Thay password_hash bằng bcrypt thực tế trước khi deploy
-INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
+-- Default accounts for demo
+
+INSERT INTO users (
+    email,
+    password_hash,
+    display_name,
+    role,
+    storage_limit_bytes,
+    subscription_plan_id
+)
 SELECT
-    N'admin@aistudy.hub',
+    N'admin@gmail.com',
     N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
     N'System Admin',
     N'admin',
-    1073741824,   -- 1 GB
+    1073741824,
     sp.id
-FROM subscription_plans sp WHERE sp.name = N'free';
+FROM subscription_plans sp
+WHERE sp.name = N'free';
+GO
+
+INSERT INTO users (
+    email,
+    password_hash,
+    display_name,
+    role,
+    storage_limit_bytes,
+    subscription_plan_id
+)
+SELECT
+    N'subAdmin@gmail.com',
+    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
+    N'Sub Admin',
+    N'sub_admin',
+    1073741824,
+    sp.id
+FROM subscription_plans sp
+WHERE sp.name = N'free';
+GO
+
+INSERT INTO users (
+    email,
+    password_hash,
+    display_name,
+    role,
+    storage_limit_bytes,
+    subscription_plan_id
+)
+SELECT
+    N'student@gmail.com',
+    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
+    N'Student',
+    N'user',
+    536870912,
+    sp.id
+FROM subscription_plans sp
+WHERE sp.name = N'free';
 GO
 
 

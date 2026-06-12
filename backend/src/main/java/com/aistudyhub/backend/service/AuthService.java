@@ -78,7 +78,8 @@ public class AuthService {
         userRepository.save(user);
 
         UserResponse userResponse = UserResponse.from(user);
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), userResponse.getRole());
+        // FIX: dùng user.getRole().name() ("sub_admin") thay vì userResponse.getRole() ("sub-admin")
+        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
         return new AuthResponse(token, userResponse);
     }
 
@@ -113,7 +114,8 @@ public class AuthService {
         userRepository.save(user);
 
         UserResponse userResponse = UserResponse.from(user);
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), userResponse.getRole());
+        // FIX: dùng user.getRole().name() ("sub_admin") thay vì userResponse.getRole() ("sub-admin")
+        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
         return new AuthResponse(token, userResponse);
     }
 
