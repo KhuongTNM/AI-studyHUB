@@ -78,7 +78,7 @@ export function DocumentCard({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -209,27 +209,28 @@ export function DocumentCard({
         {doc.isPublic ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         {doc.isPublic ? text.publicStatus : text.privateStatus}
       </button>
-      <div className="mt-auto flex gap-2">
+      <div className="mt-auto grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.25rem_2.25rem] gap-2">
         <Button
           size="sm"
-          className="flex-1 gap-1 text-xs"
+          className="min-w-0 gap-1 px-2 text-xs"
           onClick={() => onChat(doc)}
         >
-          💬 Chat AI
+          <span className="shrink-0">💬</span>
+          <span className="truncate">Chat AI</span>
         </Button>
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 text-xs"
+          className="min-w-0 gap-1 px-2 text-xs"
           onClick={() => onGenerateFlashcards(doc)}
         >
-          <BookOpen className="h-3 w-3" />
-          Flashcards
+          <BookOpen className="h-3 w-3 shrink-0" />
+          <span className="truncate">Flashcards</span>
         </Button>
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 text-xs"
+          className="w-9 px-0 text-xs"
           onClick={() => onDownload(doc.id)}
           title={text.download}
         >
@@ -238,7 +239,7 @@ export function DocumentCard({
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 text-xs text-destructive hover:text-destructive"
+          className="w-9 px-0 text-xs text-destructive hover:text-destructive"
           onClick={() => onDelete(doc.id)}
           title={text.delete}
         >

@@ -38,7 +38,8 @@ function HomePage() {
     startFree: "Bắt đầu miễn phí",
     login: "Đăng nhập",
     startChat: "Bắt đầu chat AI",
-    why: "Tại sao chọn AI Study Hub?",
+    flashcardsDesc: "Ôn tập nhanh các khái niệm với thẻ học.",
+    why: "Tại sao chọn StudyHub?",
     highlights: [
       "AI phân tích tài liệu theo thời gian thực",
       "Chia sẻ tài liệu với bạn học dễ dàng",
@@ -59,7 +60,8 @@ function HomePage() {
     startFree: "Start for free",
     login: "Log in",
     startChat: "Start AI chat",
-    why: "Why choose AI Study Hub?",
+    flashcardsDesc: "Review key concepts quickly with study cards.",
+    why: "Why choose StudyHub?",
     highlights: [
       "AI analyzes documents in real time",
       "Share study material with classmates",
@@ -86,7 +88,7 @@ function HomePage() {
     {
       icon: BookOpen,
       label: "Flashcards",
-      desc: "Ôn tập nhanh các khái niệm với thẻ học.",
+      desc: text.flashcardsDesc,
       color: "from-emerald-500 to-teal-600",
       page: "flashcards" as const,
     },
@@ -112,7 +114,7 @@ function HomePage() {
       <div className="mb-12 text-center">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
           <Sparkles className="h-4 w-4" />
-          AI Study Hub — SU26SWP10
+          StudyHub — SU26SWP10
         </div>
         <h1 className="mb-4 text-balance text-4xl font-bold text-foreground md:text-6xl">
           {text.hero}{" "}
@@ -193,8 +195,8 @@ function HomePage() {
         </div>
       </div>
 
-      <FeaturesSection />
-      <Footer />
+      <FeaturesSection language={language} />
+      <Footer language={language} />
     </div>
   )
 }
