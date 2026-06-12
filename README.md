@@ -1,67 +1,17 @@
-# AI Study Hub
+# StudyHub
 
-AI Study Hub là hệ thống quản lý tài liệu học tập có AI hỗ trợ hỏi đáp, được tách thành **frontend** (Next.js + TypeScript) và **backend** (Java Spring Boot).
+StudyHub is an AI-supported study document management system. The project is split into two main sides:
+
+- **Backend:** Java Spring Boot API, SQL Server database, authentication, business logic.
+- **Frontend:** Next.js + TypeScript user interface, API client, pages, components, and state hooks.
 
 Repository: [https://github.com/KhuongTNM/AI-studyHUB](https://github.com/KhuongTNM/AI-studyHUB)
 
-## Cấu trúc dự án
+## Required Tools
 
-```text
-AI-studyHUB/
-  IMPLEMENTATION_PLAN.md
-  README.md
-  database/
-    ai_study_hub_schema_mssql.sql
-  frontend/
-    src/
-      app/                 # Next.js App Router
-      assets/              # Tài nguyên tĩnh của frontend
-      configs/             # Cấu hình dùng chung cho frontend
-      components/          # Khối giao diện người dùng chính
-        auth/
-        admin/
-        cloud/
-        documents/
-        flashcards/
-        profile/
-        ui/
-      hooks/               # React hooks chia sẻ logic
-        useApp.tsx         # AppProvider và hook truy cập state dùng chung
-      lib/                 # Tích hợp thư viện và adapter hạ tầng
-        auth-storage.ts    # Lưu JWT (localStorage)
-        store.tsx          # Re-export để giữ tương thích import cũ
-      services/            # Lớp gọi API / dịch vụ bên ngoài
-        api/
-      states/              # Types, mock data và state seed
-        types.ts
-        mock-data.ts
-      styles/              # Thành phần CSS dùng chung
-        globals.css
-      utils/               # Tiện ích và logic dùng chung nhiều màn hình
-        format.ts
-        ai-mock.ts
-    public/
-    .env.local.example     # Mẫu cấu hình URL backend
-    package.json
-  backend/
-    src/main/java/com/aistudyhub/backend/
-      AiStudyHubBackendApplication.java
-      config/              # Database, Security, CORS, seed dữ liệu demo
-      entity/
-      repository/
-      dto/
-      service/
-      controller/
-      security/
-    src/main/resources/application.properties
-    pom.xml
-```
+Install these before running the project:
 
-## Chuẩn bị công cụ
-
-Cài đặt và kiểm tra trước khi chạy dự án:
-
-| Công cụ | Phiên bản gợi ý | Dùng cho |
+| Tool | Suggested version | Purpose |
 |---------|-----------------|----------|
 | [Java JDK](https://adoptium.net/) | 17+ | Backend Spring Boot |
 | [Apache Maven](https://maven.apache.org/download.cgi) | 3.9+ | Build/chạy backend (`mvn`) |
@@ -79,192 +29,183 @@ node -v
 npm -v
 ```
 
-**Lưu ý:** Nếu gặp lỗi `'mvn' is not recognized`, cần cài Maven và thêm thư mục `bin` vào biến môi trường `PATH`, hoặc chạy backend từ IDE (Run class `AiStudyHubBackendApplication`).
+If `mvn` is not recognized, install Maven and add the Maven `bin` folder to Windows `PATH`.
 
-## Cấu hình database
+## Project File Organization
 
-### 1. Tạo schema (bắt buộc trước khi chạy backend)
-
-Chạy file SQL trong SQL Server Management Studio hoặc Azure Data Studio:
+### Backend Side
 
 ```text
-database/ai_study_hub_schema_mssql.sql
+backend/
+  pom.xml
+  src/main/java/com/aistudyhub/backend/
+    AiStudyHubBackendApplication.java   # Main Spring Boot application
+    config/                             # Database, CORS, security, seed data
+    controller/                         # REST API endpoints
+    dto/                                # Request/response objects
+    entity/                             # JPA database table mapping
+    exception/                          # Global error handling
+    repository/                         # Spring Data JPA database queries
+    security/                           # JWT filter and authenticated principal
+    service/                            # Business logic and validation
+  src/main/resources/
+    application.properties              # Backend database/JWT/CORS config
 ```
 
-Script tạo database **`AIStudyHub`** và các bảng (users, documents, subscription_plans, …).
+Backend flow:
 
-### 2. Cấu hình kết nối backend → SQL Server
+```text
+HTTP Request -> Controller -> Service -> Repository -> Entity/Database
+HTTP Response <- Controller <- Service <- Repository <- Entity/Database
+```
 
-Backend đọc thông tin kết nối theo thứ tự ưu tiên: **biến môi trường** → giá trị mặc định trong file properties.
+Important backend file:
 
-| Vị trí | Mô tả |
-|--------|--------|
-| `backend/src/main/resources/application.properties` | File cấu hình chính (mặc định khi dev local) |
-| `backend/src/main/java/com/aistudyhub/backend/config/DatabaseConfig.java` | Đọc `app.datasource.*` và tạo `DataSource` (HikariCP) |
-| Biến môi trường `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Ghi đè properties khi deploy / CI |
+```text
+backend/src/main/resources/application.properties
+```
 
-Các khóa trong `application.properties`:
+Open this file to set SQL Server username/password before running the backend:
 
 ```properties
-app.datasource.url=${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true}
-app.datasource.username=${DB_USERNAME:sa}
-app.datasource.password=${DB_PASSWORD:YourStrongPassword123}
+app.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true
+app.datasource.username=sa
+app.datasource.password=YOUR_SQL_SERVER_PASSWORD
 ```
 
-**Ví dụ đặt biến môi trường (Windows PowerShell):**
-
-```powershell
-$env:DB_URL="jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true"
-$env:DB_USERNAME="sa"
-$env:DB_PASSWORD="MatKhauCuaBan"
-```
-
-**Ví dụ đặt biến môi trường (Linux/macOS):**
-
-```bash
-export DB_URL="jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true"
-export DB_USERNAME="sa"
-export DB_PASSWORD="MatKhauCuaBan"
-```
-
-Cấu hình JWT và CORS (cùng file `application.properties`):
+Example for local class setup:
 
 ```properties
-app.jwt.secret=${JWT_SECRET:AIStudyHubDevSecretKeyMustBeAtLeast32CharactersLong}
-app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
-app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
+app.datasource.username=sa
+app.datasource.password=12345678
 ```
 
-### 3. Cấu hình frontend → backend API
+### Frontend Side
 
-| Vị trí | Mô tả |
-|--------|--------|
-| `frontend/.env.local` | File local (không commit secret); copy từ `.env.local.example` |
-| `frontend/.env.local.example` | Mẫu: `NEXT_PUBLIC_API_URL=http://localhost:8080` |
-| `frontend/src/services/api/auth.ts` | Đọc `process.env.NEXT_PUBLIC_API_URL` |
+```text
+frontend/
+  package.json
+  next.config.mjs
+  public/                               # Public static assets and favicon
+  src/
+    app/                                # Next.js App Router pages/layout
+    components/                         # UI components by feature
+      admin/
+      auth/
+      chat/
+      cloud/
+      documents/
+      flashcards/
+      profile/
+      ui/
+    configs/                            # Frontend config and i18n helpers
+    hooks/                              # React hooks and feature state logic
+    lib/                                # Shared store, auth storage, utilities
+    services/api/                       # Frontend API calls to backend
+    states/                             # Shared types and app state models
+    styles/                             # Global CSS
+    utils/                              # Shared frontend helper functions
+```
 
-Tạo file `frontend/.env.local`:
+Important frontend file:
+
+```text
+frontend/.env.local
+```
+
+Create this file if it does not exist, then set the backend API URL:
 
 ```text
 NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
-## Chạy dự án (thứ tự)
+## Database Setup
 
-### Quick Start (Windows)
+Before running the backend, create the database schema.
 
-**Chạy backend:**
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-Hoặc dùng PowerShell:
-```powershell
-cd backend
-.\run-backend.ps1
-```
-
-**Chạy frontend (terminal mới):**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Mở trình duyệt: **http://localhost:3000** (Backend: **http://localhost:8080**)
-
----
-
-### Chi tiết từng bước
-
-#### Bước 1 — Database
-
-1. Bật SQL Server.
-2. Chạy `database/ai_study_hub_schema_mssql.sql` trong SQL Server Management Studio hoặc Azure Data Studio.
-3. Đảm bảo username/password khớp với file `backend/src/main/resources/application.properties`.
-
-#### Bước 2 — Backend (cổng 8080)
-
-**Windows (cmd):**
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-**Windows (PowerShell):**
-```powershell
-cd backend
-.\run-backend.ps1
-```
-
-**macOS/Linux:**
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-Backend chạy tại: **http://localhost:8080**
-
-**Tài khoản demo (auto-seed khi bảng `users` trống):**
-
-| Email | Mật khẩu | Vai trò |
-|-------|-----------|---------|
-| `admin@gmail.com` | `Admin123` | admin |
-| `student@gmail.com` | `Admin123` | user |
-| `subAdmin@gmail.com` | `Admin123` | sub_admin |
-
-#### Bước 3 — Frontend (cổng 3000)
-
-Mở **terminal mới** (backend vẫn chạy):
-
-```bash
-cd frontend
-npm install
-cp .env.local.example .env.local   # Windows: copy .env.local.example .env.local
-npm run dev
-```
-
-Frontend chạy tại: **http://localhost:3000**
-
-**Build production:**
-```bash
-npm run build
-```
-
-## API Authentication (đã triển khai)
-
-| Method | Endpoint | Mô tả |
-|--------|----------|--------|
-| `POST` | `/api/auth/register` | Đăng ký (tự đăng nhập, trả JWT) |
-| `POST` | `/api/auth/login` | Đăng nhập |
-| `POST` | `/api/auth/logout` | Đăng xuất (cần header `Authorization: Bearer <token>`) |
-| `GET` | `/api/auth/me` | Lấy thông tin user hiện tại |
-
-Frontend đã nối **đăng nhập, đăng ký, đăng xuất** qua API. Các module khác (tài liệu, chat, room, …) vẫn dùng mock/state trên UI cho đến khi backend bổ sung API tương ứng.
-
-## Backend — cấu trúc layer
+1. Open SQL Server Management Studio or Azure Data Studio.
+2. Connect to your local SQL Server.
+3. Run this file:
 
 ```text
-HTTP Request  -> Controller -> Service -> Repository -> Entity/Database
-HTTP Response <- Controller <- Service <- Repository <- Entity/Database
+database/ai_study_hub_schema_mssql.sql
 ```
 
-| Package | Trách nhiệm |
-|---------|----------------|
-| `config/` | Database, Security/JWT, CORS, seed dữ liệu |
-| `entity/` | JPA mapping bảng DB |
-| `repository/` | Truy vấn Spring Data JPA |
-| `dto/` | Request/Response (LoginRequest, RegisterRequest, …) |
-| `service/` | Logic nghiệp vụ, validation |
-| `controller/` | REST API |
-| `security/` | JWT filter, principal |
+This creates the `AIStudyHub` database and required tables.
 
-Quy tắc: không đặt logic nghiệp vụ trong `controller`; frontend **không** gọi database trực tiếp.
+After running the SQL script, make sure `application.properties` has the same SQL Server username/password.
 
-## Ghi chú hiện tại
+## How To Run The Project
 
-- Frontend giữ thiết kế prototype gốc (Next.js).
-- **Authentication** (login, register, logout, `/me`) đã nối backend + JWT.
-- Document, Cloud, Chatbot, Flashcard, Study Room, Admin: UI có sẵn, logic/API backend đang phát triển dần.
-- Nhánh phát triển chính: **`develop`** trên [GitHub](https://github.com/KhuongTNM/AI-studyHUB/tree/develop).
+Run backend and frontend in two separate terminals.
+
+### Terminal 1: Run Backend
+
+From the project root:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+Backend URL:
+
+```text
+http://localhost:8080
+```
+
+### Terminal 2: Run Frontend
+
+Open a new terminal from the project root:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend URL:
+
+```text
+http://localhost:3000
+```
+
+## Run Order Checklist
+
+1. Start SQL Server.
+2. Run `database/ai_study_hub_schema_mssql.sql`.
+3. Set database username/password in:
+
+```text
+backend/src/main/resources/application.properties
+```
+
+4. Start backend:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+5. Start frontend in another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+6. Open:
+
+```text
+http://localhost:3000
+```
+
+## Notes
+
+- Backend must be running before frontend API features can work.
+- Frontend runs on port `3000`.
+- Backend runs on port `8080`.
+- SQL Server must be running before backend starts.
+- Do not put business logic inside controllers. Use `service/`.
+- Frontend must call backend APIs. It must not connect directly to the database.
