@@ -68,6 +68,7 @@ export interface Folder {
   id: string
   name: string
   parentId: string | null  // null = root
+  subject?: string         // Môn học gắn với thư mục
   createdAt: Date
   createdBy: string
   color?: string

@@ -75,12 +75,15 @@ export function DocumentManager() {
   // Subfolders in current folder
   const foldersInView = folders.filter(f => f.parentId === currentFolderId)
 
+  // Subjects from all documents to keep filters persistent across navigation
   const subjects = Array.from(
     new Set([
       ...customSubjects,
       ...activeDocs.map(d => d.subject?.trim()).filter((s): s is string => Boolean(s))
     ])
   ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
+
+  const currentFolderName = folderPath.length > 0 ? folderPath[folderPath.length - 1].name : text.title
 
   const filtered = docsInFolder
     .filter(d => {
@@ -99,9 +102,11 @@ export function DocumentManager() {
       return sortOrder === "desc" ? -cmp : cmp
     })
 
-  const filteredFolders = foldersInView.filter(f =>
-    !searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredFolders = foldersInView.filter(f => {
+    const matchSearch = !searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchSubject = selectedSubject === "all" || f.subject === selectedSubject
+    return matchSearch && matchSubject
+  })
 
   const uploadingDocs = documents.filter(d => d.status === "uploading" || d.status === "scanning")
 
@@ -110,14 +115,14 @@ export function DocumentManager() {
     setCurrentFolderId(folder.id)
     setFolderPath(prev => [...prev, folder])
     setSearchQuery("")
-    setSelectedSubject("all")
+    // Khi vào folder, chúng ta giữ nguyên bộ lọc môn học nếu folder đó thuộc môn học đó
+    // Hoặc nếu folder không có môn học (tạo ở chế độ "Tất cả") thì vẫn để "Tất cả"
   }, [])
 
   const navigateToRoot = useCallback(() => {
     setCurrentFolderId(null)
     setFolderPath([])
     setSearchQuery("")
-    setSelectedSubject("all")
   }, [])
 
   const navigateToBreadcrumb = useCallback((index: number) => {
@@ -128,7 +133,6 @@ export function DocumentManager() {
       setCurrentFolderId(folder.id)
       setFolderPath(prev => prev.slice(0, index + 1))
       setSearchQuery("")
-      setSelectedSubject("all")
     }
   }, [folderPath, navigateToRoot])
 
@@ -168,8 +172,8 @@ export function DocumentManager() {
 
   // ── Folder actions ──────────────────────────────────────────────────────
   const handleCreateFolder = useCallback((name: string) => {
-    createFolder(name, currentFolderId)
-  }, [createFolder, currentFolderId])
+    createFolder(name, currentFolderId, selectedSubject !== "all" ? selectedSubject : undefined)
+  }, [createFolder, currentFolderId, selectedSubject])
 
   const handleCreateSubject = useCallback((name: string) => {
     setCustomSubjects(prev => {
@@ -201,7 +205,7 @@ export function DocumentManager() {
       <div className="border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-foreground">{text.title}</h1>
+            <h1 className="text-xl font-bold text-foreground">{currentFolderName}</h1>
             <p className="text-sm text-muted-foreground">
               {foldersInView.length > 0 ? `${foldersInView.length} ${text.folders}, ` : ""}
               {docsInFolder.length} {docsInFolder.length === 1 ? text.document : text.documents}
@@ -250,6 +254,34 @@ export function DocumentManager() {
             {uploadingDocs.map(doc => <UploadProgress key={doc.id} doc={doc} />)}
           </div>
         )}
+
+        {/* Breadcrumbs */}
+        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <button
+            onClick={navigateToRoot}
+            className={cn(
+              "flex items-center gap-1 hover:text-primary transition-colors",
+              currentFolderId === null && "font-semibold text-foreground"
+            )}
+          >
+            <Home className="h-4 w-4" />
+            {text.myDocuments}
+          </button>
+          {folderPath.map((folder, i) => (
+            <div key={folder.id} className="flex items-center gap-2">
+              <ChevronRight className="h-3 w-3" />
+              <button
+                onClick={() => navigateToBreadcrumb(i)}
+                className={cn(
+                  "hover:text-primary transition-colors",
+                  i === folderPath.length - 1 && "font-semibold text-foreground"
+                )}
+              >
+                {folder.name}
+              </button>
+            </div>
+          ))}
+        </div>
 
         {/* Filter & Search bar */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -345,7 +377,7 @@ export function DocumentManager() {
         )}
 
         {/* Custom empty states when no items match filters */}
-        {filtered.length === 0 && filteredFolders.length === 0 && (
+        {filtered.length === 0 && filteredFolders.length === 0 && currentFolderId === null && (
           selectedSubject === "all" ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/20 text-primary">
@@ -460,36 +492,6 @@ export function DocumentManager() {
                   />
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* No-results state */}
-        {filtered.length === 0 && filteredFolders.length === 0 && !isEmpty && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Search className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="font-medium text-foreground">{text.noResults}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(""); setSelectedSubject("all") }}>
-              {text.clearFilters}
-            </Button>
-          </div>
-        )}
-
-        {/* Empty folder state (folder exists but nothing in it) */}
-        {!isEmpty && currentFolderId !== null && foldersInView.length === 0 && docsInFolder.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/20">
-              <FolderPlus className="h-7 w-7 text-amber-500" />
-            </div>
-            <p className="font-medium text-foreground">{text.emptyFolderTitle}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{text.emptyFolderHint}</p>
-            <div className="mt-4 flex gap-2">
-              <Button className="gap-2" onClick={() => setShowUploadModal(true)} disabled={!currentUser}>
-                <Upload className="h-4 w-4" /> {text.uploadDocument}
-              </Button>
-              <Button variant="outline" className="gap-2" onClick={() => setShowCreateFolder(true)} disabled={!currentUser}>
-                <FolderPlus className="h-4 w-4" /> {text.newFolder}
-              </Button>
             </div>
           </div>
         )}

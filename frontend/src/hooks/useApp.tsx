@@ -84,7 +84,7 @@ export interface AppState {
   addCategory: (name: string, color: string) => void
   deleteCategory: (id: string) => void
   // Folder actions (local/in-memory)
-  createFolder: (name: string, parentId?: string | null) => Folder
+  createFolder: (name: string, parentId?: string | null, subject?: string) => Folder
   renameFolder: (id: string, name: string) => void
   deleteFolder: (id: string) => void
   moveDocumentToFolder: (docId: string, folderId: string | null) => void

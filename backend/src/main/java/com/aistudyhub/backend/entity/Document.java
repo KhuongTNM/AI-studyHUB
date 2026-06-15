@@ -18,6 +18,9 @@ public class Document {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Column(name = "folder_id")
+    private UUID folderId;
+
     @Column(name = "original_name", nullable = false, length = 255)
     private String originalName;
 
@@ -72,6 +75,8 @@ public class Document {
     public void setId(UUID id) { this.id = id; }
     public UUID getUserId() { return userId; }
     public void setUserId(UUID userId) { this.userId = userId; }
+    public UUID getFolderId() { return folderId; }
+    public void setFolderId(UUID folderId) { this.folderId = folderId; }
     public String getOriginalName() { return originalName; }
     public void setOriginalName(String originalName) { this.originalName = originalName; }
     public String getTitle() { return title; }
