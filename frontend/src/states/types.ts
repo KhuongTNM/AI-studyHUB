@@ -1,4 +1,4 @@
-﻿export type UserRole = "guest" | "user" | "sub-admin" | "admin"
+export type UserRole = "guest" | "user" | "sub-admin" | "admin"
 export type PackageTier = "free" | "2-4" | "5+"
 
 export interface User {
@@ -64,6 +64,15 @@ export interface Category {
   color: string
 }
 
+export interface Folder {
+  id: string
+  name: string
+  parentId: string | null  // null = root
+  createdAt: Date
+  createdBy: string
+  color?: string
+}
+
 export type DocStatus = "uploading" | "scanning" | "ready" | "failed" | "deleted"
 export type ShareStatus = "none" | "pending" | "approved" | "rejected"
 
@@ -77,6 +86,7 @@ export interface Document {
   uploadedBy: string
   categoryId: string
   subject: string
+  folderId?: string | null  // null or undefined = root
   status: DocStatus
   uploadProgress?: number
   description?: string

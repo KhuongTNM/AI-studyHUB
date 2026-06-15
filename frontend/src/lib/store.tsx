@@ -1,4 +1,4 @@
-﻿export { AppProvider, useApp, type AppState } from "@/hooks/useApp"
+export { AppProvider, useApp, type AppState } from "@/hooks/useApp"
 export type {
   ActivityLog,
   Category,
@@ -8,6 +8,7 @@ export type {
   Document,
   Flashcard,
   FlashcardStatus,
+  Folder,
   Language,
   PackagePrice,
   PackageTier,
