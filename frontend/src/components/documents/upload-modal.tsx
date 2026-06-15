@@ -7,13 +7,15 @@ import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
 
 export function UploadModal({
+  initialSubject = "",
   onClose,
   onUpload,
 }: {
+  initialSubject?: string
   onClose: () => void
   onUpload: (files: File[], subject: string) => void
 }) {
-  const [subject, setSubject] = useState("")
+  const [subject, setSubject] = useState(initialSubject)
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const inputRef = useRef<HTMLInputElement>(null)

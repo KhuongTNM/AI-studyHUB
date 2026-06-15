@@ -25,7 +25,7 @@ import React, { createContext, useCallback, useContext, type ReactNode } from "r
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
 import type {
   Language, PackagePrice, PackageTier, StudyRoom, User,
-  Category, ChatSession, Document, Flashcard, ActivityLog,
+  Category, ChatSession, Document, Folder, Flashcard, ActivityLog,
 } from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
@@ -60,9 +60,10 @@ export interface AppState {
   setLanguage: (language: Language) => void
   setCurrentPage: (page: AppState["currentPage"]) => void
 
-  // ── Documents ─────────────────────────────────────────────────────────────
+  // ── Documents ──────────────────────────────────────────────────────────────
   documents: Document[]
   categories: Category[]
+  folders: Folder[]
   addDocument: (doc: Document) => void
   updateDocument: (id: string, updates: Partial<Document>) => void
   /** Upload file thật lên backend — thay thế simulateUpload (BR-013 đến BR-018) */
@@ -70,6 +71,7 @@ export interface AppState {
     file: File,
     subject: string,
     visibility?: "private" | "public",
+    folderId?: string | null,
   ) => Promise<{ success: boolean; error?: string }>
   /** Soft-delete tài liệu và gọi DELETE /api/documents/{id} (BR-022) */
   deleteDocument: (id: string) => void
@@ -81,6 +83,11 @@ export interface AppState {
   downloadDocument: (id: string) => void
   addCategory: (name: string, color: string) => void
   deleteCategory: (id: string) => void
+  // Folder actions (local/in-memory)
+  createFolder: (name: string, parentId?: string | null, subject?: string) => Folder
+  renameFolder: (id: string, name: string) => void
+  deleteFolder: (id: string) => void
+  moveDocumentToFolder: (docId: string, folderId: string | null) => void
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   chatSessions: ChatSession[]
@@ -243,6 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Documents
         documents: docs.documents,
         categories: docs.categories,
+        folders: docs.folders,
         addDocument: docs.addDocument,
         updateDocument: docs.updateDocument,
         uploadDocument: docs.uploadDocument,
@@ -252,6 +260,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         downloadDocument: docs.downloadDocument,
         addCategory: docs.addCategory,
         deleteCategory: docs.deleteCategory,
+        createFolder: docs.createFolder,
+        renameFolder: docs.renameFolder,
+        deleteFolder: docs.deleteFolder,
+        moveDocumentToFolder: docs.moveDocumentToFolder,
 
         // Chat
         chatSessions: chat.chatSessions,

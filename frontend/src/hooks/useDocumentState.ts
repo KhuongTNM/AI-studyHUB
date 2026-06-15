@@ -10,7 +10,7 @@ import {
   restoreDocumentApi,
   downloadDocumentApi,
 } from "@/services/api/documents"
-import type { Category, Document, User } from "@/states/types"
+import type { Category, Document, Folder, User } from "@/states/types"
 
 interface DocumentStateDeps {
   currentUser: User | null
@@ -19,6 +19,7 @@ interface DocumentStateDeps {
 export function useDocumentState({ currentUser }: DocumentStateDeps) {
   const [documents, setDocuments] = useState<Document[]>([])
   const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES)
+  const [folders, setFolders] = useState<Folder[]>([])
 
   // ── Load documents từ API khi user đăng nhập ────────────────────────────
   useEffect(() => {
@@ -55,6 +56,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       file: File,
       subject: string,
       visibility: "private" | "public" = "private",
+      folderId?: string | null,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
@@ -71,6 +73,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
         uploadedBy: currentUser.id,
         categoryId: "",
         subject,
+        folderId,
         status: "uploading",
         uploadProgress: 0,
         tags: [],
@@ -89,7 +92,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
 
         // Thay placeholder bằng doc thật (bắt đầu scanning)
         setDocuments(prev =>
-          prev.map(d => d.id === tempId ? { ...realDoc, status: "scanning" } : d),
+          prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),
         )
 
         // Poll backend cho đến khi status chuyển sang ready / failed (BR-016)
@@ -103,7 +106,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
             if (updated && updated.status !== "scanning" && updated.status !== "uploading") {
               clearInterval(poll)
               setDocuments(prev =>
-                prev.map(d => d.id === realDoc.id ? updated : d),
+                prev.map(d => d.id === realDoc.id ? { ...updated, folderId } : d),
               )
             }
           } catch {
@@ -180,6 +183,44 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     })
   }, [])
 
+  // ── Folders (local-only, in-memory) ─────────────────────────────────────
+  const createFolder = useCallback((name: string, parentId: string | null = null, subject?: string): Folder => {
+    const folder: Folder = {
+      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      parentId,
+      subject,
+      createdAt: new Date(),
+      createdBy: currentUser?.id ?? "guest",
+    }
+    setFolders(prev => [...prev, folder])
+    return folder
+  }, [currentUser])
+
+  const renameFolder = useCallback((id: string, name: string) => {
+    setFolders(prev => prev.map(f => f.id === id ? { ...f, name } : f))
+  }, [])
+
+  const deleteFolder = useCallback((id: string) => {
+    // Recursively collect all descendant folder ids
+    const collectIds = (parentId: string, all: Folder[]): string[] => {
+      const children = all.filter(f => f.parentId === parentId)
+      return [parentId, ...children.flatMap(c => collectIds(c.id, all))]
+    }
+    setFolders(prev => {
+      const idsToDelete = collectIds(id, prev)
+      // Move documents from deleted folders to root
+      setDocuments(docs => docs.map(d =>
+        d.folderId && idsToDelete.includes(d.folderId) ? { ...d, folderId: null } : d
+      ))
+      return prev.filter(f => !idsToDelete.includes(f.id))
+    })
+  }, [])
+
+  const moveDocumentToFolder = useCallback((docId: string, folderId: string | null) => {
+    setDocuments(prev => prev.map(d => d.id === docId ? { ...d, folderId } : d))
+  }, [])
+
   // ── Categories (local-only; không có API endpoint) ───────────────────────
   const addCategory = useCallback((name: string, color: string) => {
     const cat: Category = { id: `cat-${Date.now()}`, name, color }
@@ -195,6 +236,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     /** Exposed so admin actions (e.g. deleteUserAccount) can soft-delete user docs */
     setDocuments,
     categories,
+    folders,
     addDocument,
     updateDocument,
     uploadDocument,
@@ -204,5 +246,9 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     downloadDocument,
     addCategory,
     deleteCategory,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveDocumentToFolder,
   }
 }
