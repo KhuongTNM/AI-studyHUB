@@ -184,11 +184,12 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
   }, [])
 
   // ── Folders (local-only, in-memory) ─────────────────────────────────────
-  const createFolder = useCallback((name: string, parentId: string | null = null): Folder => {
+  const createFolder = useCallback((name: string, parentId: string | null = null, subject?: string): Folder => {
     const folder: Folder = {
       id: `folder-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name,
       parentId,
+      subject,
       createdAt: new Date(),
       createdBy: currentUser?.id ?? "guest",
     }

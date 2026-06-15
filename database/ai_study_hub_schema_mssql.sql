@@ -166,7 +166,35 @@ GO
 
 
 -- =============================================================
--- 3. DOCUMENTS
+-- 3. FOLDERS
+-- Lưu trữ cấu trúc thư mục của người dùng
+-- =============================================================
+
+CREATE TABLE folders (
+    id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    user_id         UNIQUEIDENTIFIER NOT NULL
+                        CONSTRAINT fk_folders_user
+                        REFERENCES users(id) ON DELETE CASCADE,
+    -- parent_id: NULL nghĩa là thư mục gốc (root)
+    parent_id       UNIQUEIDENTIFIER NULL
+                        CONSTRAINT fk_folders_parent
+                        REFERENCES folders(id) ON DELETE NO ACTION,
+    name            NVARCHAR(255)    NOT NULL,
+    -- subject: Dùng để lọc thư mục theo môn học
+    subject         NVARCHAR(100)    NULL,
+    created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+    updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
+);
+GO
+
+CREATE INDEX idx_folders_user_id ON folders(user_id);
+CREATE INDEX idx_folders_parent_id ON folders(parent_id);
+CREATE INDEX idx_folders_subject ON folders(subject);
+GO
+
+
+-- =============================================================
+-- 4. DOCUMENTS
 -- Tài liệu học tập: PDF / DOCX / PPTX
 -- BR-013→BR-026, BR-031
 -- =============================================================
@@ -176,6 +204,10 @@ CREATE TABLE documents (
     user_id         UNIQUEIDENTIFIER NOT NULL
                         CONSTRAINT fk_docs_user
                         REFERENCES users(id) ON DELETE CASCADE,
+    -- folder_id: Tài liệu nằm trong thư mục nào
+    folder_id       UNIQUEIDENTIFIER NULL
+                        CONSTRAINT fk_docs_folder
+                        REFERENCES folders(id) ON DELETE NO ACTION,
     -- Tên file gốc khi upload
     original_name   NVARCHAR(255)    NOT NULL,
     -- Tiêu đề hiển thị (user có thể chỉnh)
@@ -460,6 +492,16 @@ ON users AFTER UPDATE
 AS BEGIN
     SET NOCOUNT ON;
     UPDATE users
+    SET updated_at = GETDATE()
+    WHERE id IN (SELECT id FROM INSERTED);
+END;
+GO
+
+CREATE TRIGGER trg_folders_updated_at
+ON folders AFTER UPDATE
+AS BEGIN
+    SET NOCOUNT ON;
+    UPDATE folders
     SET updated_at = GETDATE()
     WHERE id IN (SELECT id FROM INSERTED);
 END;
