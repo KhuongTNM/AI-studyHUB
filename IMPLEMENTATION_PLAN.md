@@ -271,5 +271,26 @@ import { DocumentManager } from "@/components/documents"
 1. **Tách từng file một, commit riêng** — đừng tách tất cả cùng lúc, khó review và rollback
 2. **Không thay đổi logic** trong lần refactor này — chỉ move code, không optimize
 3. **Kiểm tra sau mỗi file** — chạy app và test tính năng liên quan trước khi tách file tiếp theo
-4. **Props typing** — khi tách component, định nghĩa rõ ràng interface cho props thay vì dùng inline type
+4. **Props typing** — khi tách component, định nghĩa rõ ràng interface một cách tường minh.
 5. **Không tách UI library** — folder `components/ui/` giữ nguyên, đây là shadcn/ui không cần đụng đến
+
+---
+
+## 5. Subject-First Document Management (New Requirements)
+
+### Goal:
+Change document management flow to force selecting/creating a subject before uploading files or creating folders. Remove breadcrumbs, upload button, and dashboard drag-and-drop zone. Rename "New folder" button to "New subject".
+
+### Proposed Changes:
+1. **Remove Breadcrumbs**: Delete the `<Home Icon> My Documents > ...` breadcrumb trail component in `document-manager.tsx`.
+2. **Remove Top Upload Button**: Delete the `Upload document` button at the top-right header in `document-manager.tsx`.
+3. **Remove Drag-Drop Zone Box**: Delete the `Drag files here or click to upload more` dotted drag-and-drop zone from above the files.
+4. **Rename & Implement "New subject" Button**:
+   - Rename the `New folder` button at the top-right header to `New subject` (Vietnamese: `Môn học mới` / English: `New subject`).
+   - Create a `customSubjects` array state in `document-manager.tsx` to hold dynamically created subjects.
+   - When clicked, open a prompt/modal (`CreateSubjectModal` or similar) asking for a subject name. Once confirmed, add it to `customSubjects`.
+5. **Subject Selection Actions**:
+   - When a subject is selected (`selectedSubject !== "all"`), enable background right-click options (`New folder`, `Upload file`).
+   - If no subject is selected (`selectedSubject === "all"`), right-click on the background will show a helper option indicating "Please select a subject first" or won't allow creation.
+   - Pre-populate the upload modal subject field with the selected subject.
+
