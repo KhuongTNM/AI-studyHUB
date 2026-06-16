@@ -80,6 +80,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     : 0
 
   const trashedCount = documents.filter(d => d.status === "deleted").length
+  const isAdminAccount = currentUser?.role === "admin" || currentUser?.role === "sub-admin"
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar">
@@ -103,18 +104,19 @@ export function Sidebar({ onNewChat }: SidebarProps) {
         </Button>
       </div>
 
-      {/* New Chat Button */}
-      <div className="px-3 pb-4">
-        <Button
-          id="new-chat-btn"
-          onClick={() => handleNav("chat")}
-          variant="outline"
-          className="w-full justify-start gap-2 border-border bg-background text-foreground hover:bg-muted"
-        >
-          <Plus className="h-4 w-4 rounded-full bg-primary/10 p-0.5 text-primary" />
-          {text.newChat}
-        </Button>
-      </div>
+      {!isAdminAccount && (
+        <div className="px-3 pb-4">
+          <Button
+            id="new-chat-btn"
+            onClick={() => handleNav("chat")}
+            variant="outline"
+            className="w-full justify-start gap-2 border-border bg-background text-foreground hover:bg-muted"
+          >
+            <Plus className="h-4 w-4 rounded-full bg-primary/10 p-0.5 text-primary" />
+            {text.newChat}
+          </Button>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 space-y-1">
@@ -125,7 +127,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           </p>
           {navItems
             .filter(item => {
-              if (item.adminOnly) return currentUser?.role === "admin" || currentUser?.role === "sub-admin"
+              if (isAdminAccount) return item.adminOnly
+              if (item.adminOnly) return false
               return true
             })
             .map(item => (
@@ -157,7 +160,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
         </div>
 
         {/* Chat History Section */}
-        {currentUser && (
+        {currentUser && !isAdminAccount && (
           <div className="mb-3">
             <button
               onClick={() => toggleSection("history")}
