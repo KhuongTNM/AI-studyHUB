@@ -61,7 +61,6 @@ export function UserTable({
   onUserSearchChange,
   onLock,
   onReset,
-  onDelete,
   onGrant,
   onStorageLimit,
   text,
@@ -74,7 +73,6 @@ export function UserTable({
   onUserSearchChange: (value: string) => void
   onLock: (user: User) => void
   onReset: (user: User) => void
-  onDelete: (user: User) => void
   onGrant: (user: User) => void
   onStorageLimit: (user: User, value: string) => void
   text: any
@@ -151,15 +149,6 @@ export function UserTable({
                 onClick={() => onLock(user)}
               >
                 🔒 {user.isLocked ? text.unlock : text.lock}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!canOperate(user)}
-                className="text-destructive hover:text-destructive"
-                onClick={() => onDelete(user)}
-              >
-                🗑️ {text.delete}
               </Button>
             </div>
           </div>

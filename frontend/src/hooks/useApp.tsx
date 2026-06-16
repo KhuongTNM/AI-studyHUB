@@ -150,10 +150,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const ui = useUIState()
   const chat = useChatState()
 
+  const routeAfterAuthentication = useCallback((user: User) => {
+    if (user.role === "admin" || user.role === "sub-admin") {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("admin-section", "overview")
+      }
+      ui.setCurrentPage("admin")
+    }
+  }, [ui.setCurrentPage])
+
   // ── 2. Auth (cần ui setters để đồng bộ language & đóng modal) ──────────
   const auth = useAuthState({
     setLanguageState: ui.setLanguageState,
     closeAuthModal: ui.closeAuthModal,
+    onAuthenticated: routeAfterAuthentication,
   })
 
   // ── 3. Documents (cần currentUser để load và upload) ────────────────────
