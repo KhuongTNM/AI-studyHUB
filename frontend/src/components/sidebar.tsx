@@ -1,11 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
-  MessageCircle, FolderOpen, Plus, FileText, Sparkles, Cloud,
-  ChevronDown, ChevronRight, LayoutGrid, Home, Trash2,
+  MessageCircle, FolderOpen, Plus, Sparkles, Cloud,
+  ChevronDown, ChevronRight, Home, Trash2,
   BookOpen,
-  LayoutDashboard, User, LogIn, HardDrive, X, Clock,
+  LayoutDashboard, LogIn, HardDrive, X, Clock, Users, ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -16,6 +16,7 @@ interface SidebarProps {
 }
 
 type NavPage = "home" | "documents" | "chat" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
+type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
 
 const navItems: { page: NavPage; icon: React.ElementType; label: { vi: string; en: string }; adminOnly?: boolean }[] = [
   { page: "home", icon: Home, label: { vi: "Trang chủ", en: "Home" } },
@@ -24,8 +25,22 @@ const navItems: { page: NavPage; icon: React.ElementType; label: { vi: string; e
   { page: "flashcards", icon: BookOpen, label: { vi: "Flashcards", en: "Flashcards" } },
   { page: "cloud", icon: Cloud, label: { vi: "Cloud Storage", en: "Cloud Storage" } },
   { page: "trash", icon: Trash2, label: { vi: "Thùng rác", en: "Trash" } },
-  { page: "admin", icon: LayoutDashboard, label: { vi: "Admin Panel", en: "Admin Panel" }, adminOnly: true },
 ]
+
+const adminNavItems: { section: AdminSection; icon: React.ElementType; label: { vi: string; en: string }; adminOnly?: boolean }[] = [
+  { section: "overview", icon: LayoutDashboard, label: { vi: "Tổng quan", en: "Overview" } },
+  { section: "accounts", icon: Users, label: { vi: "Tài khoản", en: "Accounts" } },
+  { section: "sub-admins", icon: ShieldCheck, label: { vi: "Sub-admin", en: "Sub-admins" }, adminOnly: true },
+  { section: "packages", icon: Sparkles, label: { vi: "Gói dịch vụ", en: "Packages" }, adminOnly: true },
+]
+
+const getInitialAdminSection = (): AdminSection => {
+  if (typeof window === "undefined") return "overview"
+  const stored = window.sessionStorage.getItem("admin-section")
+  return ["overview", "accounts", "sub-admins", "packages"].includes(stored ?? "")
+    ? stored as AdminSection
+    : "overview"
+}
 
 export function Sidebar({ onNewChat }: SidebarProps) {
   const { currentUser, currentPage, setCurrentPage, chatSessions, activeChatId,
@@ -65,6 +80,13 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     history: true,
     nav: true,
   })
+  const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>(getInitialAdminSection)
+
+  useEffect(() => {
+    const syncAdminSection = () => setActiveAdminSection(getInitialAdminSection())
+    window.addEventListener("admin-section-change", syncAdminSection)
+    return () => window.removeEventListener("admin-section-change", syncAdminSection)
+  }, [])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
@@ -75,11 +97,19 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     setCurrentPage(page)
   }
 
+  const handleAdminNav = (section: AdminSection) => {
+    window.sessionStorage.setItem("admin-section", section)
+    setActiveAdminSection(section)
+    setCurrentPage("admin")
+    window.dispatchEvent(new Event("admin-section-change"))
+  }
+
   const storagePercent = currentUser
     ? Math.round((currentUser.storageUsed / currentUser.storageLimit) * 100)
     : 0
 
   const trashedCount = documents.filter(d => d.status === "deleted").length
+  const isAdminAccount = currentUser?.role === "admin" || currentUser?.role === "sub-admin"
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar">
@@ -98,23 +128,29 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           </svg>
         </div>
         <span className="text-lg font-bold text-sidebar-foreground">StudyHub</span>
-        <Button variant="outline" size="icon" className="ml-auto h-8 w-8" onClick={() => setCurrentPage("home")}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="ml-auto h-8 w-8"
+          onClick={() => isAdminAccount ? handleAdminNav("overview") : setCurrentPage("home")}
+        >
           <Home className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* New Chat Button */}
-      <div className="px-3 pb-4">
-        <Button
-          id="new-chat-btn"
-          onClick={() => handleNav("chat")}
-          variant="outline"
-          className="w-full justify-start gap-2 border-border bg-background text-foreground hover:bg-muted"
-        >
-          <Plus className="h-4 w-4 rounded-full bg-primary/10 p-0.5 text-primary" />
-          {text.newChat}
-        </Button>
-      </div>
+      {!isAdminAccount && (
+        <div className="px-3 pb-4">
+          <Button
+            id="new-chat-btn"
+            onClick={() => handleNav("chat")}
+            variant="outline"
+            className="w-full justify-start gap-2 border-border bg-background text-foreground hover:bg-muted"
+          >
+            <Plus className="h-4 w-4 rounded-full bg-primary/10 p-0.5 text-primary" />
+            {text.newChat}
+          </Button>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 space-y-1">
@@ -123,12 +159,24 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
             {text.menu}
           </p>
-          {navItems
-            .filter(item => {
-              if (item.adminOnly) return currentUser?.role === "admin" || currentUser?.role === "sub-admin"
-              return true
-            })
-            .map(item => (
+          {(isAdminAccount ? adminNavItems : navItems)
+            .filter(item => !("adminOnly" in item) || !item.adminOnly || currentUser?.role === "admin")
+            .map(item => "section" in item ? (
+              <button
+                key={item.section}
+                id={`admin-nav-${item.section}`}
+                onClick={() => handleAdminNav(item.section)}
+                className={cn(
+                  "relative flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                  currentPage === "admin" && activeAdminSection === item.section
+                    ? "bg-sidebar-accent font-medium text-sidebar-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                )}
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                <span>{item.label[language]}</span>
+              </button>
+            ) : (
               <button
                 key={item.page}
                 id={`nav-${item.page}`}
@@ -147,17 +195,12 @@ export function Sidebar({ onNewChat }: SidebarProps) {
                     {trashedCount}
                   </span>
                 )}
-                {item.page === "admin" && (
-                  <span className="ml-auto rounded-full bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">
-                    Admin
-                  </span>
-                )}
               </button>
             ))}
         </div>
 
         {/* Chat History Section */}
-        {currentUser && (
+        {currentUser && !isAdminAccount && (
           <div className="mb-3">
             <button
               onClick={() => toggleSection("history")}

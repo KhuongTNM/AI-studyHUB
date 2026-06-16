@@ -15,9 +15,11 @@ interface AuthStateDeps {
   setLanguageState: (lang: Language) => void
   /** Called to close the modal after a successful auth action */
   closeAuthModal: () => void
+  /** Called after a session is resolved so role-specific landing pages can be applied */
+  onAuthenticated?: (user: User) => void
 }
 
-export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps) {
+export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated }: AuthStateDeps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
 
   // Restore session on mount
@@ -28,6 +30,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
         if (!cancelled && user) {
           setCurrentUser(user)
           setLanguageState(user.languagePreference ?? "vi")
+          onAuthenticated?.(user)
         }
       })
       .catch(() => {
@@ -36,7 +39,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
     return () => {
       cancelled = true
     }
-  }, [setLanguageState])
+  }, [setLanguageState, onAuthenticated])
 
   /**
    * BR-061: Force-logout detection.
@@ -81,6 +84,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
         if (!result.success) return result
         setCurrentUser(result.user)
         setLanguageState(result.user.languagePreference ?? "vi")
+        onAuthenticated?.(result.user)
         closeAuthModal()
         return { success: true }
       } catch {
@@ -90,7 +94,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
         }
       }
     },
-    [setLanguageState, closeAuthModal],
+    [setLanguageState, closeAuthModal, onAuthenticated],
   )
 
   const register = useCallback(
@@ -100,6 +104,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
         if (!result.success) return result
         setCurrentUser(result.user)
         setLanguageState(result.user.languagePreference ?? "vi")
+        onAuthenticated?.(result.user)
         closeAuthModal()
         return { success: true }
       } catch {
@@ -109,7 +114,7 @@ export function useAuthState({ setLanguageState, closeAuthModal }: AuthStateDeps
         }
       }
     },
-    [setLanguageState, closeAuthModal],
+    [setLanguageState, closeAuthModal, onAuthenticated],
   )
 
   /**

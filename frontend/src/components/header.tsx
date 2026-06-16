@@ -29,6 +29,7 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
     logout: "Đăng xuất",
     login: "Đăng nhập",
     register: "Đăng ký",
+    controlPanel: "Bảng điều khiển",
   } : {
     description: "AI-powered study document management system",
     light: "Light mode",
@@ -37,6 +38,7 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
     logout: "Log out",
     login: "Log in",
     register: "Sign up",
+    controlPanel: "Control Panel",
   }
 
   const avatarInitials = currentUser?.displayName
@@ -45,6 +47,8 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
     .join("")
     .slice(0, 2)
     .toUpperCase()
+
+  const isAdminAccount = currentUser?.role === "admin" || currentUser?.role === "sub-admin"
 
   const openPackages = () => {
     if (!currentUser) {
@@ -91,15 +95,17 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button
-          id="buy-plan-btn"
-          size="sm"
-          className="gap-1.5"
-          onClick={openPackages}
-        >
-          <CreditCard className="h-4 w-4" />
-          <span className="hidden sm:inline">{language === "vi" ? "Mua gói" : "Buy plan"}</span>
-        </Button>
+        {!isAdminAccount && (
+          <Button
+            id="buy-plan-btn"
+            size="sm"
+            className="gap-1.5"
+            onClick={openPackages}
+          >
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline">{language === "vi" ? "Mua gói" : "Buy plan"}</span>
+          </Button>
+        )}
 
         {currentUser ? (
           <>
@@ -138,14 +144,16 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
                   </span>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem id="go-profile" onClick={() => setCurrentPage("profile")}>
-                  <User className="mr-2 h-4 w-4" />
-                  {text.profile}
-                </DropdownMenuItem>
-                {(currentUser.role === "admin" || currentUser.role === "sub-admin") && (
+                {!isAdminAccount && (
+                  <DropdownMenuItem id="go-profile" onClick={() => setCurrentPage("profile")}>
+                    <User className="mr-2 h-4 w-4" />
+                    {text.profile}
+                  </DropdownMenuItem>
+                )}
+                {isAdminAccount && (
                   <DropdownMenuItem id="go-admin" onClick={() => setCurrentPage("admin")}>
                     <LayoutDashboard className="mr-2 h-4 w-4" />
-                    Admin Panel
+                    {text.controlPanel}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
