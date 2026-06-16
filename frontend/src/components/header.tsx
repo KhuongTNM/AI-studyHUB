@@ -29,6 +29,7 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
     logout: "Đăng xuất",
     login: "Đăng nhập",
     register: "Đăng ký",
+    controlPanel: "Bảng điều khiển",
   } : {
     description: "AI-powered study document management system",
     light: "Light mode",
@@ -37,6 +38,7 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
     logout: "Log out",
     login: "Log in",
     register: "Sign up",
+    controlPanel: "Control Panel",
   }
 
   const avatarInitials = currentUser?.displayName
@@ -151,7 +153,7 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
                 {isAdminAccount && (
                   <DropdownMenuItem id="go-admin" onClick={() => setCurrentPage("admin")}>
                     <LayoutDashboard className="mr-2 h-4 w-4" />
-                    Admin Panel
+                    {text.controlPanel}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />

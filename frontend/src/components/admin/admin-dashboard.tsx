@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
-  KeyRound, LayoutDashboard, ShieldCheck, Sparkles, UserCog, Users,
+  KeyRound, LayoutDashboard, Sparkles, UserCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp, type PackageTier, type User } from "@/lib/store"
@@ -14,6 +14,15 @@ import { SubAdminForm } from "./sub-admin-form"
 
 type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
+const ADMIN_SECTION_EVENT = "admin-section-change"
+
+function getStoredAdminSection(): AdminSection {
+  if (typeof window === "undefined") return "overview"
+  const stored = window.sessionStorage.getItem("admin-section")
+  return ["overview", "accounts", "sub-admins", "packages"].includes(stored ?? "")
+    ? stored as AdminSection
+    : "overview"
+}
 
 export function AdminDashboard() {
   const {
@@ -22,7 +31,7 @@ export function AdminDashboard() {
     packagePrices, updatePackagePrice, grantSubscription, updateUserStorageLimit,
   } = useApp()
 
-  const [section, setSection] = useState<AdminSection>("overview")
+  const [section, setSection] = useState<AdminSection>(getStoredAdminSection)
   const [userSearch, setUserSearch] = useState("")
   const [message, setMessage] = useState("")
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
@@ -39,6 +48,18 @@ export function AdminDashboard() {
   const isSubAdmin = currentUser?.role === "sub-admin"
   const canManage = isAdmin || isSubAdmin
   const text = adminText[language === "vi" ? "vi" : "en"]
+
+  useEffect(() => {
+    const syncSection = () => setSection(getStoredAdminSection())
+    window.addEventListener(ADMIN_SECTION_EVENT, syncSection)
+    return () => window.removeEventListener(ADMIN_SECTION_EVENT, syncSection)
+  }, [])
+
+  const selectSection = (nextSection: AdminSection) => {
+    window.sessionStorage.setItem("admin-section", nextSection)
+    setSection(nextSection)
+    window.dispatchEvent(new Event(ADMIN_SECTION_EVENT))
+  }
 
   const totalStorage = users.reduce((sum, user) => sum + user.storageUsed, 0)
   const activeUsers = users.filter(user => !user.isLocked).length
@@ -94,13 +115,6 @@ export function AdminDashboard() {
     if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
   }
 
-  const navItems = [
-    { id: "overview" as const, label: text.overviewPage, icon: LayoutDashboard, adminOnly: false },
-    { id: "accounts" as const, label: text.accountsPage, icon: Users, adminOnly: false },
-    { id: "sub-admins" as const, label: text.subAdminsPage, icon: ShieldCheck, adminOnly: true },
-    { id: "packages" as const, label: text.packagesPage, icon: Sparkles, adminOnly: true },
-  ].filter(item => !item.adminOnly || isAdmin)
-
   const renderOverview = () => (
     <div className="space-y-6">
       <StatsOverview
@@ -127,9 +141,9 @@ export function AdminDashboard() {
           {text.adminTasks}
         </h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AdminTaskButton label={text.accountsPage} body={text.accountsPageHint} onClick={() => setSection("accounts")} />
-          {isAdmin && <AdminTaskButton label={text.subAdminsPage} body={text.subAdminsPageHint} onClick={() => setSection("sub-admins")} />}
-          {isAdmin && <AdminTaskButton label={text.packagesPage} body={text.packagesPageHint} onClick={() => setSection("packages")} />}
+          <AdminTaskButton label={text.accountsPage} body={text.accountsPageHint} onClick={() => selectSection("accounts")} />
+          {isAdmin && <AdminTaskButton label={text.subAdminsPage} body={text.subAdminsPageHint} onClick={() => selectSection("sub-admins")} />}
+          {isAdmin && <AdminTaskButton label={text.packagesPage} body={text.packagesPageHint} onClick={() => selectSection("packages")} />}
         </div>
       </section>
     </div>
@@ -251,28 +265,8 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="border-b border-border bg-muted/30 p-4 lg:border-b-0 lg:border-r">
-          <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setSection(item.id)}
-                className={
-                  "flex min-w-fit items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors " +
-                  (section === item.id
-                    ? "bg-background font-semibold text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-background hover:text-foreground")
-                }
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <main className="min-w-0 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1">
+        <main className="h-full min-w-0 overflow-y-auto p-6">
           {message && (
             <div className="mb-4 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
               {message}

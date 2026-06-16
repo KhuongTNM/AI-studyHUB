@@ -152,6 +152,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const routeAfterAuthentication = useCallback((user: User) => {
     if (user.role === "admin" || user.role === "sub-admin") {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("admin-section", "overview")
+      }
       ui.setCurrentPage("admin")
     }
   }, [ui.setCurrentPage])
