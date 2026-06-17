@@ -1,11 +1,13 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.AuthResponse;
+import com.aistudyhub.backend.dto.ForgotPasswordRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AuthService;
+import com.aistudyhub.backend.service.PasswordResetService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
@@ -21,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, PasswordResetService passwordResetService) {
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
     }
 
     @PostMapping("/register")
@@ -34,6 +38,11 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return ResponseEntity.ok(passwordResetService.forgotPassword(request.getEmail()));
     }
 
     @PostMapping("/logout")
