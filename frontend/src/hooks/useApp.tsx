@@ -48,6 +48,8 @@ export interface AppState {
   authModalTab: "login" | "register" | "forgot"
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   register: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
+  /** Đăng nhập/đăng ký bằng Google — idToken là JWT từ Google Identity Services */
+  loginWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   openAuthModal: (tab?: "login" | "register" | "forgot") => void
   closeAuthModal: () => void
@@ -245,6 +247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         authModalTab: ui.authModalTab,
         login: auth.login,
         register: auth.register,
+        loginWithGoogle: auth.loginWithGoogle,
         logout,
         openAuthModal: ui.openAuthModal,
         closeAuthModal: ui.closeAuthModal,
