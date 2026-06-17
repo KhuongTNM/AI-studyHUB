@@ -474,6 +474,25 @@ GO
 
 
 -- =============================================================
+-- TABLE: password_reset_tokens
+-- Forgot password — BR: Forgot Password
+-- =============================================================
+
+CREATE TABLE password_reset_tokens (
+    id          UNIQUEIDENTIFIER PRIMARY KEY,
+    email       NVARCHAR(255)    NOT NULL,
+    token       NVARCHAR(36)     NOT NULL UNIQUE,
+    expiry      DATETIME2        NOT NULL,
+    used        BIT              NOT NULL DEFAULT 0
+);
+GO
+
+CREATE INDEX idx_prt_email  ON password_reset_tokens(email);
+CREATE INDEX idx_prt_token  ON password_reset_tokens(token);
+GO
+
+
+-- =============================================================
 -- TRIGGERS — Cập nhật updated_at tự động
 -- =============================================================
 
