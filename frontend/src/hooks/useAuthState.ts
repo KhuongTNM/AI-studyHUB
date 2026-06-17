@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import {
   fetchCurrentUserApi,
   loginApi,
+  loginWithGoogleApi,
   logoutApi,
   registerApi,
 } from "@/services/api/auth"
@@ -118,6 +119,32 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
   )
 
   /**
+   * Đăng nhập/đăng ký bằng Google.
+   * idToken là JWT trả về từ Google Identity Services (xem GoogleSignInButton).
+   * Backend tự quyết định tạo user mới hay đăng nhập vào user đã tồn tại theo email
+   * trong token, rồi trả về cùng format AuthResponse như login thường.
+   */
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      try {
+        const result = await loginWithGoogleApi(idToken)
+        if (!result.success) return result
+        setCurrentUser(result.user)
+        setLanguageState(result.user.languagePreference ?? "vi")
+        onAuthenticated?.(result.user)
+        closeAuthModal()
+        return { success: true }
+      } catch {
+        return {
+          success: false,
+          error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
+        }
+      }
+    },
+    [setLanguageState, closeAuthModal, onAuthenticated],
+  )
+
+  /**
    * Clears the current user and calls the logout API.
    * Side-effects like clearing activeChatId or resetting currentPage
    * are handled by the AppProvider to avoid cross-domain coupling.
@@ -133,6 +160,7 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
     setCurrentUser,
     login,
     register,
+    loginWithGoogle,
     logoutUser,
   }
 }

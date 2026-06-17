@@ -3,11 +3,12 @@
 import { useState } from "react"
 import { X, Eye, EyeOff, Loader2, GraduationCap, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 export function AuthModal() {
-  const { showAuthModal, authModalTab, closeAuthModal, login, register, language } = useApp()
+  const { showAuthModal, authModalTab, closeAuthModal, login, register, loginWithGoogle, language, isDarkMode } = useApp()
   const [tab, setTab] = useState<"login" | "register" | "forgot">(authModalTab)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -49,6 +50,8 @@ export function AuthModal() {
     strengthLabel: ["", "Yếu", "Trung bình", "Tốt", "Mạnh"],
     namePlaceholder: "Nguyễn Văn A",
     passwordPlaceholder: "Tối thiểu 8 ký tự, có chữ và số",
+    orContinueWith: "Hoặc tiếp tục với",
+    googleFailed: "Đăng nhập Google thất bại.",
   } : {
     login: "Log in",
     register: "Sign up",
@@ -76,6 +79,8 @@ export function AuthModal() {
     strengthLabel: ["", "Weak", "Medium", "Good", "Strong"],
     namePlaceholder: "Alex Nguyen",
     passwordPlaceholder: "At least 8 characters with letters and numbers",
+    orContinueWith: "Or continue with",
+    googleFailed: "Google sign-in failed.",
   }
 
   const switchTab = (t: typeof tab) => {
@@ -121,6 +126,15 @@ export function AuthModal() {
     await new Promise(r => setTimeout(r, 1000))
     setLoading(false)
     setSuccess(text.resetSent)
+  }
+
+  const handleGoogleCredential = async (idToken: string) => {
+    setError("")
+    setSuccess("")
+    setLoading(true)
+    const result = await loginWithGoogle(idToken)
+    setLoading(false)
+    if (!result.success) setError(result.error || text.googleFailed)
   }
 
   // Password strength
@@ -178,6 +192,24 @@ export function AuthModal() {
         )}
 
         <div className="p-6">
+          {/* Google Sign-In */}
+          {tab !== "forgot" && (
+            <>
+              <GoogleSignInButton
+                onCredential={handleGoogleCredential}
+                theme={isDarkMode ? "filled_black" : "outline"}
+                text={tab === "register" ? "signup_with" : "signin_with"}
+                disabled={loading}
+                onError={msg => setError(msg)}
+              />
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">{text.orContinueWith}</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
+
           {/* Error/Success */}
           {error && (
             <div className="mb-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

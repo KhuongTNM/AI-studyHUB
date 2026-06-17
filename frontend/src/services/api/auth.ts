@@ -103,6 +103,23 @@ export async function registerApi(
   return handleAuthResponse(response)
 }
 
+/**
+ * Đăng nhập/đăng ký bằng Google.
+ * Gửi ID token (JWT) lấy từ Google Identity Services lên backend để backend tự verify
+ * (audience = Google Client ID, issuer, hạn dùng) rồi tạo/tìm user tương ứng.
+ * Backend cần trả về cùng schema AuthApiResponse như /api/auth/login.
+ */
+export async function loginWithGoogleApi(
+  idToken: string
+): Promise<{ success: true; user: User } | { success: false; error: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  })
+  return handleAuthResponse(response)
+}
+
 export async function logoutApi(): Promise<void> {
   const token = getAccessToken()
   if (token) {
