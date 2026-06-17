@@ -192,13 +192,13 @@ export function AuthModal() {
         )}
 
         <div className="p-6">
-          {/* Google Sign-In */}
-          {tab !== "forgot" && (
+          {/* Google Sign-In — chỉ hiện ở tab Đăng nhập */}
+          {tab === "login" && (
             <>
               <GoogleSignInButton
                 onCredential={handleGoogleCredential}
                 theme={isDarkMode ? "filled_black" : "outline"}
-                text={tab === "register" ? "signup_with" : "signin_with"}
+                text="signin_with"
                 disabled={loading}
                 onError={msg => setError(msg)}
               />
