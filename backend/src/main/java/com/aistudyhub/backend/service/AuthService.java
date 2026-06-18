@@ -1,10 +1,12 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.AuthResponse;
+import com.aistudyhub.backend.dto.ChangePasswordRequest;
 import com.aistudyhub.backend.dto.GoogleLoginRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
+import com.aistudyhub.backend.dto.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
@@ -264,6 +266,35 @@ public class AuthService {
         user.setLanguagePreference(languagePreference);
         user.setUpdatedAt(LocalDateTime.now());
         return UserResponse.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public UserResponse updateProfile(UpdateProfileRequest request) {
+        User user = getAuthenticatedUser();
+        String displayName = request.getDisplayName().trim();
+        if (displayName.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên hiển thị không được để trống.");
+        }
+        user.setDisplayName(displayName);
+        user.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public Map<String, String> changePassword(ChangePasswordRequest request) {
+        User user = getAuthenticatedUser();
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Mật khẩu cũ không đúng.");
+        }
+
+        PasswordPolicyValidator.validate(request.getNewPassword());
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        return Map.of("message", "Đổi mật khẩu thành công.");
     }
 
     public void logout() {

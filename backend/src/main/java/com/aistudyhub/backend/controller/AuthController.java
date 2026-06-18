@@ -1,12 +1,14 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.AuthResponse;
+import com.aistudyhub.backend.dto.ChangePasswordRequest;
 import com.aistudyhub.backend.dto.ForgotPasswordRequest;
 import com.aistudyhub.backend.dto.GoogleLoginRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.ResetPasswordRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
+import com.aistudyhub.backend.dto.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AuthService;
 import com.aistudyhub.backend.service.PasswordResetService;
@@ -67,6 +69,16 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me() {
         return ResponseEntity.ok(authService.getCurrentUser());
+    }
+
+    @PatchMapping("/me")
+    public ResponseEntity<UserResponse> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+        return ResponseEntity.ok(authService.updateProfile(request));
+    }
+
+    @PostMapping("/me/change-password")
+    public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        return ResponseEntity.ok(authService.changePassword(request));
     }
 
     @PatchMapping("/me/language")
