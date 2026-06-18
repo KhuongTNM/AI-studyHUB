@@ -100,12 +100,16 @@ export interface AppState {
   // ── Group chats ───────────────────────────────────────────────────────────
   groups: GroupChat[]
   activeGroupId: string | null
-  groupLimit: number
-  groupMemberLimit: number
+  groupCreateLimit: number
+  groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
-  createGroup: (name: string, description?: string) => { success: boolean; error?: string }
+  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => { success: boolean; error?: string }
+  joinGroup: (groupCode: string, password: string) => { success: boolean; error?: string }
+  leaveGroup: (groupId: string) => { success: boolean; error?: string }
+  deleteGroup: (groupId: string) => { success: boolean; error?: string }
   sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
   shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
+  generateGroupCode: () => string
 
   // ── Flashcards ────────────────────────────────────────────────────────────
   flashcards: Flashcard[]
@@ -282,12 +286,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Group chats
         groups: groupChat.groups,
         activeGroupId: groupChat.activeGroupId,
-        groupLimit: groupChat.groupLimit,
-        groupMemberLimit: groupChat.groupMemberLimit,
+        groupCreateLimit: groupChat.groupCreateLimit,
+        groupJoinLimit: groupChat.groupJoinLimit,
         setActiveGroupId: groupChat.setActiveGroupId,
         createGroup: groupChat.createGroup,
+        joinGroup: groupChat.joinGroup,
+        leaveGroup: groupChat.leaveGroup,
+        deleteGroup: groupChat.deleteGroup,
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
+        generateGroupCode: groupChat.generateGroupCode,
 
         // Flashcards
         flashcards: flashcards.flashcards,

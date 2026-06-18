@@ -204,9 +204,9 @@ export const MOCK_ACTIVITY: ActivityLog[] = [
 ]
 
 export const DEFAULT_PACKAGE_PRICES: PackagePrice[] = [
-  { id: "pkg-free", name: "Gói Free", tier: "free", price: 0, maxUsers: 1 },
-  { id: "pkg-medium", name: "Gói 2-4 người", tier: "2-4", price: 99000, maxUsers: 4 },
-  { id: "pkg-large", name: "Gói 5+ người", tier: "5+", price: 199000, maxUsers: 99 }
+  { id: "pkg-free", name: "Gói Free", tier: "free", price: 0, maxUsers: 5 },
+  { id: "pkg-medium", name: "Gói Pro", tier: "2-4", price: 99000, maxUsers: 30 },
+  { id: "pkg-large", name: "Gói VIP", tier: "5+", price: 199000, maxUsers: 60 }
 ]
 
 export const MOCK_FLASHCARDS: Flashcard[] = [

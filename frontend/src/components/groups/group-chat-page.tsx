@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useState, useEffect } from "react"
 import {
-  AlertCircle, Download, FileText, Image, Info, Link2, Lock, MessageCircle,
-  MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Users, X,
+  AlertCircle, Download, FileText, Image, Info, Link2, LogOut, MessageCircle,
+  MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -12,8 +12,9 @@ import { useApp, type Document, type GroupChat, type GroupChatMessage } from "@/
 export function GroupChatPage() {
   const {
     currentUser, openAuthModal, language, documents, downloadDocument,
-    groups, activeGroupId, groupLimit, groupMemberLimit,
-    setActiveGroupId, createGroup, sendGroupMessage, shareGroupDocument,
+    groups, activeGroupId, groupCreateLimit, groupJoinLimit,
+    setActiveGroupId, createGroup, joinGroup, leaveGroup, deleteGroup,
+    sendGroupMessage, shareGroupDocument, generateGroupCode,
   } = useApp()
 
   const text = groupText[language]
@@ -23,12 +24,17 @@ export function GroupChatPage() {
   const [showFileShare, setShowFileShare] = useState(false)
   const [newGroupName, setNewGroupName] = useState("")
   const [newGroupDesc, setNewGroupDesc] = useState("")
+  const [newGroupCode, setNewGroupCode] = useState(generateGroupCode)
+  const [newGroupPassword, setNewGroupPassword] = useState("")
+  const [joinGroupCode, setJoinGroupCode] = useState("")
+  const [joinGroupPassword, setJoinGroupPassword] = useState("")
   const [error, setError] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const activeGroup = groups.find(group => group.id === activeGroupId) ?? groups[0] ?? null
   const ownedGroupCount = currentUser ? groups.filter(group => group.ownerId === currentUser.id).length : 0
+  const joinedGroupCount = currentUser ? groups.filter(group => group.members.some(member => member.userId === currentUser.id)).length : 0
   const readyDocuments = documents.filter(document => document.status === "ready")
   const filteredGroups = groups.filter(group => {
     const query = search.trim().toLowerCase()
@@ -54,7 +60,7 @@ export function GroupChatPage() {
   }, [activeGroup?.messages.length])
 
   const handleCreateGroup = () => {
-    const result = createGroup(newGroupName, newGroupDesc)
+    const result = createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
     if (!result.success) {
       setError(result.error ?? text.createFailed)
       return
@@ -62,7 +68,32 @@ export function GroupChatPage() {
     setError("")
     setNewGroupName("")
     setNewGroupDesc("")
+    setNewGroupPassword("")
+    setNewGroupCode(generateGroupCode())
     setShowCreate(false)
+  }
+
+  const handleJoinGroup = () => {
+    const result = joinGroup(joinGroupCode, joinGroupPassword)
+    if (!result.success) {
+      setError(result.error ?? text.joinFailed)
+      return
+    }
+    setError("")
+    setJoinGroupCode("")
+    setJoinGroupPassword("")
+  }
+
+  const handleLeaveOrDelete = () => {
+    if (!activeGroup || !currentUser) return
+    const result = activeGroup.ownerId === currentUser.id
+      ? deleteGroup(activeGroup.id)
+      : leaveGroup(activeGroup.id)
+    if (!result.success) {
+      setError(result.error ?? text.actionFailed)
+      return
+    }
+    setError("")
   }
 
   const handleSend = () => {
@@ -115,7 +146,7 @@ export function GroupChatPage() {
             <div>
               <h1 className="text-lg font-bold text-foreground">{text.title}</h1>
               <p className="text-xs text-muted-foreground">
-                {ownedGroupCount}/{groupLimit} {text.groupsCreated} • {groupMemberLimit} {text.memberLimit}
+                {ownedGroupCount}/{groupCreateLimit} {text.groupsCreated} • {joinedGroupCount}/{groupJoinLimit} {text.groupsJoined}
               </p>
             </div>
             <Button
@@ -125,7 +156,7 @@ export function GroupChatPage() {
                 setError("")
                 setShowCreate(true)
               }}
-              disabled={groupLimit <= 0 || ownedGroupCount >= groupLimit}
+              disabled={groupCreateLimit <= 0 || ownedGroupCount >= groupCreateLimit || joinedGroupCount >= groupJoinLimit}
               title={text.newGroup}
             >
               <Plus className="h-4 w-4" />
@@ -140,12 +171,35 @@ export function GroupChatPage() {
               className="h-9 w-full rounded-lg border border-border bg-muted/50 pl-9 pr-3 text-sm outline-none focus:border-primary"
             />
           </div>
-          {groupLimit <= 0 && (
-            <div className="mt-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{text.upgradeRequired}</span>
+          <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+            <p className="mb-2 text-xs font-semibold text-foreground">{text.joinGroup}</p>
+            <div className="space-y-2">
+              <input
+                value={joinGroupCode}
+                onChange={event => setJoinGroupCode(event.target.value.toUpperCase())}
+                placeholder={text.groupId}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+              />
+              <input
+                value={joinGroupPassword}
+                onChange={event => setJoinGroupPassword(event.target.value)}
+                placeholder={text.password}
+                type="password"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                disabled={joinedGroupCount >= groupJoinLimit}
+                onClick={handleJoinGroup}
+              >
+                {text.join}
+              </Button>
             </div>
-          )}
+            <p className="mt-2 text-[11px] text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
@@ -171,7 +225,12 @@ export function GroupChatPage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {activeGroup ? (
           <>
-            <GroupHeader group={activeGroup} text={text} />
+            <GroupHeader
+              group={activeGroup}
+              text={text}
+              currentUserId={currentUser.id}
+              onLeaveOrDelete={handleLeaveOrDelete}
+            />
 
             {error && (
               <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -272,7 +331,7 @@ export function GroupChatPage() {
               <Users className="mx-auto mb-3 h-12 w-12 text-primary" />
               <h2 className="text-xl font-semibold text-foreground">{text.emptyTitle}</h2>
               <p className="mt-2 text-sm text-muted-foreground">{text.emptyBody}</p>
-              <Button className="mt-5" disabled={groupLimit <= 0} onClick={() => setShowCreate(true)}>
+              <Button className="mt-5" disabled={groupCreateLimit <= 0 || joinedGroupCount >= groupJoinLimit} onClick={() => setShowCreate(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 {text.newGroup}
               </Button>
@@ -285,7 +344,20 @@ export function GroupChatPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-foreground">{text.createTitle}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{text.createHint(groupLimit, groupMemberLimit)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{text.createHint(groupCreateLimit, groupJoinLimit)}</p>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-sm font-medium text-foreground">{text.groupId}</span>
+              <div className="flex gap-2">
+                <input
+                  value={newGroupCode}
+                  readOnly
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-muted px-3 text-sm font-semibold text-foreground outline-none"
+                />
+                <Button type="button" variant="outline" onClick={() => setNewGroupCode(generateGroupCode())}>
+                  {text.regenerate}
+                </Button>
+              </div>
+            </label>
             <label className="mt-4 block">
               <span className="mb-1 block text-sm font-medium text-foreground">{text.groupName}</span>
               <input
@@ -293,6 +365,16 @@ export function GroupChatPage() {
                 onChange={event => setNewGroupName(event.target.value)}
                 className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
                 placeholder="SWP391 Team"
+              />
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
+              <input
+                value={newGroupPassword}
+                onChange={event => setNewGroupPassword(event.target.value)}
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                placeholder={text.passwordPlaceholder}
+                type="password"
               />
             </label>
             <label className="mt-3 block">
@@ -345,7 +427,7 @@ function GroupListItem({
           )}
         </div>
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          {latestMessage?.messageType === "document" ? "Shared a file" : latestMessage?.content ?? group.description}
+          {group.groupCode} • {latestMessage?.messageType === "document" ? "Shared a file" : latestMessage?.content ?? group.description}
         </p>
       </div>
       <div className="shrink-0 text-right">
@@ -360,7 +442,15 @@ function GroupListItem({
 
 type GroupText = (typeof groupText)[keyof typeof groupText]
 
-function GroupHeader({ group, text }: { group: GroupChat; text: GroupText }) {
+function GroupHeader({
+  group, text, currentUserId, onLeaveOrDelete,
+}: {
+  group: GroupChat
+  text: GroupText
+  currentUserId: string
+  onLeaveOrDelete: () => void
+}) {
+  const isOwner = group.ownerId === currentUserId
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-background px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -370,7 +460,7 @@ function GroupHeader({ group, text }: { group: GroupChat; text: GroupText }) {
         <div className="min-w-0">
           <h2 className="truncate text-base font-bold text-foreground">{group.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {group.members.length}/{group.maxMembers} {text.members} • {group.description || text.noDescription}
+            {group.groupCode} • {group.members.length}/{group.maxMembers} {text.members} • {group.description || text.noDescription}
           </p>
         </div>
       </div>
@@ -380,6 +470,15 @@ function GroupHeader({ group, text }: { group: GroupChat; text: GroupText }) {
         </Button>
         <Button variant="ghost" size="icon" title="Info">
           <Info className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={isOwner ? "text-destructive hover:text-destructive" : ""}
+          title={isOwner ? text.deleteGroup : text.leaveGroup}
+          onClick={onLeaveOrDelete}
+        >
+          {isOwner ? <Trash2 className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
         </Button>
         <Button variant="ghost" size="icon" title="More">
           <MoreHorizontal className="h-4 w-4" />
@@ -465,15 +564,25 @@ const groupText = {
   vi: {
     title: "Chat nhóm",
     groupsCreated: "nhóm đã tạo",
-    memberLimit: "thành viên/nhóm",
+    groupsJoined: "nhóm đã tham gia",
     newGroup: "Tạo nhóm mới",
     search: "Tìm kiếm nhóm",
-    upgradeRequired: "Gói hiện tại chưa cho phép tạo nhóm. Hãy nâng cấp gói học nhóm để dùng tính năng này.",
+    joinGroup: "Tham gia nhóm",
+    join: "Tham gia",
+    joinHint: (groups: number) => `Bạn có thể tham gia tối đa ${groups} nhóm, tính cả nhóm tự tạo.`,
+    groupId: "Group ID",
+    password: "Mật khẩu nhóm",
+    passwordPlaceholder: "Nhập mật khẩu để bạn học tham gia",
+    regenerate: "Tạo lại",
+    leaveGroup: "Rời nhóm",
+    deleteGroup: "Xóa nhóm",
     noGroups: "Chưa có nhóm nào",
     loginTitle: "Đăng nhập để dùng chat nhóm",
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
     login: "Đăng nhập",
     createFailed: "Không thể tạo nhóm.",
+    joinFailed: "Không thể tham gia nhóm.",
+    actionFailed: "Không thể thực hiện thao tác.",
     sendFailed: "Không thể gửi tin nhắn.",
     shareFailed: "Không thể chia sẻ tài liệu.",
     noSubject: "Chưa đặt môn",
@@ -489,7 +598,7 @@ const groupText = {
     emptyTitle: "Chọn hoặc tạo một nhóm",
     emptyBody: "Nhóm dùng để chat với bạn học và chia sẻ tài liệu học tập.",
     createTitle: "Tạo nhóm học tập",
-    createHint: (groups: number, members: number) => `Gói hiện tại cho phép tạo tối đa ${groups} nhóm, mỗi nhóm tối đa ${members} thành viên.`,
+    createHint: (created: number, joined: number) => `Gói hiện tại cho phép tạo tối đa ${created} nhóm và tham gia tối đa ${joined} nhóm.`,
     groupName: "Tên nhóm",
     description: "Mô tả",
     descriptionPlaceholder: "Mục tiêu học tập, môn học, hoặc ghi chú cho nhóm",
@@ -501,15 +610,25 @@ const groupText = {
   en: {
     title: "Group Chat",
     groupsCreated: "groups created",
-    memberLimit: "members/group",
+    groupsJoined: "groups joined",
     newGroup: "Create group",
     search: "Search groups",
-    upgradeRequired: "Your current plan cannot create groups. Upgrade to a study group package to use this feature.",
+    joinGroup: "Join group",
+    join: "Join",
+    joinHint: (groups: number) => `You can join up to ${groups} groups, including groups you created.`,
+    groupId: "Group ID",
+    password: "Group password",
+    passwordPlaceholder: "Enter the password classmates will use to join",
+    regenerate: "Regenerate",
+    leaveGroup: "Leave group",
+    deleteGroup: "Delete group",
     noGroups: "No groups yet",
     loginTitle: "Log in to use group chat",
     loginBody: "Group chat lets students discuss together and share public study documents.",
     login: "Log in",
     createFailed: "Could not create group.",
+    joinFailed: "Could not join group.",
+    actionFailed: "Could not complete this action.",
     sendFailed: "Could not send message.",
     shareFailed: "Could not share document.",
     noSubject: "No subject",
@@ -525,7 +644,7 @@ const groupText = {
     emptyTitle: "Choose or create a group",
     emptyBody: "Groups are for classmate chat and shared study materials.",
     createTitle: "Create study group",
-    createHint: (groups: number, members: number) => `Your current package allows up to ${groups} groups with ${members} members per group.`,
+    createHint: (created: number, joined: number) => `Your current package allows up to ${created} created groups and ${joined} joined groups.`,
     groupName: "Group name",
     description: "Description",
     descriptionPlaceholder: "Study goal, subject, or note for this group",
