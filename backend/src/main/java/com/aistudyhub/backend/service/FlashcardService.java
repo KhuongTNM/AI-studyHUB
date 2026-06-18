@@ -1,7 +1,9 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.CreateFlashcardRequest;
 import com.aistudyhub.backend.dto.FlashcardResponse;
 import com.aistudyhub.backend.dto.GenerateFlashcardsRequest;
+import com.aistudyhub.backend.dto.UpdateFlashcardRequest;
 import com.aistudyhub.backend.dto.UpdateFlashcardStatusRequest;
 import com.aistudyhub.backend.entity.Flashcard;
 import com.aistudyhub.backend.entity.FlashcardStatus;
@@ -52,6 +54,55 @@ public class FlashcardService {
 
         flashcard.setStatus(newStatus);
         flashcard.setUpdatedAt(LocalDateTime.now());
+        return FlashcardResponse.from(flashcardRepository.save(flashcard));
+    }
+
+    @Transactional
+    public FlashcardResponse createFlashcard(CreateFlashcardRequest request) {
+        UUID userId = getCurrentUserId();
+        LocalDateTime now = LocalDateTime.now();
+
+        Flashcard card = new Flashcard();
+        card.setId(UUID.randomUUID());
+        card.setUserId(userId);
+        card.setDocumentId(request.getDocumentId());
+        card.setQuestion(request.getQuestion().trim());
+        card.setAnswer(request.getAnswer().trim());
+        card.setStatus(FlashcardStatus.NEW);
+        card.setAiGenerated(false);
+        card.setCreatedAt(now);
+        card.setUpdatedAt(now);
+
+        return FlashcardResponse.from(flashcardRepository.save(card));
+    }
+
+    @Transactional
+    public void deleteFlashcard(UUID id) {
+        Flashcard flashcard = flashcardRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Flashcard không tồn tại."));
+
+        UUID currentUserId = getCurrentUserId();
+        if (!flashcard.getUserId().equals(currentUserId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa flashcard này.");
+        }
+
+        flashcardRepository.delete(flashcard);
+    }
+
+    @Transactional
+    public FlashcardResponse updateFlashcard(UUID id, UpdateFlashcardRequest request) {
+        Flashcard flashcard = flashcardRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Flashcard không tồn tại."));
+
+        UUID currentUserId = getCurrentUserId();
+        if (!flashcard.getUserId().equals(currentUserId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền cập nhật flashcard này.");
+        }
+
+        flashcard.setQuestion(request.getQuestion().trim());
+        flashcard.setAnswer(request.getAnswer().trim());
+        flashcard.setUpdatedAt(LocalDateTime.now());
+
         return FlashcardResponse.from(flashcardRepository.save(flashcard));
     }
 
