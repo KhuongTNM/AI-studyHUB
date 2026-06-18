@@ -72,6 +72,12 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Thư viện chính thức Google để xác thực ID Token (FR-25 / BR-089) -->
+        <dependency>
+            <groupId>com.google.api-client</groupId>
+            <artifactId>google-api-client</artifactId>
+            <version>2.4.0</version>
+        </dependency>
     </dependencies>
 
     <build>
