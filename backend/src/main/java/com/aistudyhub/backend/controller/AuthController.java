@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.AuthResponse;
+import com.aistudyhub.backend.dto.GoogleLoginRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
@@ -34,6 +35,12 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    /** FR-25: Đăng nhập bằng tài khoản Google thông qua ID Token. */
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
+        return ResponseEntity.ok(authService.loginWithGoogle(request));
     }
 
     @PostMapping("/logout")

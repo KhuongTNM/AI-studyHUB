@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
@@ -48,7 +49,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
                         // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
@@ -66,5 +67,11 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /** Bean RestTemplate dùng chung để gọi các API bên ngoài (ví dụ: Google tokeninfo). */
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }
