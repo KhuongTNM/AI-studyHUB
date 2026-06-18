@@ -3,6 +3,7 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.AuthResponse;
 import com.aistudyhub.backend.dto.ForgotPasswordRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
+import com.aistudyhub.backend.dto.ResetPasswordRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
@@ -43,6 +44,11 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         return ResponseEntity.ok(passwordResetService.forgotPassword(request.getEmail()));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return ResponseEntity.ok(passwordResetService.resetPassword(request));
     }
 
     @PostMapping("/logout")
