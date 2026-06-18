@@ -51,6 +51,10 @@ public class AuthService {
         if (displayName.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tên hiển thị không được để trống.");
         }
+        // BR-006: xác nhận mật khẩu phải khớp hoàn toàn với mật khẩu gốc
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Mật khẩu xác nhận không trùng khớp.");
+        }
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email này đã được đăng ký.");
         }
@@ -80,7 +84,9 @@ public class AuthService {
         UserResponse userResponse = UserResponse.from(user);
         // FIX: dùng user.getRole().name() ("sub_admin") thay vì userResponse.getRole() ("sub-admin")
         String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-        return new AuthResponse(token, userResponse);
+        AuthResponse response = new AuthResponse(token, userResponse);
+        response.setPasswordStrength(PasswordPolicyValidator.calculateStrength(request.getPassword()));
+        return response;
     }
 
     private SubscriptionPlan getFreePlan() {
