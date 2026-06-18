@@ -14,6 +14,9 @@ public class RegisterRequest {
     @Size(min = 8, message = "Mật khẩu phải có ít nhất 8 ký tự.")
     private String password;
 
+    @NotBlank(message = "Xác nhận mật khẩu không được để trống.")
+    private String confirmPassword;
+
     @NotBlank(message = "Tên hiển thị không được để trống.")
     @Size(max = 50, message = "Tên hiển thị không được vượt quá 50 ký tự.")
     private String displayName;
@@ -32,6 +35,14 @@ public class RegisterRequest {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getConfirmPassword() {
+        return confirmPassword;
+    }
+
+    public void setConfirmPassword(String confirmPassword) {
+        this.confirmPassword = confirmPassword;
     }
 
     public String getDisplayName() {
