@@ -95,10 +95,10 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>
                         {pkg.tier === "free"
-                          ? text.noStudyRoom
+                          ? text.noGroupChat
                           : pkg.tier === "2-4"
-                          ? text.room4
-                          : text.room99}
+                          ? text.group4
+                          : text.group99}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
@@ -155,9 +155,9 @@ const packagesText = {
     freePrice: "Miễn phí",
     perMonth: "/tháng",
     aiChat: "AI Chat cá nhân hỏi đáp",
-    noStudyRoom: "Không hỗ trợ mở phòng học nhóm",
-    room4: "Mở phòng học nhóm (tối đa 4 người)",
-    room99: "Mở phòng học nhóm (tối đa 99 người)",
+    noGroupChat: "Không hỗ trợ tạo nhóm chat",
+    group4: "Tạo nhóm chat học tập (tối đa 4 người)",
+    group99: "Tạo nhóm chat học tập (tối đa 99 người)",
     storage: "Dung lượng lưu trữ",
     flashcards: "Tạo flashcards từ tài liệu",
     default: "Mặc định",
@@ -182,9 +182,9 @@ const packagesText = {
     freePrice: "Free",
     perMonth: "/month",
     aiChat: "Personal AI chat Q&A",
-    noStudyRoom: "Study rooms are not available",
-    room4: "Create study rooms (up to 4 people)",
-    room99: "Create study rooms (up to 99 people)",
+    noGroupChat: "Group chat creation is not available",
+    group4: "Create study groups (up to 4 people)",
+    group99: "Create study groups (up to 99 people)",
     storage: "Storage",
     flashcards: "Create flashcards from documents",
     default: "Default",

@@ -28,34 +28,40 @@ export interface PackagePrice {
   maxUsers: number
 }
 
-export interface RoomMessage {
+export interface GroupChatMember {
+  userId: string
+  displayName: string
+  avatar?: string
+  role: "owner" | "member"
+  joinedAt: Date
+}
+
+export interface GroupChatMessage {
   id: string
+  groupId: string
   senderId: string
   senderName: string
   content: string
   timestamp: Date
-  messageType?: "user" | "system" | "document"
+  messageType: "text" | "document" | "system"
   documentId?: string
   documentName?: string
   documentSubject?: string
-  documentType?: string
   documentVisibility?: "public" | "private"
   documentDownloadable?: boolean
 }
 
-export interface StudyRoom {
+export interface GroupChat {
   id: string
-  password?: string
-  hostId: string
-  hostName: string
-  capacity: number
-  members: {
-    userId: string
-    displayName: string
-    joinedAt: Date
-  }[]
-  messages: RoomMessage[]
+  name: string
+  description?: string
+  ownerId: string
+  ownerName: string
+  maxMembers: number
+  members: GroupChatMember[]
+  messages: GroupChatMessage[]
   createdAt: Date
+  updatedAt: Date
 }
 
 export interface Category {

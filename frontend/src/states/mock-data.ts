@@ -1,4 +1,4 @@
-import type { ActivityLog, Category, Document, Flashcard, PackagePrice, StudyRoom, User } from "./types"
+import type { ActivityLog, Category, Document, Flashcard, PackagePrice, User } from "./types"
 
 export const MOCK_CATEGORIES: Category[] = [
   { id: "cat-1", name: "Toán học", color: "#6366f1" },
@@ -92,23 +92,6 @@ export const MOCK_USERS: User[] = [
     storageLimit: 1024 * 1024 * 512,
     subscriptionTier: "free",
   },
-]
-
-export const MOCK_ROOMS: StudyRoom[] = [
-  {
-    id: "ROOM-101",
-    password: "123",
-    hostId: "user-2",
-    hostName: "AnhNV",
-    capacity: 4,
-    members: [
-      { userId: "user-2", displayName: "AnhNV", joinedAt: new Date() }
-    ],
-    messages: [
-      { id: "msg-r1", senderId: "user-2", senderName: "AnhNV", content: "Chào mọi người! Ai học nhóm cùng mình giải tích 1 không?", timestamp: new Date(Date.now() - 10 * 60 * 1000) }
-    ],
-    createdAt: new Date()
-  }
 ]
 
 export const MOCK_DOCUMENTS: Document[] = [
