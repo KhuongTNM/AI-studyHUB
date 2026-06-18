@@ -17,7 +17,6 @@ import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.security.JwtService;
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -25,23 +24,16 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
 @Service
 public class AuthService {
-
-    /** Endpoint Google dùng để xác thực ID Token. */
-    private static final String GOOGLE_TOKENINFO_URL =
-            "https://oauth2.googleapis.com/tokeninfo?id_token={idToken}";
 
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final int maxLoginAttempts;
-    private final RestTemplate restTemplate;
-    private final String googleClientId;
+    private final GoogleAuthService googleAuthService;
 
     public AuthService(
             UserRepository userRepository,
@@ -49,15 +41,13 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             @Value("${app.auth.max-login-attempts}") int maxLoginAttempts,
-            RestTemplate restTemplate,
-            @Value("${app.google.client-id}") String googleClientId) {
+            GoogleAuthService googleAuthService) {
         this.userRepository = userRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.maxLoginAttempts = maxLoginAttempts;
-        this.restTemplate = restTemplate;
-        this.googleClientId = googleClientId;
+        this.googleAuthService = googleAuthService;
     }
 
     @Transactional
@@ -108,108 +98,11 @@ public class AuthService {
 
     /**
      * FR-25: Đăng nhập bằng Google thông qua luồng ID Token.
-     * Xác thực token với Google, tra cứu hoặc tạo mới user, sau đó cấp JWT nội bộ.
+     * Uỷ quyền toàn bộ xử lý cho {@link GoogleAuthService} để tách biệt
+     * trách nhiệm và tái sử dụng logic một nơi duy nhất.
      */
-    @Transactional
-    @SuppressWarnings("unchecked")
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
-
-        // Bước 1: Gửi request đến Google để xác thực ID Token
-        Map<String, Object> payload;
-        try {
-            payload = restTemplate.getForObject(
-                    GOOGLE_TOKENINFO_URL,
-                    Map.class,
-                    request.getIdToken()
-            );
-        } catch (RestClientException e) {
-            // Google trả về lỗi hoặc mất kết nối — token không hợp lệ hoặc đã hết hạn
-            throw new ApiException(HttpStatus.UNAUTHORIZED,
-                    "Tài khoản Google không hợp lệ hoặc đã hết hạn.");
-        }
-
-        // Bước 2a: Kiểm tra payload không null (trường hợp phòng thủ)
-        if (payload == null) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED,
-                    "Tài khoản Google không hợp lệ hoặc đã hết hạn.");
-        }
-
-        // Bước 2b: Kiểm tra claim "aud" — phải khớp với Client ID của ứng dụng
-        String aud = String.valueOf(payload.getOrDefault("aud", ""));
-        String iss = String.valueOf(payload.getOrDefault("iss", ""));
-        if (!googleClientId.equals(aud)
-                || (!iss.equals("https://accounts.google.com") && !iss.equals("accounts.google.com"))) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED,
-                    "Token không hợp lệ (Mã ứng dụng không trùng khớp).");
-        }
-
-        // Bước 2c: Kiểm tra email đã được Google xác minh chưa (hỗ trợ cả String lẫn Boolean)
-        Object emailVerifiedRaw = payload.get("email_verified");
-        boolean emailVerified = Boolean.TRUE.equals(emailVerifiedRaw)
-                || "true".equalsIgnoreCase(String.valueOf(emailVerifiedRaw));
-        if (!emailVerified) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED,
-                    "Email Google chưa được xác minh.");
-        }
-
-        // Bước 3: Lấy thông tin user từ payload và chuẩn hóa email
-        String email = String.valueOf(payload.getOrDefault("email", "")).trim().toLowerCase();
-        String name  = String.valueOf(payload.getOrDefault("name", "")).trim();
-
-        // Bước 3a: Tìm kiếm user trong CSDL theo email (không phân biệt hoa/thường)
-        Optional<User> existingUser = userRepository.findByEmailIgnoreCase(email);
-
-        User user;
-        if (existingUser.isPresent()) {
-            // Bước 3b: User đã tồn tại — kiểm tra trạng thái khóa tài khoản
-            user = existingUser.get();
-            if (user.isLocked()) {
-                throw new ApiException(HttpStatus.FORBIDDEN,
-                        "Tài khoản của bạn đã bị khóa.");
-            }
-        } else {
-            // Bước 3c: User chưa tồn tại — tạo mới với cấu hình mặc định
-            user = buildGoogleUser(email, name);
-            userRepository.save(user);
-        }
-
-        // Bước 4: Sinh JWT nội bộ và trả kết quả về client
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-        return new AuthResponse(token, UserResponse.from(user));
-    }
-
-    /**
-     * Khởi tạo entity User mới từ thông tin Google.
-     * Mật khẩu được mã hóa từ UUID ngẫu nhiên để thỏa mãn ràng buộc NOT NULL của DB
-     * mà không cần migration thêm cột.
-     */
-    private User buildGoogleUser(String email, String name) {
-        SubscriptionPlan freePlan = getFreePlan();
-        LocalDateTime now = LocalDateTime.now();
-
-        // Nếu Google không trả về trường "name", dùng phần trước "@" của email làm tên hiển thị
-        String displayName = (name == null || name.isEmpty())
-                ? email.substring(0, email.indexOf('@'))
-                : name;
-
-        User user = new User();
-        user.setId(UUID.randomUUID());
-        user.setEmail(email);
-        // Mật khẩu ngẫu nhiên — user đăng nhập Google sẽ không bao giờ dùng trường này
-        user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
-        user.setDisplayName(displayName);
-        user.setRole(User.Role.user);
-        user.setLocked(false);
-        user.setLoginAttempts((short) 0);
-        user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
-        user.setStorageUsedBytes(0L);
-        user.setSubscriptionPlanId(freePlan.getId());
-        user.setSubscriptionExpiresAt(null);
-        user.setLanguagePreference(User.LanguagePreference.vi);
-        user.setThemePreference(User.ThemePreference.light);
-        user.setCreatedAt(now);
-        user.setUpdatedAt(now);
-        return user;
+        return googleAuthService.loginWithGoogle(request);
     }
 
     private SubscriptionPlan getFreePlan() {
