@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from "react"
 import {
-  AlertCircle, Download, FileText, Image, Info, Link2, LogOut, MessageCircle,
+  AlertCircle, Download, FileText, Image, Info, LogOut, MessageCircle,
   MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -14,14 +14,18 @@ export function GroupChatPage() {
     currentUser, openAuthModal, language, documents, downloadDocument,
     groups, activeGroupId, groupCreateLimit, groupJoinLimit,
     setActiveGroupId, createGroup, joinGroup, leaveGroup, deleteGroup,
-    sendGroupMessage, shareGroupDocument, generateGroupCode,
+    sendGroupMessage, shareGroupDocument, shareGroupImage, generateGroupCode,
   } = useApp()
 
   const text = groupText[language]
   const [search, setSearch] = useState("")
   const [message, setMessage] = useState("")
   const [showCreate, setShowCreate] = useState(false)
+  const [showJoin, setShowJoin] = useState(false)
   const [showFileShare, setShowFileShare] = useState(false)
+  const [showMembers, setShowMembers] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  const [showOptions, setShowOptions] = useState(false)
   const [newGroupName, setNewGroupName] = useState("")
   const [newGroupDesc, setNewGroupDesc] = useState("")
   const [newGroupCode, setNewGroupCode] = useState(generateGroupCode)
@@ -29,6 +33,9 @@ export function GroupChatPage() {
   const [joinGroupCode, setJoinGroupCode] = useState("")
   const [joinGroupPassword, setJoinGroupPassword] = useState("")
   const [error, setError] = useState("")
+  const [mockNotice, setMockNotice] = useState("")
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletePassword, setDeletePassword] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -82,17 +89,43 @@ export function GroupChatPage() {
     setError("")
     setJoinGroupCode("")
     setJoinGroupPassword("")
+    setShowJoin(false)
   }
 
   const handleLeaveOrDelete = () => {
     if (!activeGroup || !currentUser) return
-    const result = activeGroup.ownerId === currentUser.id
-      ? deleteGroup(activeGroup.id)
-      : leaveGroup(activeGroup.id)
+    if (activeGroup.ownerId === currentUser.id) {
+      setDeletePassword("")
+      setShowDeleteConfirm(true)
+      return
+    }
+
+    const result = leaveGroup(activeGroup.id)
     if (!result.success) {
       setError(result.error ?? text.actionFailed)
       return
     }
+    setError("")
+  }
+
+  const handleConfirmDelete = () => {
+    if (!activeGroup) return
+    if (deletePassword.trim() !== activeGroup.password) {
+      setError(text.deletePasswordWrong)
+      return
+    }
+    const result = deleteGroup(activeGroup.id)
+    if (!result.success) {
+      setError(result.error ?? text.actionFailed)
+      return
+    }
+    setError("")
+    setDeletePassword("")
+    setShowDeleteConfirm(false)
+  }
+
+  const showMockNotice = (notice: string) => {
+    setMockNotice(notice)
     setError("")
   }
 
@@ -121,8 +154,20 @@ export function GroupChatPage() {
       return
     }
     setError("")
+    showMockNotice(text.documentUploaded)
     setSelectedDocumentId("")
     setShowFileShare(false)
+  }
+
+  const handleImageUpload = () => {
+    if (!activeGroup) return
+    const result = shareGroupImage(activeGroup.id)
+    if (!result.success) {
+      setError(result.error ?? text.imageUploadFailed)
+      return
+    }
+    setError("")
+    showMockNotice(text.imageUploaded)
   }
 
   if (!currentUser) {
@@ -171,35 +216,20 @@ export function GroupChatPage() {
               className="h-9 w-full rounded-lg border border-border bg-muted/50 pl-9 pr-3 text-sm outline-none focus:border-primary"
             />
           </div>
-          <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-semibold text-foreground">{text.joinGroup}</p>
-            <div className="space-y-2">
-              <input
-                value={joinGroupCode}
-                onChange={event => setJoinGroupCode(event.target.value.toUpperCase())}
-                placeholder={text.groupId}
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary"
-              />
-              <input
-                value={joinGroupPassword}
-                onChange={event => setJoinGroupPassword(event.target.value)}
-                placeholder={text.password}
-                type="password"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="w-full"
-                disabled={joinedGroupCount >= groupJoinLimit}
-                onClick={handleJoinGroup}
-              >
-                {text.join}
-              </Button>
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3 w-full justify-center"
+            disabled={joinedGroupCount >= groupJoinLimit}
+            onClick={() => {
+              setError("")
+              setShowJoin(true)
+            }}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            {text.joinGroup}
+          </Button>
+          <p className="mt-2 text-[11px] text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
@@ -230,7 +260,20 @@ export function GroupChatPage() {
               text={text}
               currentUserId={currentUser.id}
               onLeaveOrDelete={handleLeaveOrDelete}
+              onShowMembers={() => setShowMembers(true)}
+              onShowInfo={() => setShowInfo(true)}
+              onShowOptions={() => setShowOptions(true)}
             />
+
+            {mockNotice && (
+              <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary">
+                <Info className="h-4 w-4" />
+                {mockNotice}
+                <button className="ml-auto" onClick={() => setMockNotice("")}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             {error && (
               <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -298,11 +341,8 @@ export function GroupChatPage() {
                 <Button variant="ghost" size="icon" title={text.shareFile} onClick={() => setShowFileShare(prev => !prev)}>
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" title="Image">
+                <Button variant="ghost" size="icon" title={text.uploadImage} onClick={handleImageUpload}>
                   <Image className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" title="Link">
-                  <Link2 className="h-4 w-4" />
                 </Button>
                 <input
                   value={message}
@@ -316,7 +356,7 @@ export function GroupChatPage() {
                   placeholder={text.messagePlaceholder(activeGroup.name)}
                   className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-muted/40 px-4 text-sm outline-none focus:border-primary focus:bg-background"
                 />
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" title={text.mockEmoji} onClick={() => showMockNotice(text.mockEmoji)}>
                   <Smile className="h-4 w-4" />
                 </Button>
                 <Button size="icon" onClick={handleSend} disabled={!message.trim()}>
@@ -339,6 +379,125 @@ export function GroupChatPage() {
           </div>
         )}
       </section>
+
+      {showJoin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">{text.joinGroup}</h2>
+                <p className="text-sm text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowJoin(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={joinGroupCode}
+                onChange={event => setJoinGroupCode(event.target.value.toUpperCase())}
+                placeholder={text.groupId}
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+              />
+              <input
+                value={joinGroupPassword}
+                onChange={event => setJoinGroupPassword(event.target.value)}
+                placeholder={text.password}
+                type="password"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+              />
+              <Button type="button" className="w-full" disabled={joinedGroupCount >= groupJoinLimit} onClick={handleJoinGroup}>
+                {text.join}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMembers && activeGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">{text.memberList}</h2>
+                <p className="text-sm text-muted-foreground">{activeGroup.members.length}/{activeGroup.maxMembers} {text.members}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowMembers(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {activeGroup.members.map(member => (
+                <div key={member.userId} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                    {member.displayName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">{member.displayName}</p>
+                    <p className="text-xs text-muted-foreground">{text.joinedAt}: {member.joinedAt.toLocaleDateString()}</p>
+                  </div>
+                  <span className={cn(
+                    "rounded-full px-2 py-1 text-xs font-medium",
+                    member.role === "owner" ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary",
+                  )}>
+                    {member.role === "owner" ? text.owner : text.member}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInfo && activeGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">{text.groupInfo}</h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowInfo(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3 text-sm">
+              <InfoRow label={text.groupName} value={activeGroup.name} />
+              <InfoRow label={text.groupId} value={activeGroup.groupCode} />
+              <InfoRow label={text.password} value={activeGroup.password} />
+              <InfoRow label={text.owner} value={activeGroup.ownerName} />
+              <InfoRow label={text.memberCount} value={`${activeGroup.members.length}/${activeGroup.maxMembers}`} />
+              <InfoRow label={text.createdAt} value={activeGroup.createdAt.toLocaleString()} />
+              <InfoRow label={text.description} value={activeGroup.description || text.noDescription} />
+            </div>
+            <p className="mt-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">{text.groupInfoBackendNote}</p>
+          </div>
+        </div>
+      )}
+
+      {showOptions && activeGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">{text.groupOptions}</h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowOptions(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {[text.muteGroup, text.pinGroup, text.exportChat, text.reportGroup].map(option => (
+                <Button
+                  key={option}
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => showMockNotice(text.optionMocked(option))}
+                >
+                  {option}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">{text.optionsBackendNote}</p>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -393,6 +552,31 @@ export function GroupChatPage() {
           </div>
         </div>
       )}
+
+      {showDeleteConfirm && activeGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-foreground">{text.deleteConfirmTitle}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {text.deleteConfirmBody(activeGroup.name, activeGroup.groupCode)}
+            </p>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
+              <input
+                value={deletePassword}
+                onChange={event => setDeletePassword(event.target.value)}
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                placeholder={text.deletePasswordPlaceholder}
+                type="password"
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>{text.cancel}</Button>
+              <Button variant="destructive" onClick={handleConfirmDelete}>{text.deleteGroup}</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -427,7 +611,11 @@ function GroupListItem({
           )}
         </div>
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          {group.groupCode} • {latestMessage?.messageType === "document" ? "Shared a file" : latestMessage?.content ?? group.description}
+          {group.groupCode} • {latestMessage?.messageType === "document"
+            ? "Shared a file"
+            : latestMessage?.messageType === "image"
+              ? "Shared an image"
+              : latestMessage?.content ?? group.description}
         </p>
       </div>
       <div className="shrink-0 text-right">
@@ -440,15 +628,27 @@ function GroupListItem({
   )
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[130px_1fr] gap-3 rounded-lg border border-border bg-background px-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words font-medium text-foreground">{value}</span>
+    </div>
+  )
+}
+
 type GroupText = (typeof groupText)[keyof typeof groupText]
 
 function GroupHeader({
-  group, text, currentUserId, onLeaveOrDelete,
+  group, text, currentUserId, onLeaveOrDelete, onShowMembers, onShowInfo, onShowOptions,
 }: {
   group: GroupChat
   text: GroupText
   currentUserId: string
   onLeaveOrDelete: () => void
+  onShowMembers: () => void
+  onShowInfo: () => void
+  onShowOptions: () => void
 }) {
   const isOwner = group.ownerId === currentUserId
   return (
@@ -465,10 +665,10 @@ function GroupHeader({
         </div>
       </div>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" title={text.members}>
+        <Button variant="ghost" size="icon" title={text.members} onClick={onShowMembers}>
           <Users className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" title="Info">
+        <Button variant="ghost" size="icon" title={text.groupInfo} onClick={onShowInfo}>
           <Info className="h-4 w-4" />
         </Button>
         <Button
@@ -480,7 +680,7 @@ function GroupHeader({
         >
           {isOwner ? <Trash2 className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
         </Button>
-        <Button variant="ghost" size="icon" title="More">
+        <Button variant="ghost" size="icon" title={text.groupOptions} onClick={onShowOptions}>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </div>
@@ -548,6 +748,32 @@ function GroupMessageBubble({
                 {downloadable ? text.download : text.unavailable}
               </Button>
             </div>
+          ) : message.messageType === "image" ? (
+            <div className="w-72 max-w-full space-y-2">
+              {message.imageUrl && (
+                <img
+                  src={message.imageUrl}
+                  alt={message.imageName ?? text.sharedImage}
+                  className="aspect-video w-full rounded-md border border-border object-cover"
+                />
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate font-semibold">{message.imageName ?? text.sharedImage}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isSelf ? "secondary" : "outline"}
+                  className="h-8 shrink-0 gap-2"
+                  onClick={() => message.imageUrl && window.open(message.imageUrl, "_blank", "noopener,noreferrer")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {text.download}
+                </Button>
+              </div>
+              <p className={cn("text-xs", isSelf ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                {text.imageMockNote}
+              </p>
+            </div>
           ) : (
             <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
           )}
@@ -576,6 +802,32 @@ const groupText = {
     regenerate: "Tạo lại",
     leaveGroup: "Rời nhóm",
     deleteGroup: "Xóa nhóm",
+    deleteConfirmTitle: "Xác nhận xóa nhóm",
+    deleteConfirmBody: (name: string, code: string) => `Nhập mật khẩu nhóm để xóa "${name}" (${code}). Thao tác này đang được mock ở frontend.`,
+    deletePasswordPlaceholder: "Nhập mật khẩu nhóm",
+    deletePasswordWrong: "Mật khẩu nhóm không đúng.",
+    uploadImage: "Upload hình ảnh",
+    imageUploaded: "Mock: hình ảnh đã được upload vào chat nhóm.",
+    imageUploadFailed: "Không thể upload hình ảnh.",
+    documentUploaded: "Mock: tài liệu đã được chia sẻ vào chat nhóm.",
+    mockEmoji: "Mock: bảng emoji sẽ được triển khai sau.",
+    memberList: "Danh sách thành viên",
+    joinedAt: "Tham gia",
+    owner: "Chủ nhóm",
+    member: "Thành viên",
+    groupInfo: "Thông tin nhóm",
+    memberCount: "Số thành viên",
+    createdAt: "Ngày tạo",
+    groupInfoBackendNote: "Mock frontend đang hiển thị mật khẩu để kiểm thử. Backend thật phải lưu password_hash và không trả plaintext password.",
+    groupOptions: "Tùy chọn nhóm",
+    muteGroup: "Tắt thông báo nhóm",
+    pinGroup: "Ghim nhóm",
+    exportChat: "Xuất lịch sử chat",
+    reportGroup: "Báo cáo nhóm",
+    optionMocked: (option: string) => `Mock: "${option}" đã được ghi nhận, backend sẽ triển khai sau.`,
+    optionsBackendNote: "Các tùy chọn này đang mô phỏng luồng thao tác để backend biết API cần bổ sung.",
+    sharedImage: "Ảnh đã chia sẻ",
+    imageMockNote: "Ảnh mock được tạo trên frontend. Backend sau này sẽ upload file và trả URL thật.",
     noGroups: "Chưa có nhóm nào",
     loginTitle: "Đăng nhập để dùng chat nhóm",
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
@@ -622,6 +874,32 @@ const groupText = {
     regenerate: "Regenerate",
     leaveGroup: "Leave group",
     deleteGroup: "Delete group",
+    deleteConfirmTitle: "Confirm group deletion",
+    deleteConfirmBody: (name: string, code: string) => `Enter the group password to delete "${name}" (${code}). This action is mocked on the frontend.`,
+    deletePasswordPlaceholder: "Enter group password",
+    deletePasswordWrong: "Group password is incorrect.",
+    uploadImage: "Upload image",
+    imageUploaded: "Mock: image uploaded to the group chat.",
+    imageUploadFailed: "Could not upload image.",
+    documentUploaded: "Mock: document shared to the group chat.",
+    mockEmoji: "Mock: emoji picker will be implemented later.",
+    memberList: "Member list",
+    joinedAt: "Joined",
+    owner: "Owner",
+    member: "Member",
+    groupInfo: "Group info",
+    memberCount: "Member count",
+    createdAt: "Created at",
+    groupInfoBackendNote: "The frontend mock shows the password for testing. The real backend must store password_hash and never return plaintext passwords.",
+    groupOptions: "Group options",
+    muteGroup: "Mute group notifications",
+    pinGroup: "Pin group",
+    exportChat: "Export chat history",
+    reportGroup: "Report group",
+    optionMocked: (option: string) => `Mock: "${option}" has been recorded; backend will implement it later.`,
+    optionsBackendNote: "These options simulate the user flow so backend can add the matching APIs later.",
+    sharedImage: "Shared image",
+    imageMockNote: "Mock image generated in frontend. Backend will later upload the file and return a real URL.",
     noGroups: "No groups yet",
     loginTitle: "Log in to use group chat",
     loginBody: "Group chat lets students discuss together and share public study documents.",

@@ -109,6 +109,7 @@ export interface AppState {
   deleteGroup: (groupId: string) => { success: boolean; error?: string }
   sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
   shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
+  shareGroupImage: (groupId: string) => { success: boolean; error?: string }
   generateGroupCode: () => string
 
   // ── Flashcards ────────────────────────────────────────────────────────────
@@ -295,6 +296,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteGroup: groupChat.deleteGroup,
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
+        shareGroupImage: groupChat.shareGroupImage,
         generateGroupCode: groupChat.generateGroupCode,
 
         // Flashcards

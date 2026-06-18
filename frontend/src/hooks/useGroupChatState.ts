@@ -332,6 +332,30 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     return { success: true }
   }, [currentUser])
 
+  const shareGroupImage = useCallback((groupId: string): ActionResult => {
+    if (!currentUser) return { success: false, error: "Please log in to upload images." }
+
+    const imageSeed = `${currentUser.id}-${Date.now()}`
+    const imageNumber = Math.floor(100 + Math.random() * 900)
+    const message: GroupChatMessage = {
+      id: `msg-${Date.now()}`,
+      groupId,
+      senderId: currentUser.id,
+      senderName: currentUser.displayName,
+      content: `study-snapshot-${imageNumber}.png`,
+      timestamp: new Date(),
+      messageType: "image",
+      imageName: `study-snapshot-${imageNumber}.png`,
+      imageUrl: `https://picsum.photos/seed/${encodeURIComponent(imageSeed)}/720/420`,
+    }
+
+    setGroups(prev => prev.map(group => group.id === groupId
+      ? { ...group, messages: [...group.messages, message], updatedAt: new Date() }
+      : group,
+    ))
+    return { success: true }
+  }, [currentUser])
+
   return {
     groups,
     activeGroupId,
@@ -344,6 +368,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     deleteGroup,
     sendGroupMessage,
     shareGroupDocument,
+    shareGroupImage,
     generateGroupCode: makeGroupCode,
   }
 }
