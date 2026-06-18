@@ -15,12 +15,13 @@ interface SidebarProps {
   onNewChat: () => void
 }
 
-type NavPage = "home" | "documents" | "chat" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
+type NavPage = "home" | "documents" | "chat" | "groups" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
 type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
 
 const navItems: { page: NavPage; icon: React.ElementType; label: { vi: string; en: string }; adminOnly?: boolean }[] = [
   { page: "home", icon: Home, label: { vi: "Trang chủ", en: "Home" } },
   { page: "chat", icon: MessageCircle, label: { vi: "AI Chatbot", en: "AI Chatbot" } },
+  { page: "groups", icon: Users, label: { vi: "Chat nhóm", en: "Group Chat" } },
   { page: "documents", icon: FolderOpen, label: { vi: "Tài liệu của tôi", en: "My Documents" } },
   { page: "flashcards", icon: BookOpen, label: { vi: "Flashcards", en: "Flashcards" } },
   { page: "cloud", icon: Cloud, label: { vi: "Cloud Storage", en: "Cloud Storage" } },

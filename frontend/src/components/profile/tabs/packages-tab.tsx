@@ -95,10 +95,10 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>
                         {pkg.tier === "free"
-                          ? text.noStudyRoom
+                          ? text.noGroupChat
                           : pkg.tier === "2-4"
-                          ? text.room4
-                          : text.room99}
+                          ? text.group4
+                          : text.group99}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
@@ -141,12 +141,12 @@ const packagesText = {
     currentSubscription: "Gói dịch vụ hiện tại",
     planName: "Tên gói:",
     expiredPlan: "Gói đã hết hạn (Free)",
-    plan2To4: "Gói 2-4 người (Premium)",
-    plan5Plus: "Gói 5+ người (Enterprise)",
+    plan2To4: "Gói Pro",
+    plan5Plus: "Gói VIP",
     freePlan: "Gói Free (Mặc định)",
     freeCard: "Gói Miễn Phí",
-    plan2To4Card: "Gói 2-4 Người",
-    plan5PlusCard: "Gói 5+ Người",
+    plan2To4Card: "Gói Pro",
+    plan5PlusCard: "Gói VIP",
     expiry: "Hạn sử dụng:",
     expired: "Đã hết hạn",
     active: "Đang hoạt động",
@@ -155,9 +155,9 @@ const packagesText = {
     freePrice: "Miễn phí",
     perMonth: "/tháng",
     aiChat: "AI Chat cá nhân hỏi đáp",
-    noStudyRoom: "Không hỗ trợ mở phòng học nhóm",
-    room4: "Mở phòng học nhóm (tối đa 4 người)",
-    room99: "Mở phòng học nhóm (tối đa 99 người)",
+    noGroupChat: "Không hỗ trợ tạo nhóm, tham gia tối đa 5 nhóm",
+    group4: "Tạo tối đa 20 nhóm, tham gia tối đa 30 nhóm",
+    group99: "Tạo tối đa 50 nhóm, tham gia tối đa 60 nhóm",
     storage: "Dung lượng lưu trữ",
     flashcards: "Tạo flashcards từ tài liệu",
     default: "Mặc định",
@@ -168,12 +168,12 @@ const packagesText = {
     currentSubscription: "Current subscription",
     planName: "Plan name:",
     expiredPlan: "Expired plan (Free)",
-    plan2To4: "2-4 people plan (Premium)",
-    plan5Plus: "5+ people plan (Enterprise)",
+    plan2To4: "Pro plan",
+    plan5Plus: "VIP plan",
     freePlan: "Free plan (Default)",
     freeCard: "Free plan",
-    plan2To4Card: "2-4 people plan",
-    plan5PlusCard: "5+ people plan",
+    plan2To4Card: "Pro plan",
+    plan5PlusCard: "VIP plan",
     expiry: "Expires:",
     expired: "Expired",
     active: "Active",
@@ -182,9 +182,9 @@ const packagesText = {
     freePrice: "Free",
     perMonth: "/month",
     aiChat: "Personal AI chat Q&A",
-    noStudyRoom: "Study rooms are not available",
-    room4: "Create study rooms (up to 4 people)",
-    room99: "Create study rooms (up to 99 people)",
+    noGroupChat: "Group creation is not available, join up to 5 groups",
+    group4: "Create up to 20 groups, join up to 30 groups",
+    group99: "Create up to 50 groups, join up to 60 groups",
     storage: "Storage",
     flashcards: "Create flashcards from documents",
     default: "Default",

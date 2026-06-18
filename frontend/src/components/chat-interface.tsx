@@ -8,7 +8,6 @@ import { useApp, getAIMockResponse, ChatSession, ChatMessage } from "@/lib/store
 import { ChatToolbar } from "./chat/chat-toolbar"
 import { ChatMessageItem } from "./chat/chat-message"
 import { ChatInputBar } from "./chat/chat-input-bar"
-import { StudyRoomPanel } from "./chat/study-room-panel"
 
 const MAX_QUESTION_LENGTH = 500
 
@@ -16,10 +15,8 @@ export function EnhancedChatInterface() {
   const {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
-    openAuthModal, setCurrentPage,
-    language, downloadDocument,
-    packagePrices,
-    rooms, currentRoomId, createRoom, joinRoom, leaveRoom, closeRoom, sendRoomMessage, shareRoomDocument
+    openAuthModal,
+    language,
   } = useApp()
 
   const [input, setInput] = useState("")
@@ -29,9 +26,6 @@ export function EnhancedChatInterface() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const [showRoomPanel, setShowRoomPanel] = useState(false)
-  const [showRoomSidebar, setShowRoomSidebar] = useState(false)
-
   const activeSession = chatSessions.find(s => s.id === activeChatId) ?? null
   const messages = activeSession?.messages ?? []
   const selectedDoc = documents.find(d => d.id === selectedDocId)
@@ -40,14 +34,6 @@ export function EnhancedChatInterface() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
-
-  useEffect(() => {
-    if (currentRoomId) {
-      setShowRoomSidebar(true)
-    } else {
-      setShowRoomSidebar(false)
-    }
-  }, [currentRoomId])
 
   const handleSend = async (content: string) => {
     if (!content.trim() || isLoading) return
@@ -109,17 +95,6 @@ export function EnhancedChatInterface() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  const handleShareToRoom = (content: string) => {
-    sendRoomMessage(`[${text.sharedFromAi}]:\n${content.slice(0, 150)}${content.length > 150 ? "..." : ""}`)
-    alert(text.sharedToRoom)
-  }
-
-  const handleShareDocumentToRoom = async (documentId: string) => {
-    const doc = documents.find(d => d.id === documentId)
-    if (!doc || !currentRoomId) return { success: false, error: text.shareDocFailed }
-    return shareRoomDocument(doc.id)
-  }
-
   const suggestedQuestions = [
     text.suggestSummary,
     text.suggestFlashcards,
@@ -137,32 +112,9 @@ export function EnhancedChatInterface() {
         showDocPicker={showDocPicker}
         setShowDocPicker={setShowDocPicker}
         language={language}
-      >
-        <StudyRoomPanel
-          mode="toggle"
-          rooms={rooms}
-          packagePrices={packagePrices}
-          currentRoomId={currentRoomId}
-          currentUser={currentUser}
-          onJoinRoom={joinRoom}
-          onCreateRoom={createRoom}
-          onLeaveRoom={leaveRoom}
-          onCloseRoom={closeRoom}
-          onSendMessage={sendRoomMessage}
-          documents={documents}
-          onShareDocument={handleShareDocumentToRoom}
-          onDownloadDocument={downloadDocument}
-          showRoomPanel={showRoomPanel}
-          setShowRoomPanel={setShowRoomPanel}
-          showRoomSidebar={showRoomSidebar}
-          setShowRoomSidebar={setShowRoomSidebar}
-          setCurrentPage={setCurrentPage}
-          openAuthModal={openAuthModal}
-          language={language}
-        />
-      </ChatToolbar>
+      />
 
-      <div className="flex-1 flex overflow-hidden relative" onClick={() => { setShowDocPicker(false); setShowRoomPanel(false); }}>
+      <div className="flex-1 flex overflow-hidden relative" onClick={() => { setShowDocPicker(false); }}>
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4">
             {messages.length === 0 ? (
@@ -198,8 +150,6 @@ export function EnhancedChatInterface() {
                     message={message}
                     copiedId={copiedId}
                     onCopy={handleCopy}
-                    onShare={handleShareToRoom}
-                    currentRoomId={currentRoomId}
                   />
                 ))}
 
@@ -234,29 +184,6 @@ export function EnhancedChatInterface() {
             language={language}
           />
         </div>
-
-        <StudyRoomPanel
-          mode="sidebar"
-          rooms={rooms}
-          packagePrices={packagePrices}
-          currentRoomId={currentRoomId}
-          currentUser={currentUser}
-          onJoinRoom={joinRoom}
-          onCreateRoom={createRoom}
-          onLeaveRoom={leaveRoom}
-          onCloseRoom={closeRoom}
-          onSendMessage={sendRoomMessage}
-          documents={documents}
-          onShareDocument={handleShareDocumentToRoom}
-          onDownloadDocument={downloadDocument}
-          showRoomPanel={showRoomPanel}
-          setShowRoomPanel={setShowRoomPanel}
-          showRoomSidebar={showRoomSidebar}
-          setShowRoomSidebar={setShowRoomSidebar}
-          setCurrentPage={setCurrentPage}
-          openAuthModal={openAuthModal}
-          language={language}
-        />
       </div>
     </div>
   )
@@ -264,15 +191,12 @@ export function EnhancedChatInterface() {
 
 const chatText = {
   vi: {
-    sharedFromAi: "Chia sẻ từ AI",
-    sharedToRoom: "Đã chia sẻ phản hồi của AI vào phòng học nhóm!",
     sharedDocument: "Tài liệu được chia sẻ",
     documentName: "Tên tài liệu",
     subject: "Môn học",
     visibility: "Quyền xem",
     publicVisibility: "Public",
     noSubject: "Chưa đặt môn",
-    shareDocFailed: "Không thể chia sẻ tài liệu vào phòng.",
     suggestSummary: "Tóm tắt nội dung chính của tài liệu này",
     suggestFlashcards: "Tạo flashcard từ tài liệu để ôn tập",
     suggestConcepts: "Các khái niệm quan trọng nhất là gì?",
@@ -283,15 +207,12 @@ const chatText = {
     emptySignedOut: "Đăng nhập để lưu lịch sử chat và sử dụng đầy đủ tính năng AI.",
   },
   en: {
-    sharedFromAi: "Shared from AI",
-    sharedToRoom: "AI response shared to the study room.",
     sharedDocument: "Shared document",
     documentName: "Document",
     subject: "Subject",
     visibility: "Visibility",
     publicVisibility: "Public",
     noSubject: "No subject",
-    shareDocFailed: "Could not share the document to the room.",
     suggestSummary: "Summarize the main ideas in this document",
     suggestFlashcards: "Create flashcards from this document",
     suggestConcepts: "What are the most important concepts?",
