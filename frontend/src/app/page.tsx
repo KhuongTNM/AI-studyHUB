@@ -12,6 +12,7 @@ import { CloudStorage } from "@/components/cloud/cloud-storage"
 import { AdminDashboard } from "@/components/admin/admin-dashboard"
 import { FeaturesSection, Footer } from "@/components/features-section"
 import { FlashcardPage } from "@/components/flashcards/flashcard-page"
+import { GroupChatPage } from "@/components/groups/group-chat-page"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
@@ -216,6 +217,8 @@ export default function AIStudyHub() {
         return <div className="flex-1 overflow-y-auto"><HomePage /></div>
       case "chat":
         return <div className="flex flex-1 flex-col overflow-hidden"><EnhancedChatInterface /></div>
+      case "groups":
+        return <div className="flex flex-1 flex-col overflow-hidden"><GroupChatPage /></div>
       case "documents":
         return <div className="flex flex-1 flex-col overflow-hidden"><DocumentManager /></div>
       case "cloud":

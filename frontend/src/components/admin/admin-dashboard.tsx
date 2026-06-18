@@ -213,10 +213,12 @@ export function AdminDashboard() {
         {text.packagePrices}
       </h2>
       <div className="grid gap-4 md:grid-cols-2">
-        {packagePrices.filter(p => p.tier !== "free").map(pkg => (
+        {packagePrices.filter(p => p.tier !== "free").map(pkg => {
+          const packageName = pkg.tier === "2-4" ? text.package2To4People : text.package5PlusPeople
+          return (
           <div key={pkg.id} className="rounded-lg border border-border bg-background p-4">
             <div className="mb-3">
-              <p className="text-sm font-semibold text-foreground">{pkg.name}</p>
+              <p className="text-sm font-semibold text-foreground">{packageName}</p>
               <p className="text-xs text-muted-foreground">
                 {formatAdminText(text.maxRoomMembers, { count: pkg.maxUsers })}
               </p>
@@ -230,9 +232,9 @@ export function AdminDashboard() {
                 onBlur={e => {
                   const newPrice = Number(e.target.value)
                   if (!isNaN(newPrice) && newPrice >= 0 && newPrice !== pkg.price) {
-                    requirePassword(formatAdminText(text.updatePrice, { name: pkg.name }), async (password) => {
+                    requirePassword(formatAdminText(text.updatePrice, { name: packageName }), async (password) => {
                       const result = await updatePackagePrice(pkg.tier, newPrice, password)
-                      runAccountAction(result, formatAdminText(text.priceUpdated, { name: pkg.name }))
+                      runAccountAction(result, formatAdminText(text.priceUpdated, { name: packageName }))
                     })
                   }
                 }}
@@ -241,7 +243,7 @@ export function AdminDashboard() {
               <span className="text-xs text-muted-foreground">{text.perMonthVnd}</span>
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </section>
   )

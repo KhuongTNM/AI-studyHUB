@@ -68,7 +68,7 @@ export function useSubscriptionState({
         const updatedPlan = await updatePackagePriceApi(tier, newPrice, adminPassword)
         const updatedPrice = Number(updatedPlan.price)
         setPackagePrices(prev => prev.map(p => (p.tier === tier ? { ...p, price: updatedPrice } : p)))
-        const tierName = tier === "2-4" ? "Gói 2-4 người" : "Gói 5+ người"
+        const tierName = tier === "2-4" ? "Gói Pro" : "Gói VIP"
         addLog(
           `Cập nhật giá ${tierName}`,
           `${updatedPrice.toLocaleString("vi-VN")}đ/tháng`,
@@ -112,7 +112,7 @@ export function useSubscriptionState({
         setUsers(prev => prev.map(u => (u.id === userId ? updatedUser : u)))
         if (currentUser.id === userId) setCurrentUser(updatedUser)
 
-        const tierName = tier === "free" ? "Free" : tier === "2-4" ? "2-4 người" : "5+ người"
+        const tierName = tier === "free" ? "Free" : tier === "2-4" ? "Pro" : "VIP"
         addLog(
           `Cấp gói ${tierName} (${durationMonths} tháng)`,
           targetUser.email,
@@ -164,7 +164,7 @@ export function useSubscriptionState({
         prev ? { ...prev, subscriptionTier: tier, subscriptionExpiresAt: expiresAt } : prev,
       )
 
-      const tierName = tier === "free" ? "Free" : tier === "2-4" ? "2-4 người" : "5+ người"
+      const tierName = tier === "free" ? "Free" : tier === "2-4" ? "Pro" : "VIP"
       addLog(`Đăng ký mua gói ${tierName}`, currentUser.email, currentUser.id)
       return { success: true }
     },

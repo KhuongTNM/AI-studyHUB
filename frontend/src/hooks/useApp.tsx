@@ -18,14 +18,14 @@
  *  useFlashcardState    → flashcards              (needs documents)
  *  useAdminState        → users list, admin actions
  *  useSubscriptionState → packagePrices, subscription actions
- *  useStudyRoomState    → rooms
+ *  useGroupChatState    → group chats
  */
 
 import React, { createContext, useCallback, useContext, type ReactNode } from "react"
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
 import type {
-  Language, PackagePrice, PackageTier, StudyRoom, User,
-  Category, ChatSession, Document, Folder, Flashcard, ActivityLog,
+  Language, PackagePrice, PackageTier, User,
+  Category, ChatSession, Document, Folder, Flashcard, ActivityLog, GroupChat,
 } from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
@@ -36,8 +36,7 @@ import { useChatState } from "./useChatState"
 import { useFlashcardState } from "./useFlashcardState"
 import { useAdminState } from "./useAdminState"
 import { useSubscriptionState } from "./useSubscriptionState"
-import { useStudyRoomState } from "./useStudyRoomState"
-import { RoomMessage } from "@/states/types"
+import { useGroupChatState } from "./useGroupChatState"
 
 // ─── Public contract ────────────────────────────────────────────────────────
 
@@ -57,7 +56,7 @@ export interface AppState {
   // ── UI ────────────────────────────────────────────────────────────────────
   isDarkMode: boolean
   language: Language
-  currentPage: "home" | "documents" | "chat" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
+  currentPage: "home" | "documents" | "chat" | "groups" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
   toggleDarkMode: () => void
   setLanguage: (language: Language) => void
   setCurrentPage: (page: AppState["currentPage"]) => void
@@ -98,6 +97,20 @@ export interface AppState {
   updateChatSession: (id: string, updates: Partial<ChatSession>) => void
   setActiveChatId: (id: string | null) => void
 
+  // ── Group chats ───────────────────────────────────────────────────────────
+  groups: GroupChat[]
+  activeGroupId: string | null
+  groupCreateLimit: number
+  groupJoinLimit: number
+  setActiveGroupId: (id: string | null) => void
+  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => { success: boolean; error?: string }
+  joinGroup: (groupCode: string, password: string) => { success: boolean; error?: string }
+  leaveGroup: (groupId: string) => { success: boolean; error?: string }
+  deleteGroup: (groupId: string) => { success: boolean; error?: string }
+  sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
+  shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
+  generateGroupCode: () => string
+
   // ── Flashcards ────────────────────────────────────────────────────────────
   flashcards: Flashcard[]
   flashcardSelectedDocumentId: string | "all"
@@ -128,16 +141,6 @@ export interface AppState {
   grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
 
-  // ── Study Rooms ───────────────────────────────────────────────────────────
-  rooms: StudyRoom[]
-  currentRoomId: string | null
-  /** Tạo phòng qua POST /api/study-rooms (BR-041) */
-  createRoom: (roomId: string, password?: string) => Promise<{ success: boolean; error?: string }>
-  joinRoom: (roomId: string, password?: string) => Promise<{ success: boolean; error?: string }>
-  leaveRoom: () => void
-  closeRoom: () => void
-  sendRoomMessage: (content: string) => void
-  shareRoomDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -192,12 +195,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addLog: logs.addLog,
   })
 
-  // ── 7. Study rooms (cần currentUser cho auth checks) ───────────────────
-  const studyRoom = useStudyRoomState({
-    currentUser: auth.currentUser,
-    packagePrices: subscription.packagePrices,
-    addLog: logs.addLog,
-  })
+  const groupChat = useGroupChatState({ currentUser: auth.currentUser })
 
   // ─── Cross-domain actions ───────────────────────────────────────────────
 
@@ -285,6 +283,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateChatSession: chat.updateChatSession,
         setActiveChatId: chat.setActiveChatId,
 
+        // Group chats
+        groups: groupChat.groups,
+        activeGroupId: groupChat.activeGroupId,
+        groupCreateLimit: groupChat.groupCreateLimit,
+        groupJoinLimit: groupChat.groupJoinLimit,
+        setActiveGroupId: groupChat.setActiveGroupId,
+        createGroup: groupChat.createGroup,
+        joinGroup: groupChat.joinGroup,
+        leaveGroup: groupChat.leaveGroup,
+        deleteGroup: groupChat.deleteGroup,
+        sendGroupMessage: groupChat.sendGroupMessage,
+        shareGroupDocument: groupChat.shareGroupDocument,
+        generateGroupCode: groupChat.generateGroupCode,
+
         // Flashcards
         flashcards: flashcards.flashcards,
         flashcardSelectedDocumentId: flashcards.flashcardSelectedDocumentId,
@@ -311,15 +323,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         grantSubscription: subscription.grantSubscription,
         buySubscription: subscription.buySubscription,
 
-        // Study rooms
-        rooms: studyRoom.rooms,
-        currentRoomId: studyRoom.currentRoomId,
-        createRoom: studyRoom.createRoom,
-        joinRoom: studyRoom.joinRoom,
-        leaveRoom: studyRoom.leaveRoom,
-        closeRoom: studyRoom.closeRoom,
-        sendRoomMessage: studyRoom.sendRoomMessage,
-        shareRoomDocument: studyRoom.shareRoomDocument,
       }}
     >
       {children}
