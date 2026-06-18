@@ -48,7 +48,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
