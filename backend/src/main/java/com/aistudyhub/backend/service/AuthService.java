@@ -285,7 +285,7 @@ public class AuthService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tên hiển thị không được để trống.");
         }
         user.setDisplayName(displayName);
-        if (request.getThemePreference() != null) {
+        if (request.getThemePreference() != null && !request.getThemePreference().isBlank()) {
             user.setThemePreference(parseThemePreference(request.getThemePreference()));
         }
         user.setUpdatedAt(LocalDateTime.now());
