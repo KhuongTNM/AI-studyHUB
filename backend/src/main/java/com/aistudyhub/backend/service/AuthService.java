@@ -98,11 +98,6 @@ public class AuthService {
         return response;
     }
 
-    /**
-     * FR-25: Đăng nhập bằng Google thông qua luồng ID Token.
-     * Uỷ quyền toàn bộ xử lý cho {@link GoogleAuthService} để tách biệt
-     * trách nhiệm và tái sử dụng logic một nơi duy nhất.
-     */
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
         return googleAuthService.loginWithGoogle(request);
     }
