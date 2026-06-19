@@ -53,6 +53,7 @@ public class SecurityConfig {
                         // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
+                        .requestMatchers("/api/users/**").authenticated()
                         .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers("/api/subscription-purchases/**").authenticated()
                         .requestMatchers("/api/documents/**").authenticated()

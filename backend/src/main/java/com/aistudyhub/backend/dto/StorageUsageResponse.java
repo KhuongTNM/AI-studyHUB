@@ -8,6 +8,7 @@ public class StorageUsageResponse {
     private long used;
     private int percent;
     private boolean nearFull;
+    private String warningMessage;
 
     public static StorageUsageResponse from(User user) {
         StorageUsageResponse res = new StorageUsageResponse();
@@ -17,6 +18,9 @@ public class StorageUsageResponse {
                 ? (int) (user.getStorageUsedBytes() * 100 / user.getStorageLimitBytes())
                 : 0;
         res.nearFull = res.percent >= 80;
+        if (res.nearFull) {
+            res.warningMessage = "Dung lượng lưu trữ gần đầy. Vui lòng xóa bớt file hoặc nâng cấp gói.";
+        }
         return res;
     }
 
@@ -34,5 +38,9 @@ public class StorageUsageResponse {
 
     public boolean isNearFull() {
         return nearFull;
+    }
+
+    public String getWarningMessage() {
+        return warningMessage;
     }
 }
