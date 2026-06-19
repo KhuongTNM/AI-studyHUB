@@ -135,7 +135,15 @@ export function DocumentManager() {
     }
   }, [folderPath, navigateToRoot])
 
-  // ── Upload ──────────────────────────────────────────────────────────────
+  /** Chuyển filter môn học + reset về root để tránh hiển thị folder của môn khác */
+  const handleSelectSubject = useCallback((subject: string) => {
+    setSelectedSubject(subject)
+    setCurrentFolderId(null)
+    setFolderPath([])
+    setSearchQuery("")
+  }, [])
+
+
   const handleUpload = useCallback(async (files: File[], subject: string) => {
     if (!currentUser) return
     setUploadError(null)
@@ -182,9 +190,13 @@ export function DocumentManager() {
     if (!result.success && result.error) setFolderError(result.error)
   }, [createFolder, currentFolderId, selectedSubject])
 
+  /**
+   * Thêm môn học mới vào danh sách nhưng KHÔNG tự động chuyển filter.
+   * Nếu auto-switch, folders của môn hiện tại sẽ bị ẩn → user tưởng mất data.
+   */
   const handleCreateSubject = useCallback((name: string) => {
     setCustomSubjects(prev => prev.includes(name) ? prev : [...prev, name])
-    setSelectedSubject(name)
+    // Không gọi setSelectedSubject — giữ nguyên view hiện tại.
   }, [])
 
   /**
@@ -346,10 +358,10 @@ export function DocumentManager() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => setSelectedSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSelectSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
               <DropdownMenuSeparator />
               {subjects.map(subject => (
-                <DropdownMenuItem key={subject} onClick={() => setSelectedSubject(subject)}>
+                <DropdownMenuItem key={subject} onClick={() => handleSelectSubject(subject)}>
                   <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
                   {subject}
                 </DropdownMenuItem>
@@ -386,7 +398,7 @@ export function DocumentManager() {
         {subjects.length > 0 && (
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
-              onClick={() => setSelectedSubject("all")}
+              onClick={() => handleSelectSubject("all")}
               className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all",
                 selectedSubject === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
               )}
@@ -398,7 +410,7 @@ export function DocumentManager() {
               return (
                 <button
                   key={subject}
-                  onClick={() => setSelectedSubject(subject)}
+                  onClick={() => handleSelectSubject(subject)}
                   className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all",
                     selectedSubject === subject ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
                   )}
