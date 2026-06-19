@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.controller;
 
+import com.aistudyhub.backend.dto.DocumentRequest;
 import com.aistudyhub.backend.dto.DocumentResponse;
 import com.aistudyhub.backend.dto.UpdateDocumentFolderRequest;
 import com.aistudyhub.backend.dto.UpdateVisibilityRequest;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -37,13 +39,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/documents")
+@RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentService documentService;
-
-    public DocumentController(DocumentService documentService) {
-        this.documentService = documentService;
-    }
 
     @PostMapping("/upload")
     public ResponseEntity<DocumentResponse> upload(
@@ -51,21 +50,25 @@ public class DocumentController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("subject") String subject,
             @RequestParam(value = "title", required = false) String title,
-            @RequestParam(value = "visibility", required = false, defaultValue = "private") String visibilityStr) {
+            @RequestParam(value = "visibility", required = false, defaultValue = "private") String visibilityStr,
+            @RequestParam(value = "tags", required = false) String tags) {
         Visibility visibility;
         try {
             visibility = Visibility.valueOf(visibilityStr.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
         }
-        Document doc = documentService.upload(principal.getId(), file, subject, title, visibility);
+        Document doc = documentService.upload(principal.getId(), file, subject, title, visibility, tags);
         return ResponseEntity.status(201).body(DocumentResponse.from(doc));
     }
 
     @GetMapping
     public ResponseEntity<List<DocumentResponse>> list(
-            @AuthenticationPrincipal AuthUserPrincipal principal) {
-        List<Document> docs = documentService.getUserDocuments(principal.getId());
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @RequestParam(value = "tag", required = false) String tag) {
+        List<Document> docs = (tag != null && !tag.isBlank())
+                ? documentService.getUserDocumentsByTag(principal.getId(), tag.trim().toLowerCase())
+                : documentService.getUserDocuments(principal.getId());
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 
@@ -75,7 +78,6 @@ public class DocumentController {
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 
-    // ADDED FOR BR-022/023
     @GetMapping("/trash")
     public ResponseEntity<List<DocumentResponse>> listTrash(
             @AuthenticationPrincipal AuthUserPrincipal principal) {
@@ -113,7 +115,6 @@ public class DocumentController {
         return ResponseEntity.ok(DocumentResponse.from(doc));
     }
 
-    // ADDED FOR BR-022/023
     @PostMapping("/{id}/restore")
     public ResponseEntity<DocumentResponse> restore(
             @AuthenticationPrincipal AuthUserPrincipal principal,
@@ -146,11 +147,15 @@ public class DocumentController {
         }
     }
 
-    /**
-     * PATCH /api/documents/{id}
-     * FR-23: Di chuyển tài liệu vào một thư mục khác hoặc về root (folderId = null).
-     * Trả về HTTP 200 OK kèm document đã cập nhật.
-     */
+    @PutMapping("/{id}")
+    public ResponseEntity<DocumentResponse> updateDocument(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id,
+            @RequestBody DocumentRequest request) {
+        Document doc = documentService.updateDocument(id, principal.getId(), request);
+        return ResponseEntity.ok(DocumentResponse.from(doc));
+    }
+
     @PatchMapping("/{id}")
     public ResponseEntity<DocumentResponse> updateFolder(
             @AuthenticationPrincipal AuthUserPrincipal principal,
