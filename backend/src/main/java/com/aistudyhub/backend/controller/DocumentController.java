@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.DocumentResponse;
+import com.aistudyhub.backend.dto.UpdateDocumentFolderRequest;
 import com.aistudyhub.backend.dto.UpdateVisibilityRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.Visibility;
@@ -24,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -142,5 +144,19 @@ public class DocumentController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    /**
+     * PATCH /api/documents/{id}
+     * FR-23: Di chuyển tài liệu vào một thư mục khác hoặc về root (folderId = null).
+     * Trả về HTTP 200 OK kèm document đã cập nhật.
+     */
+    @PatchMapping("/{id}")
+    public ResponseEntity<DocumentResponse> updateFolder(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id,
+            @RequestBody UpdateDocumentFolderRequest request) {
+        Document doc = documentService.updateFolderId(id, principal.getId(), request.getFolderId());
+        return ResponseEntity.ok(DocumentResponse.from(doc));
     }
 }

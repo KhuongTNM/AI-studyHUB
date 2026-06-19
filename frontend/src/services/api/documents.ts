@@ -9,6 +9,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 interface ApiDocument {
   id: string
   userId: string
+  folderId?: string | null    // FR-23: thêm folderId
   originalName: string
   title?: string | null
   fileUrl?: string | null
@@ -73,6 +74,7 @@ export function mapApiDocumentToDocument(api: ApiDocument): Document {
     uploadedBy: api.userId,
     categoryId: "",
     subject: api.subject,
+    folderId: api.folderId ?? null,   // FR-23: map folderId từ backend
     status: mapStatus(api.status),
     description: api.description ?? undefined,
     tags: api.tags
@@ -118,10 +120,6 @@ export async function fetchTrashDocumentsApi(): Promise<Document[]> {
 
 /**
  * POST /api/documents/upload — upload tài liệu (BR-013 đến BR-018).
- *
- * Hỗ trợ callback tiến trình giả lập vì Fetch API không hỗ trợ
- * upload progress natively. Progress thực sẽ chuyển sang 100% khi
- * server phản hồi.
  */
 export async function uploadDocumentApi(
   file: File,
@@ -136,7 +134,6 @@ export async function uploadDocumentApi(
   if (title) formData.append("title", title)
   formData.append("visibility", visibility)
 
-  // Giả lập progress trong khi fetch chạy
   let fakeProgress = 0
   const progressInterval = setInterval(() => {
     fakeProgress = Math.min(fakeProgress + Math.random() * 18 + 7, 88)
@@ -198,8 +195,6 @@ export async function restoreDocumentApi(id: string): Promise<Document> {
 
 /**
  * POST /api/documents/{id}/download — tăng downloadCount và tải file (BR-021).
- *
- * Server trả về file stream; hàm này tự trigger browser download.
  */
 export async function downloadDocumentApi(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/documents/${id}/download`, {
@@ -224,4 +219,25 @@ export async function downloadDocumentApi(id: string): Promise<void> {
   anchor.click()
   document.body.removeChild(anchor)
   URL.revokeObjectURL(url)
+}
+
+/**
+ * PATCH /api/documents/{id}
+ * FR-23: Di chuyển tài liệu vào thư mục khác hoặc về root.
+ * folderId = null → Folder_ID = NULL (BR-085).
+ */
+export async function updateDocumentFolderApi(
+  id: string,
+  folderId: string | null,
+): Promise<Document> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ folderId }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }

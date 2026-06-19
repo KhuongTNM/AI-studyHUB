@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react"
 import {
-  Upload, Search, Filter, Grid3X3, List, ChevronDown, X,
+  Search, Filter, Grid3X3, List, ChevronDown, X,
   ArrowUpDown, FolderPlus, Home, ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import { FolderCard } from "./folder-card"
 import { CreateFolderModal } from "./create-folder-modal"
 import { CreateSubjectModal } from "./create-subject-modal"
 import { MoveFileModal } from "./move-file-modal"
+import { MoveFolderModal } from "./move-folder-modal"         // FR-23 / BR-087
 import { ContextMenuPortal } from "./context-menu-portal"
 import type { ContextMenuState, ContextMenuTarget } from "./context-menu-portal"
 
@@ -31,12 +32,13 @@ export function DocumentManager() {
     documents, categories, deleteDocument,
     uploadDocument, downloadDocument, changeDocumentVisibility,
     currentUser, setCurrentPage, generateFlashcardsFromDocument, language,
-    folders, createFolder, renameFolder, deleteFolder, moveDocumentToFolder,
+    folders, createFolder, renameFolder, deleteFolder,
+    moveFolder, moveDocumentToFolder,
   } = useApp()
 
   // ── Navigation state ────────────────────────────────────────────────────
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
-  const [folderPath, setFolderPath] = useState<Folder[]>([]) // breadcrumb trail
+  const [folderPath, setFolderPath] = useState<Folder[]>([])
 
   // ── Filter / sort / view ────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
@@ -54,10 +56,12 @@ export function DocumentManager() {
   const [customSubjects, setCustomSubjects] = useState<string[]>([])
   const [renameTarget, setRenameTarget] = useState<Folder | null>(null)
   const [moveTarget, setMoveTarget] = useState<Document | null>(null)
+  const [moveFolderTarget, setMoveFolderTarget] = useState<Folder | null>(null) // FR-23 / BR-087
 
-  // ── Drag state ──────────────────────────────────────────────────────────
+  // ── Error states ────────────────────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [folderError, setFolderError] = useState<string | null>(null)  // FR-23
 
   // ── Context menu ────────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -67,15 +71,12 @@ export function DocumentManager() {
   // ── Derived data ────────────────────────────────────────────────────────
   const activeDocs = documents.filter(d => d.status !== "deleted")
 
-  // Documents visible in current folder
   const docsInFolder = activeDocs.filter(d =>
     (d.folderId ?? null) === currentFolderId
   )
 
-  // Subfolders in current folder
   const foldersInView = folders.filter(f => f.parentId === currentFolderId)
 
-  // Subjects from all documents to keep filters persistent across navigation
   const subjects = Array.from(
     new Set([
       ...customSubjects,
@@ -115,8 +116,6 @@ export function DocumentManager() {
     setCurrentFolderId(folder.id)
     setFolderPath(prev => [...prev, folder])
     setSearchQuery("")
-    // Khi vào folder, chúng ta giữ nguyên bộ lọc môn học nếu folder đó thuộc môn học đó
-    // Hoặc nếu folder không có môn học (tạo ở chế độ "Tất cả") thì vẫn để "Tất cả"
   }, [])
 
   const navigateToRoot = useCallback(() => {
@@ -171,36 +170,69 @@ export function DocumentManager() {
   }, [])
 
   // ── Folder actions ──────────────────────────────────────────────────────
-  const handleCreateFolder = useCallback((name: string) => {
-    createFolder(name, currentFolderId, selectedSubject !== "all" ? selectedSubject : undefined)
+
+  /**
+   * FR-23: Tạo thư mục mới.
+   * Subject từ modal (người dùng nhập) hoặc fallback về selectedSubject.
+   * BR-082: gắn môn học; BR-086: backend validate tên trùng.
+   */
+  const handleCreateFolder = useCallback(async (name: string, subject?: string) => {
+    const resolvedSubject = subject ?? (selectedSubject !== "all" ? selectedSubject : undefined)
+    const result = await createFolder(name, currentFolderId, resolvedSubject)
+    if (!result.success && result.error) setFolderError(result.error)
   }, [createFolder, currentFolderId, selectedSubject])
 
   const handleCreateSubject = useCallback((name: string) => {
-    setCustomSubjects(prev => {
-      if (prev.includes(name)) return prev
-      return [...prev, name]
-    })
+    setCustomSubjects(prev => prev.includes(name) ? prev : [...prev, name])
     setSelectedSubject(name)
   }, [])
 
-  const handleRenameFolder = useCallback((name: string) => {
-    if (renameTarget) renameFolder(renameTarget.id, name)
+  /**
+   * FR-23: Đổi tên thư mục (+ tùy chọn cập nhật môn học).
+   * BR-086: backend validate tên trùng trong cùng cấp.
+   */
+  const handleRenameFolder = useCallback(async (name: string, subject?: string) => {
+    if (!renameTarget) return
+    const result = await renameFolder(renameTarget.id, name, subject)
+    if (!result.success && result.error) setFolderError(result.error)
     setRenameTarget(null)
   }, [renameFolder, renameTarget])
 
-  const handleDeleteFolder = useCallback((folder: Folder) => {
-    deleteFolder(folder.id)
-    // If we're inside a deleted folder, go up
+  /**
+   * FR-23: Xóa thư mục — cascade con (BR-084) + docs về root (BR-085).
+   */
+  const handleDeleteFolder = useCallback(async (folder: Folder) => {
+    const result = await deleteFolder(folder.id)
+    if (!result.success && result.error) {
+      setFolderError(result.error)
+      return
+    }
     if (folderPath.some(f => f.id === folder.id)) navigateToRoot()
   }, [deleteFolder, folderPath, navigateToRoot])
 
-  // ── Drag-over folder highlight (drop to move) ───────────────────────────
-  const isEmpty = activeDocs.length === 0 && folders.length === 0 && uploadingDocs.length === 0
+  /**
+   * FR-23: Di chuyển thư mục.
+   * BR-087: MoveFolderModal lọc bỏ đích không hợp lệ phía UI;
+   * backend cũng validate và trả lỗi nếu circular move.
+   */
+  const handleMoveFolder = useCallback(async (targetParentId: string | null) => {
+    if (!moveFolderTarget) return
+    const result = await moveFolder(moveFolderTarget.id, targetParentId)
+    if (!result.success && result.error) setFolderError(result.error)
+    setMoveFolderTarget(null)
+  }, [moveFolder, moveFolderTarget])
+
+  /**
+   * FR-23: Di chuyển tài liệu → PATCH /api/documents/{id}.
+   */
+  const handleMoveDocument = useCallback(async (docId: string, folderId: string | null) => {
+    const result = await moveDocumentToFolder(docId, folderId)
+    if (!result.success && result.error) setFolderError(result.error)
+    setMoveTarget(null)
+  }, [moveDocumentToFolder])
 
   return (
-    <div
-      className="flex h-full flex-col"
-    >
+    <div className="flex h-full flex-col">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between gap-3">
@@ -228,9 +260,15 @@ export function DocumentManager() {
         {uploadError && (
           <div className="mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <span className="flex-1">{uploadError}</span>
-            <button onClick={() => setUploadError(null)}>
-              <X className="h-4 w-4" />
-            </button>
+            <button onClick={() => setUploadError(null)}><X className="h-4 w-4" /></button>
+          </div>
+        )}
+
+        {/* Folder operation error banner (FR-23) */}
+        {folderError && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            <span className="flex-1">{folderError}</span>
+            <button onClick={() => setFolderError(null)}><X className="h-4 w-4" /></button>
           </div>
         )}
       </div>
@@ -239,7 +277,6 @@ export function DocumentManager() {
       <div
         className="flex-1 overflow-y-auto p-6"
         onContextMenu={e => {
-          // Only fire on the container background, not on cards
           const target = e.target as HTMLElement
           if (!target.closest("[data-item]")) {
             e.preventDefault()
@@ -300,7 +337,6 @@ export function DocumentManager() {
             )}
           </div>
 
-          {/* Category filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5">
@@ -321,7 +357,6 @@ export function DocumentManager() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Sort */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5">
@@ -337,7 +372,6 @@ export function DocumentManager() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* View toggle */}
           <div className="flex rounded-lg border border-border">
             <button onClick={() => setViewMode("grid")} className={cn("p-2 rounded-l-lg", viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
               <Grid3X3 className="h-4 w-4" />
@@ -376,7 +410,7 @@ export function DocumentManager() {
           </div>
         )}
 
-        {/* Custom empty states when no items match filters */}
+        {/* Empty states */}
         {filtered.length === 0 && filteredFolders.length === 0 && currentFolderId === null && (
           selectedSubject === "all" ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -423,7 +457,7 @@ export function DocumentManager() {
           )
         )}
 
-        {/* ── Folders section ─────────────────────────────────────── */}
+        {/* ── Folders section ───────────────────────────────────────── */}
         {filteredFolders.length > 0 && (
           <div className="mb-6">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
@@ -445,6 +479,7 @@ export function DocumentManager() {
                       language={language}
                       onOpen={navigateToFolder}
                       onRename={f => setRenameTarget(f)}
+                      onMove={f => setMoveFolderTarget(f)}        // FR-23 / BR-087
                       onDelete={handleDeleteFolder}
                       onContextMenu={(e, f) => openContextMenu(e, { type: "folder", folder: f })}
                     />
@@ -455,7 +490,7 @@ export function DocumentManager() {
           </div>
         )}
 
-        {/* ── Files section ───────────────────────────────────────── */}
+        {/* ── Files section ─────────────────────────────────────────── */}
         {filtered.length > 0 && (
           <div>
             {filteredFolders.length > 0 && (
@@ -463,18 +498,13 @@ export function DocumentManager() {
                 {text.filesSection}
               </p>
             )}
-
             <div className={cn(
               viewMode === "grid"
                 ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 : "space-y-2"
             )}>
               {filtered.map(doc => (
-                <div
-                  key={doc.id}
-                  data-item="file"
-                  onContextMenu={e => openContextMenu(e, { type: "file", doc })}
-                >
+                <div key={doc.id} data-item="file" onContextMenu={e => openContextMenu(e, { type: "file", doc })}>
                   <DocumentCard
                     doc={doc}
                     viewMode={viewMode}
@@ -513,6 +543,7 @@ export function DocumentManager() {
           onUploadFile={() => setShowUploadModal(true)}
           onOpenFolder={navigateToFolder}
           onRenameFolder={f => setRenameTarget(f)}
+          onMoveFolder={f => setMoveFolderTarget(f)}             // FR-23 / BR-087
           onDeleteFolder={handleDeleteFolder}
           onPreviewFile={setPreviewDoc}
           onEditFile={setEditDoc}
@@ -550,29 +581,47 @@ export function DocumentManager() {
         />
       )}
 
+      {/* Tạo thư mục: pre-fill môn học từ filter hiện tại (BR-082) */}
       {showCreateFolder && (
         <CreateFolderModal
           language={language}
+          initialSubject={selectedSubject !== "all" ? selectedSubject : undefined}
           onConfirm={handleCreateFolder}
           onClose={() => setShowCreateFolder(false)}
         />
       )}
+
+      {/* Đổi tên: pre-fill tên + môn học hiện tại */}
       {renameTarget && (
         <CreateFolderModal
           language={language}
           initialName={renameTarget.name}
+          initialSubject={renameTarget.subject}
           onConfirm={handleRenameFolder}
           onClose={() => setRenameTarget(null)}
         />
       )}
+
+      {/* Di chuyển tài liệu vào thư mục */}
       {moveTarget && (
         <MoveFileModal
           doc={moveTarget}
           folders={folders}
           currentFolderId={currentFolderId}
           language={language}
-          onMove={folderId => moveDocumentToFolder(moveTarget.id, folderId)}
+          onMove={folderId => handleMoveDocument(moveTarget.id, folderId)}
           onClose={() => setMoveTarget(null)}
+        />
+      )}
+
+      {/* Di chuyển thư mục — FR-23 / BR-087 */}
+      {moveFolderTarget && (
+        <MoveFolderModal
+          folder={moveFolderTarget}
+          allFolders={folders}
+          language={language}
+          onMove={handleMoveFolder}
+          onClose={() => setMoveFolderTarget(null)}
         />
       )}
     </div>
@@ -587,15 +636,8 @@ const docManagerText = {
     document: "tài liệu",
     documents: "tài liệu",
     folders: "thư mục",
-    newFolder: "Thư mục mới",
     newSubject: "Môn học mới",
-    uploadDocument: "Upload tài liệu",
     processing: "Đang xử lý",
-    emptyTitle: "Thư mục đang trống",
-    emptyHint: "Kéo thả file hoặc tạo thư mục để bắt đầu",
-    emptyFolderTitle: "Thư mục này đang trống",
-    emptyFolderHint: "Upload file hoặc tạo thư mục con",
-    rightClickHint: "Nhấp chuột phải để tạo thư mục hoặc upload tài liệu",
     searchPlaceholder: "Tìm kiếm tài liệu...",
     allSubjects: "Tất cả môn",
     allSubjectsFull: "Tất cả môn học",
@@ -606,9 +648,6 @@ const docManagerText = {
     nameDesc: "Tên Z-A",
     largest: "Lớn nhất",
     all: "Tất cả",
-    dropMore: "Kéo file hoặc click để upload thêm",
-    noResults: "Không tìm thấy tài liệu",
-    clearFilters: "Xóa bộ lọc",
     loginToManage: "Đăng nhập để quản lý tài liệu của bạn",
     foldersSection: "Thư mục",
     filesSection: "Tài liệu",
@@ -619,15 +658,8 @@ const docManagerText = {
     document: "document",
     documents: "documents",
     folders: "folders",
-    newFolder: "New folder",
     newSubject: "New subject",
-    uploadDocument: "Upload document",
     processing: "Processing",
-    emptyTitle: "This folder is empty",
-    emptyHint: "Drag & drop files or create a folder to get started",
-    emptyFolderTitle: "This folder is empty",
-    emptyFolderHint: "Upload files or create a subfolder",
-    rightClickHint: "Right-click to create a folder or upload a document",
     searchPlaceholder: "Search documents...",
     allSubjects: "All subjects",
     allSubjectsFull: "All subjects",
@@ -638,9 +670,6 @@ const docManagerText = {
     nameDesc: "Name Z-A",
     largest: "Largest",
     all: "All",
-    dropMore: "Drag files here or click to upload more",
-    noResults: "No documents found",
-    clearFilters: "Clear filters",
     loginToManage: "Log in to manage your documents",
     foldersSection: "Folders",
     filesSection: "Files",

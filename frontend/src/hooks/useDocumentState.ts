@@ -9,7 +9,15 @@ import {
   updateDocumentVisibilityApi,
   restoreDocumentApi,
   downloadDocumentApi,
+  updateDocumentFolderApi,
 } from "@/services/api/documents"
+import {
+  fetchFolderTreeApi,
+  createFolderApi,
+  renameFolderApi,
+  deleteFolderApi,
+  moveFolderApi,
+} from "@/services/api/folders"
 import type { Category, Document, Folder, User } from "@/states/types"
 
 interface DocumentStateDeps {
@@ -35,9 +43,24 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       .catch(() => {
         // Giữ nguyên state nếu backend không khả dụng
       })
-    return () => {
-      cancelled = true
+    return () => { cancelled = true }
+  }, [currentUser?.id])
+
+  // ── Load folder tree từ API khi user đăng nhập (FR-23) ─────────────────
+  useEffect(() => {
+    if (!currentUser) {
+      setFolders([])
+      return
     }
+    let cancelled = false
+    fetchFolderTreeApi()
+      .then(flat => {
+        if (!cancelled) setFolders(flat)
+      })
+      .catch(() => {
+        // Giữ nguyên state rỗng nếu backend không khả dụng
+      })
+    return () => { cancelled = true }
   }, [currentUser?.id])
 
   // ── Thêm document vào state (dùng nội bộ sau khi upload) ────────────────
@@ -60,7 +83,6 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
-      // Optimistic: thêm placeholder với status "uploading"
       const tempId = `temp-${Date.now()}-${Math.random()}`
       const ext = (file.name.split(".").pop() ?? "pdf").toLowerCase() as "pdf" | "docx" | "pptx"
       const tempDoc: Document = {
@@ -90,12 +112,10 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
           )
         })
 
-        // Thay placeholder bằng doc thật (bắt đầu scanning)
         setDocuments(prev =>
           prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),
         )
 
-        // Poll backend cho đến khi status chuyển sang ready / failed (BR-016)
         let attempts = 0
         const poll = setInterval(async () => {
           attempts++
@@ -116,7 +136,6 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
 
         return { success: true }
       } catch (error) {
-        // Xoá placeholder khi thất bại
         setDocuments(prev => prev.filter(d => d.id !== tempId))
         return {
           success: false,
@@ -129,10 +148,8 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
 
   // ── Soft-delete → chuyển vào Trash (BR-022) ─────────────────────────────
   const deleteDocument = useCallback((id: string) => {
-    // Optimistic
     setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "deleted" } : d))
     deleteDocumentApi(id).catch(() => {
-      // Revert nếu API lỗi
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "ready" } : d))
     })
   }, [])
@@ -183,44 +200,6 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     })
   }, [])
 
-  // ── Folders (local-only, in-memory) ─────────────────────────────────────
-  const createFolder = useCallback((name: string, parentId: string | null = null, subject?: string): Folder => {
-    const folder: Folder = {
-      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name,
-      parentId,
-      subject,
-      createdAt: new Date(),
-      createdBy: currentUser?.id ?? "guest",
-    }
-    setFolders(prev => [...prev, folder])
-    return folder
-  }, [currentUser])
-
-  const renameFolder = useCallback((id: string, name: string) => {
-    setFolders(prev => prev.map(f => f.id === id ? { ...f, name } : f))
-  }, [])
-
-  const deleteFolder = useCallback((id: string) => {
-    // Recursively collect all descendant folder ids
-    const collectIds = (parentId: string, all: Folder[]): string[] => {
-      const children = all.filter(f => f.parentId === parentId)
-      return [parentId, ...children.flatMap(c => collectIds(c.id, all))]
-    }
-    setFolders(prev => {
-      const idsToDelete = collectIds(id, prev)
-      // Move documents from deleted folders to root
-      setDocuments(docs => docs.map(d =>
-        d.folderId && idsToDelete.includes(d.folderId) ? { ...d, folderId: null } : d
-      ))
-      return prev.filter(f => !idsToDelete.includes(f.id))
-    })
-  }, [])
-
-  const moveDocumentToFolder = useCallback((docId: string, folderId: string | null) => {
-    setDocuments(prev => prev.map(d => d.id === docId ? { ...d, folderId } : d))
-  }, [])
-
   // ── Categories (local-only; không có API endpoint) ───────────────────────
   const addCategory = useCallback((name: string, color: string) => {
     const cat: Category = { id: `cat-${Date.now()}`, name, color }
@@ -230,6 +209,165 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
   const deleteCategory = useCallback((id: string) => {
     setCategories(prev => prev.filter(c => c.id !== id))
   }, [])
+
+  // ── FR-23: Tạo thư mục → POST /api/folders ──────────────────────────────
+  // BR-080: quyền sở hữu; BR-082: gắn môn học; BR-086: backend validate tên trùng
+  const createFolder = useCallback(
+    async (
+      name: string,
+      parentId: string | null = null,
+      subject?: string,
+    ): Promise<{ success: boolean; folder?: Folder; error?: string }> => {
+      if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
+
+      // Optimistic: thêm placeholder ngay
+      const tempId = `temp-folder-${Date.now()}`
+      const tempFolder: Folder = {
+        id: tempId,
+        name,
+        parentId,
+        subject,
+        createdAt: new Date(),
+        createdBy: currentUser.id,
+      }
+      setFolders(prev => [...prev, tempFolder])
+
+      try {
+        const realFolder = await createFolderApi(name, parentId, subject)
+        setFolders(prev => prev.map(f => f.id === tempId ? realFolder : f))
+        return { success: true, folder: realFolder }
+      } catch (error) {
+        setFolders(prev => prev.filter(f => f.id !== tempId))
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể tạo thư mục.",
+        }
+      }
+    },
+    [currentUser],
+  )
+
+  // ── FR-23: Đổi tên thư mục → PUT /api/folders/{id} ──────────────────────
+  // BR-086: backend validate tên trùng trong cùng cấp
+  const renameFolder = useCallback(
+    async (
+      id: string,
+      name: string,
+      subject?: string,
+    ): Promise<{ success: boolean; error?: string }> => {
+      const prev = folders.find(f => f.id === id)
+      // Optimistic
+      setFolders(flds =>
+        flds.map(f =>
+          f.id === id
+            ? { ...f, name, ...(subject !== undefined ? { subject } : {}) }
+            : f,
+        ),
+      )
+
+      try {
+        await renameFolderApi(id, name, subject)
+        return { success: true }
+      } catch (error) {
+        if (prev) setFolders(flds => flds.map(f => f.id === id ? prev : f))
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể đổi tên thư mục.",
+        }
+      }
+    },
+    [folders],
+  )
+
+  // ── FR-23: Xóa thư mục → DELETE /api/folders/{id} ───────────────────────
+  // BR-084: cascade xóa con; BR-085: docs trong folder → folderId = null
+  const deleteFolder = useCallback(
+    async (id: string): Promise<{ success: boolean; error?: string }> => {
+      const collectIds = (parentId: string, all: Folder[]): string[] => {
+        const children = all.filter(f => f.parentId === parentId)
+        return [parentId, ...children.flatMap(c => collectIds(c.id, all))]
+      }
+      const idsToDelete = collectIds(id, folders)
+      const prevFolders = folders
+
+      // Optimistic: xóa khỏi state ngay
+      setFolders(prev => prev.filter(f => !idsToDelete.includes(f.id)))
+      // BR-085 optimistic: docs trong folder bị xóa → về root
+      setDocuments(prev =>
+        prev.map(d =>
+          d.folderId != null && idsToDelete.includes(d.folderId)
+            ? { ...d, folderId: null }
+            : d,
+        ),
+      )
+
+      try {
+        await deleteFolderApi(id)
+        return { success: true }
+      } catch (error) {
+        setFolders(prevFolders)
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể xóa thư mục.",
+        }
+      }
+    },
+    [folders],
+  )
+
+  // ── FR-23: Di chuyển thư mục → PUT /api/folders/{id}/move ───────────────
+  // BR-087: backend ngăn circular move; MoveFolderModal cũng lọc phía UI
+  const moveFolder = useCallback(
+    async (
+      folderId: string,
+      targetParentId: string | null,
+    ): Promise<{ success: boolean; error?: string }> => {
+      const prev = folders.find(f => f.id === folderId)
+      setFolders(flds =>
+        flds.map(f => f.id === folderId ? { ...f, parentId: targetParentId } : f),
+      )
+
+      try {
+        await moveFolderApi(folderId, targetParentId)
+        return { success: true }
+      } catch (error) {
+        if (prev) setFolders(flds => flds.map(f => f.id === folderId ? prev : f))
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể di chuyển thư mục.",
+        }
+      }
+    },
+    [folders],
+  )
+
+  // ── FR-23: Di chuyển tài liệu → PATCH /api/documents/{id} ──────────────
+  // folderId = null → về root (BR-085)
+  const moveDocumentToFolder = useCallback(
+    async (
+      docId: string,
+      folderId: string | null,
+    ): Promise<{ success: boolean; error?: string }> => {
+      const prevFolderId = documents.find(d => d.id === docId)?.folderId ?? null
+      setDocuments(prev =>
+        prev.map(d => d.id === docId ? { ...d, folderId } : d),
+      )
+
+      try {
+        await updateDocumentFolderApi(docId, folderId)
+        return { success: true }
+      } catch (error) {
+        setDocuments(prev =>
+          prev.map(d => d.id === docId ? { ...d, folderId: prevFolderId } : d),
+        )
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể di chuyển tài liệu.",
+        }
+      }
+    },
+    [documents],
+  )
 
   return {
     documents,
@@ -249,6 +387,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     createFolder,
     renameFolder,
     deleteFolder,
+    moveFolder,
     moveDocumentToFolder,
   }
 }
