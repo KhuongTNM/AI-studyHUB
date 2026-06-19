@@ -284,6 +284,7 @@ public class DocumentService {
                 throw new ApiException(HttpStatus.FORBIDDEN,
                         "Bạn không có quyền di chuyển tài liệu vào thư mục này.");
             }
+            doc.setFolderId(request.getFolderId());
         }
 
         if (request.getTitle() != null && !request.getTitle().isBlank()) {
@@ -305,7 +306,6 @@ public class DocumentService {
         if (request.getTags() != null) {
             doc.setTags(resolveTags(request.getTags()));
         }
-        doc.setFolderId(request.getFolderId());
         doc.setUpdatedAt(LocalDateTime.now());
         return documentRepository.save(doc);
     }
