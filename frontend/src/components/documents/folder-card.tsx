@@ -1,6 +1,6 @@
 "use client"
 
-import { Folder as FolderIcon, MoreVertical, Pencil, Trash2, ChevronRight } from "lucide-react"
+import { Folder as FolderIcon, MoreVertical, Pencil, Trash2, ChevronRight, Move } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -16,16 +16,20 @@ interface Props {
   language: "vi" | "en"
   onOpen: (folder: Folder) => void
   onRename: (folder: Folder) => void
+  onMove: (folder: Folder) => void      // FR-23 / BR-087
   onDelete: (folder: Folder) => void
   onContextMenu: (e: React.MouseEvent, folder: Folder) => void
 }
 
 const t = {
-  vi: { items: "mục", open: "Mở", rename: "Đổi tên", delete: "Xóa" },
-  en: { items: "items", open: "Open", rename: "Rename", delete: "Delete" },
+  vi: { items: "mục", open: "Mở", rename: "Đổi tên", move: "Di chuyển", delete: "Xóa" },
+  en: { items: "items", open: "Open", rename: "Rename", move: "Move to", delete: "Delete" },
 } as const
 
-export function FolderCard({ folder, viewMode, docCount, language, onOpen, onRename, onDelete, onContextMenu }: Props) {
+export function FolderCard({
+  folder, viewMode, docCount, language,
+  onOpen, onRename, onMove, onDelete, onContextMenu,
+}: Props) {
   const text = t[language]
 
   if (viewMode === "list") {
@@ -58,6 +62,9 @@ export function FolderCard({ folder, viewMode, docCount, language, onOpen, onRen
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onRename(folder)}>
               <Pencil className="mr-2 h-4 w-4" />{text.rename}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMove(folder)}>
+              <Move className="mr-2 h-4 w-4" />{text.move}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(folder)} className="text-destructive">
@@ -103,6 +110,9 @@ export function FolderCard({ folder, viewMode, docCount, language, onOpen, onRen
             <DropdownMenuItem onClick={() => onRename(folder)}>
               <Pencil className="mr-2 h-4 w-4" />{text.rename}
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMove(folder)}>
+              <Move className="mr-2 h-4 w-4" />{text.move}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(folder)} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />{text.delete}
@@ -112,6 +122,9 @@ export function FolderCard({ folder, viewMode, docCount, language, onOpen, onRen
       </div>
 
       <p className="truncate text-sm font-semibold text-foreground">{folder.name}</p>
+      {folder.subject && (
+        <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{folder.subject}</p>
+      )}
       <p className="mt-0.5 text-xs text-muted-foreground">{docCount} {text.items}</p>
 
       {/* Hover overlay hint */}

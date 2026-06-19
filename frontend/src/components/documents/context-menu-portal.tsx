@@ -30,6 +30,7 @@ interface Props {
   // Folder actions
   onOpenFolder: (folder: Folder) => void
   onRenameFolder: (folder: Folder) => void
+  onMoveFolder: (folder: Folder) => void   // FR-23 / BR-087
   onDeleteFolder: (folder: Folder) => void
   // File actions
   onPreviewFile: (doc: Document) => void
@@ -49,6 +50,7 @@ const t = {
     uploadFile: "Upload tài liệu",
     open: "Mở",
     rename: "Đổi tên",
+    move: "Di chuyển",
     delete: "Xóa",
     download: "Tải xuống",
     edit: "Chỉnh sửa",
@@ -56,7 +58,6 @@ const t = {
     flashcards: "Tạo Flashcard",
     makePublic: "Đặt Public",
     makePrivate: "Đặt Private",
-    move: "Di chuyển",
     details: "Xem chi tiết",
   },
   en: {
@@ -64,6 +65,7 @@ const t = {
     uploadFile: "Upload file",
     open: "Open",
     rename: "Rename",
+    move: "Move to",
     delete: "Delete",
     download: "Download",
     edit: "Edit",
@@ -71,7 +73,6 @@ const t = {
     flashcards: "Create Flashcards",
     makePublic: "Make Public",
     makePrivate: "Make Private",
-    move: "Move to",
     details: "View details",
   },
 } as const
@@ -114,6 +115,7 @@ export function ContextMenuPortal({
   onUploadFile,
   onOpenFolder,
   onRenameFolder,
+  onMoveFolder,
   onDeleteFolder,
   onPreviewFile,
   onEditFile,
@@ -128,7 +130,6 @@ export function ContextMenuPortal({
   const ref = useRef<HTMLDivElement>(null)
   const text = t[language]
 
-  // Close on outside click or Escape
   useEffect(() => {
     const handle = (e: MouseEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent && e.key === "Escape") { onClose(); return }
@@ -144,17 +145,15 @@ export function ContextMenuPortal({
     }
   }, [onClose])
 
-  // Adjust position so menu never overflows viewport
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200
   const vh = typeof window !== "undefined" ? window.innerHeight : 800
-  const menuW = 192 // 12rem
-  const menuH = 240 // estimated
+  const menuW = 192
+  const menuH = 260
   const left = Math.min(menu.x, vw - menuW - 8)
   const top = Math.min(menu.y, vh - menuH - 8)
 
   const wrap = (fn: () => void) => () => { fn(); onClose() }
 
-  // Render context menu items based on what was right-clicked
   const renderContent = () => {
     if (menu.target.type === "background") {
       if (!isSubjectSelected) {
@@ -178,6 +177,7 @@ export function ContextMenuPortal({
         <div className="py-1">
           <MenuItem icon={FolderOpen} label={text.open} onClick={wrap(() => onOpenFolder(folder))} />
           <MenuItem icon={Pencil} label={text.rename} onClick={wrap(() => onRenameFolder(folder))} />
+          <MenuItem icon={Move} label={text.move} onClick={wrap(() => onMoveFolder(folder))} />
           <Divider />
           <MenuItem icon={Trash2} label={text.delete} danger onClick={wrap(() => onDeleteFolder(folder))} />
         </div>

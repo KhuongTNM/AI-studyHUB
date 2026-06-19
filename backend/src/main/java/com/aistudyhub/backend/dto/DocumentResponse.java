@@ -8,6 +8,7 @@ public class DocumentResponse {
 
     private UUID id;
     private UUID userId;
+    private UUID folderId;   // FR-23: ID thư mục chứa tài liệu; null = root
     private String originalName;
     private String title;
     private String fileUrl;
@@ -26,6 +27,7 @@ public class DocumentResponse {
         DocumentResponse r = new DocumentResponse();
         r.id = doc.getId();
         r.userId = doc.getUserId();
+        r.folderId = doc.getFolderId();   // <-- thêm
         r.originalName = doc.getOriginalName();
         r.title = doc.getTitle();
         r.fileUrl = doc.getFileUrl();
@@ -44,6 +46,7 @@ public class DocumentResponse {
 
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
+    public UUID getFolderId() { return folderId; }
     public String getOriginalName() { return originalName; }
     public String getTitle() { return title; }
     public String getFileUrl() { return fileUrl; }

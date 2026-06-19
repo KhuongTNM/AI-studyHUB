@@ -2,10 +2,12 @@ package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
+import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import java.io.IOException;
@@ -31,16 +33,19 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final DocumentScanProcessor scanProcessor;
+    private final FolderRepository folderRepository;   // FR-23
     private final Path uploadDir;
 
     public DocumentService(
             DocumentRepository documentRepository,
             UserRepository userRepository,
             DocumentScanProcessor scanProcessor,
+            FolderRepository folderRepository,
             @Value("${app.upload.dir:./uploads}") String uploadDirPath) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.scanProcessor = scanProcessor;
+        this.folderRepository = folderRepository;
         this.uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.uploadDir);
@@ -219,6 +224,39 @@ public class DocumentService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu này không thể tải xuống do lỗi scan.");
         }
         doc.setDownloadCount(doc.getDownloadCount() + 1);
+        doc.setUpdatedAt(LocalDateTime.now());
+        return documentRepository.save(doc);
+    }
+
+    /**
+     * FR-23 / PATCH /api/documents/{id}
+     * Cập nhật thư mục chứa tài liệu (di chuyển tài liệu vào thư mục khác hoặc về root).
+     *
+     * <p>Fail-Fast:
+     * 1. Tài liệu tồn tại và chưa bị xóa mềm?
+     * 2. Tài liệu thuộc về người dùng?
+     * 3. (Nếu folderId != null) Thư mục đích tồn tại?
+     * 4. (Nếu folderId != null) Thư mục đích thuộc về người dùng? (BR-080)
+     */
+    @Transactional
+    public Document updateFolderId(UUID documentId, UUID userId, UUID folderId) {
+        // Fail-Fast 1 + 2
+        Document doc = getById(documentId);
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền thay đổi tài liệu này.");
+        }
+
+        // Fail-Fast 3 + 4: validate thư mục đích
+        if (folderId != null) {
+            Folder folder = folderRepository.findById(folderId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."));
+            if (!folder.getUser().getId().equals(userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Bạn không có quyền di chuyển tài liệu vào thư mục này.");
+            }
+        }
+
+        doc.setFolderId(folderId);
         doc.setUpdatedAt(LocalDateTime.now());
         return documentRepository.save(doc);
     }
