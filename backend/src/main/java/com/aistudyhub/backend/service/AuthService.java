@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UpdateProfileRequest;
+import com.aistudyhub.backend.dto.UpdateThemePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
@@ -162,6 +163,14 @@ public class AuthService {
     }
 
     @Transactional
+    public UserResponse updateThemePreference(UpdateThemePreferenceRequest request) {
+        User user = getAuthenticatedUser();
+        user.setThemePreference(parseThemePreference(request.getThemePreference()));
+        user.setUpdatedAt(LocalDateTime.now());
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    @Transactional
     public UserResponse updateProfile(UpdateProfileRequest request) {
         User user = getAuthenticatedUser();
         String displayName = request.getDisplayName().trim();
@@ -169,8 +178,19 @@ public class AuthService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tên hiển thị không được để trống.");
         }
         user.setDisplayName(displayName);
+        if (request.getThemePreference() != null && !request.getThemePreference().isBlank()) {
+            user.setThemePreference(parseThemePreference(request.getThemePreference()));
+        }
         user.setUpdatedAt(LocalDateTime.now());
         return UserResponse.from(userRepository.save(user));
+    }
+
+    private User.ThemePreference parseThemePreference(String themePreference) {
+        try {
+            return User.ThemePreference.valueOf(themePreference.trim().toLowerCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Giao diện chỉ hỗ trợ light hoặc dark.");
+        }
     }
 
     @Transactional
