@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
@@ -22,20 +23,15 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 
-    // ADDED FOR BR-022/023
     List<Document> findByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, DocumentStatus status);
 
     long countByUserIdAndDeletedAtIsNullAndOriginalName(UUID userId, String originalName);
 
     List<Document> findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, String prefix);
 
-    /**
-     * BR-085: Gán folderId = NULL cho tất cả Document nằm trong các thư mục sắp bị xóa.
-     * Được gọi TRƯỚC khi xóa Folder để tránh tham chiếu mồ côi.
-     *
-     * @param folderIds Tập hợp UUID của các thư mục (gồm thư mục gốc và toàn bộ cây con)
-     *                  sẽ bị xóa.
-     */
+    @Query("SELECT d FROM Document d JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL AND t.name = :tagName ORDER BY d.createdAt DESC")
+    List<Document> findByUserIdAndTagName(@Param("userId") UUID userId, @Param("tagName") String tagName);
+
     @Modifying
     @Query("UPDATE Document d SET d.folderId = NULL WHERE d.folderId IN :folderIds")
     void clearFolderIdByFolderIds(Collection<UUID> folderIds);

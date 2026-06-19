@@ -1,64 +1,68 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.DocumentRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.Folder;
+import com.aistudyhub.backend.entity.Tag;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
+import com.aistudyhub.backend.repository.TagRepository;
 import com.aistudyhub.backend.repository.UserRepository;
-import com.aistudyhub.backend.security.AuthUserPrincipal;
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+@RequiredArgsConstructor
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final DocumentScanProcessor scanProcessor;
-    private final FolderRepository folderRepository;   // FR-23
+    private final FolderRepository folderRepository;
+    private final TagRepository tagRepository;
     private final StorageService storageService;
-    private final Path uploadDir;
 
-    public DocumentService(
-            DocumentRepository documentRepository,
-            UserRepository userRepository,
-            DocumentScanProcessor scanProcessor,
-            FolderRepository folderRepository,
-            StorageService storageService,
-            @Value("${app.upload.dir:./uploads}") String uploadDirPath) {
-        this.documentRepository = documentRepository;
-        this.userRepository = userRepository;
-        this.scanProcessor = scanProcessor;
-        this.folderRepository = folderRepository;
-        this.storageService = storageService;
-        this.uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
+    @Value("${app.upload.dir:./uploads}")
+    private String uploadDirPath;
+
+    private Path uploadDir;
+
+    @PostConstruct
+    private void init() {
+        uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
         try {
-            Files.createDirectories(this.uploadDir);
+            Files.createDirectories(uploadDir);
         } catch (IOException e) {
-            throw new RuntimeException("Could not create upload directory: " + this.uploadDir, e);
+            throw new RuntimeException("Could not create upload directory: " + uploadDir, e);
         }
     }
 
-    @Transactional
-    public Document upload(UUID userId, MultipartFile file, String subject, String title, Visibility visibility) {
+    @Transactional(rollbackFor = Exception.class)
+    public Document upload(UUID userId, MultipartFile file, String subject, String title,
+                           Visibility visibility, String tags) {
         if (file.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "File không được để trống.");
         }
@@ -73,12 +77,13 @@ public class DocumentService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ hỗ trợ file PDF, DOCX, PPTX.");
         }
 
+        Set<Tag> resolvedTags = resolveTags(tags);
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại."));
 
         if (user.getStorageUsedBytes() + file.getSize() > user.getStorageLimitBytes()) {
-            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,
-                    "Dung lượng lưu trữ không đủ.");
+            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");
         }
 
         String storedName = UUID.randomUUID() + "_" + originalName;
@@ -99,6 +104,7 @@ public class DocumentService {
         doc.setFileSizeBytes(file.getSize());
         doc.setFileType(ext);
         doc.setSubject(subject);
+        doc.setTags(resolvedTags);
         doc.setStatus(DocumentStatus.UPLOADING);
         doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
         doc.setDownloadCount(0);
@@ -143,11 +149,16 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public List<Document> getUserDocumentsByTag(UUID userId, String tagName) {
+        return documentRepository.findByUserIdAndTagName(userId, tagName);
+    }
+
+    @Transactional(readOnly = true)
     public List<Document> getPublicDocuments() {
         return documentRepository.findByVisibilityAndDeletedAtIsNullAndStatus(Visibility.PUBLIC, DocumentStatus.READY);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id, UUID userId) {
         Document doc = getById(id);
         if (!doc.getUserId().equals(userId)) {
@@ -157,18 +168,15 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
-
         storageService.subtractUsed(userId, doc.getFileSizeBytes());
     }
-
-    // ==================== BR-022/023: SOFT DELETE & RESTORE ====================
 
     @Transactional(readOnly = true)
     public List<Document> getTrashDocuments(UUID userId) {
         return documentRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, DocumentStatus.DELETED);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Document restoreDocument(UUID id, UUID userId) {
         Document doc = documentRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
@@ -219,7 +227,7 @@ public class DocumentService {
         return restored;
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Document updateVisibility(UUID id, UUID userId, Visibility visibility) {
         Document doc = getById(id);
         if (!doc.getUserId().equals(userId)) {
@@ -230,7 +238,7 @@ public class DocumentService {
         return documentRepository.save(doc);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Document incrementDownloadCount(UUID id, UUID userId) {
         Document doc = getDocumentIfAccessible(id, userId);
         if (doc.getStatus() == DocumentStatus.FAILED) {
@@ -241,25 +249,13 @@ public class DocumentService {
         return documentRepository.save(doc);
     }
 
-    /**
-     * FR-23 / PATCH /api/documents/{id}
-     * Cập nhật thư mục chứa tài liệu (di chuyển tài liệu vào thư mục khác hoặc về root).
-     *
-     * <p>Fail-Fast:
-     * 1. Tài liệu tồn tại và chưa bị xóa mềm?
-     * 2. Tài liệu thuộc về người dùng?
-     * 3. (Nếu folderId != null) Thư mục đích tồn tại?
-     * 4. (Nếu folderId != null) Thư mục đích thuộc về người dùng? (BR-080)
-     */
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Document updateFolderId(UUID documentId, UUID userId, UUID folderId) {
-        // Fail-Fast 1 + 2
         Document doc = getById(documentId);
         if (!doc.getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền thay đổi tài liệu này.");
         }
 
-        // Fail-Fast 3 + 4: validate thư mục đích
         if (folderId != null) {
             Folder folder = folderRepository.findById(folderId)
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."));
@@ -274,22 +270,81 @@ public class DocumentService {
         return documentRepository.save(doc);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public Document updateDocument(UUID id, UUID userId, DocumentRequest request) {
+        Document doc = getById(id);
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền chỉnh sửa tài liệu này.");
+        }
+
+        if (request.getFolderId() != null) {
+            Folder folder = folderRepository.findById(request.getFolderId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."));
+            if (!folder.getUser().getId().equals(userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Bạn không có quyền di chuyển tài liệu vào thư mục này.");
+            }
+        }
+
+        if (request.getTitle() != null && !request.getTitle().isBlank()) {
+            doc.setTitle(request.getTitle().strip());
+        }
+        if (request.getSubject() != null && !request.getSubject().isBlank()) {
+            doc.setSubject(request.getSubject().strip());
+        }
+        if (request.getDescription() != null) {
+            doc.setDescription(request.getDescription());
+        }
+        if (request.getVisibility() != null) {
+            try {
+                doc.setVisibility(Visibility.valueOf(request.getVisibility().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
+            }
+        }
+        if (request.getTags() != null) {
+            doc.setTags(resolveTags(request.getTags()));
+        }
+        doc.setFolderId(request.getFolderId());
+        doc.setUpdatedAt(LocalDateTime.now());
+        return documentRepository.save(doc);
+    }
+
     public Path getFilePath(Document doc) {
         String filename = Paths.get(doc.getFileUrl()).getFileName().toString();
         return uploadDir.resolve(filename);
+    }
+
+    private Set<Tag> resolveTags(String rawTags) {
+        if (rawTags == null || rawTags.isBlank()) {
+            return new HashSet<>();
+        }
+
+        List<String> normalized = Arrays.stream(rawTags.split(","))
+                .map(s -> s.trim().toLowerCase())
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+
+        normalized.forEach(name -> {
+            if (name.length() > 100) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Tên thẻ tag không được vượt quá 100 ký tự");
+            }
+        });
+
+        return normalized.stream()
+                .map(name -> tagRepository.findByName(name)
+                        .orElseGet(() -> {
+                            Tag tag = new Tag();
+                            tag.setName(name);
+                            return tagRepository.save(tag);
+                        }))
+                .collect(Collectors.toCollection(HashSet::new));
     }
 
     private String getExtension(String filename) {
         int dot = filename.lastIndexOf('.');
         if (dot < 0) return "";
         return filename.substring(dot + 1).toLowerCase();
-    }
-
-    private UUID getCurrentUserId() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof AuthUserPrincipal authPrincipal)) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ.");
-        }
-        return authPrincipal.getId();
     }
 }
