@@ -9,6 +9,7 @@ import com.aistudyhub.backend.dto.ResetPasswordRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UpdateProfileRequest;
+import com.aistudyhub.backend.dto.UpdateThemePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.service.AuthService;
 import com.aistudyhub.backend.service.PasswordResetService;
@@ -84,5 +85,10 @@ public class AuthController {
     @PatchMapping("/me/language")
     public ResponseEntity<UserResponse> updateLanguage(@Valid @RequestBody UpdateLanguagePreferenceRequest request) {
         return ResponseEntity.ok(authService.updateLanguagePreference(request));
+    }
+
+    @PatchMapping("/me/theme")
+    public ResponseEntity<UserResponse> updateTheme(@Valid @RequestBody UpdateThemePreferenceRequest request) {
+        return ResponseEntity.ok(authService.updateThemePreference(request));
     }
 }
