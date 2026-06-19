@@ -84,11 +84,32 @@ export interface AppState {
   downloadDocument: (id: string) => void
   addCategory: (name: string, color: string) => void
   deleteCategory: (id: string) => void
-  // Folder actions (local/in-memory)
-  createFolder: (name: string, parentId?: string | null, subject?: string) => Folder
-  renameFolder: (id: string, name: string) => void
-  deleteFolder: (id: string) => void
-  moveDocumentToFolder: (docId: string, folderId: string | null) => void
+
+  // FR-23: Folder actions — async, gọi API thật
+  /** POST /api/folders — tạo thư mục (BR-080, BR-082, BR-083, BR-086) */
+  createFolder: (
+    name: string,
+    parentId?: string | null,
+    subject?: string,
+  ) => Promise<{ success: boolean; folder?: Folder; error?: string }>
+  /** PUT /api/folders/{id} — đổi tên + cập nhật môn học (BR-086) */
+  renameFolder: (
+    id: string,
+    name: string,
+    subject?: string,
+  ) => Promise<{ success: boolean; error?: string }>
+  /** DELETE /api/folders/{id} — cascade con (BR-084) + docs về root (BR-085) */
+  deleteFolder: (id: string) => Promise<{ success: boolean; error?: string }>
+  /** PUT /api/folders/{id}/move — di chuyển thư mục (BR-087) */
+  moveFolder: (
+    folderId: string,
+    targetParentId: string | null,
+  ) => Promise<{ success: boolean; error?: string }>
+  /** PATCH /api/documents/{id} — di chuyển tài liệu vào thư mục (BR-085) */
+  moveDocumentToFolder: (
+    docId: string,
+    folderId: string | null,
+  ) => Promise<{ success: boolean; error?: string }>
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   chatSessions: ChatSession[]
@@ -109,6 +130,7 @@ export interface AppState {
   deleteGroup: (groupId: string) => { success: boolean; error?: string }
   sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
   shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
+  shareGroupImage: (groupId: string) => { success: boolean; error?: string }
   generateGroupCode: () => string
 
   // ── Flashcards ────────────────────────────────────────────────────────────
@@ -140,7 +162,6 @@ export interface AppState {
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
   grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
-
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -172,7 +193,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
 
   // ── 3. Documents (cần currentUser để load và upload) ────────────────────
-  //    NOTE: đã chuyển sau auth so với thứ tự cũ
   const docs = useDocumentState({ currentUser: auth.currentUser })
 
   // ── 4. Flashcards (cần documents để tạo mock fallback) ─────────────────
@@ -199,18 +219,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ─── Cross-domain actions ───────────────────────────────────────────────
 
-  /**
-   * logout — clears auth state AND resets unrelated UI state (chat, page).
-   */
   const logout = useCallback(() => {
     auth.logoutUser()
     chat.setActiveChatId(null)
     ui.setCurrentPage("home")
   }, [auth, chat, ui])
 
-  /**
-   * setLanguage — updates the language preference locally and syncs with the backend.
-   */
   const setLanguage = useCallback(
     (nextLanguage: Language) => {
       ui.setLanguageState(nextLanguage)
@@ -271,9 +285,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         downloadDocument: docs.downloadDocument,
         addCategory: docs.addCategory,
         deleteCategory: docs.deleteCategory,
+        // FR-23: folder actions (async, API-backed)
         createFolder: docs.createFolder,
         renameFolder: docs.renameFolder,
         deleteFolder: docs.deleteFolder,
+        moveFolder: docs.moveFolder,
         moveDocumentToFolder: docs.moveDocumentToFolder,
 
         // Chat
@@ -295,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteGroup: groupChat.deleteGroup,
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
+        shareGroupImage: groupChat.shareGroupImage,
         generateGroupCode: groupChat.generateGroupCode,
 
         // Flashcards
@@ -322,7 +339,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updatePackagePrice: subscription.updatePackagePrice,
         grantSubscription: subscription.grantSubscription,
         buySubscription: subscription.buySubscription,
-
       }}
     >
       {children}

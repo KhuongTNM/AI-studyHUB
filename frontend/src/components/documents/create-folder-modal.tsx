@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button"
 
 interface Props {
   language: "vi" | "en"
-  /** If provided, pre-populates for rename mode */
+  /** Pre-fills name; khi có → chế độ Rename */
   initialName?: string
-  onConfirm: (name: string) => void
+  /** Pre-fills subject (BR-082) */
+  initialSubject?: string
+  onConfirm: (name: string, subject?: string) => void
   onClose: () => void
 }
 
@@ -16,38 +18,48 @@ const t = {
   vi: {
     titleCreate: "Tạo thư mục mới",
     titleRename: "Đổi tên thư mục",
-    placeholder: "Tên thư mục",
+    namePlaceholder: "Tên thư mục",
+    subjectLabel: "Môn học",
+    subjectPlaceholder: "Nhập môn học (tùy chọn)",
     create: "Tạo",
-    rename: "Đổi tên",
+    rename: "Lưu",
     cancel: "Hủy",
   },
   en: {
     titleCreate: "New folder",
     titleRename: "Rename folder",
-    placeholder: "Folder name",
+    namePlaceholder: "Folder name",
+    subjectLabel: "Subject",
+    subjectPlaceholder: "Enter subject (optional)",
     create: "Create",
-    rename: "Rename",
+    rename: "Save",
     cancel: "Cancel",
   },
 } as const
 
-export function CreateFolderModal({ language, initialName = "", onConfirm, onClose }: Props) {
-  const [name, setName] = useState(initialName || (language === "vi" ? "Thư mục mới" : "New folder"))
+export function CreateFolderModal({
+  language,
+  initialName = "",
+  initialSubject = "",
+  onConfirm,
+  onClose,
+}: Props) {
+  const [name, setName] = useState(
+    initialName || (language === "vi" ? "Thư mục mới" : "New folder"),
+  )
+  const [subject, setSubject] = useState(initialSubject)
   const inputRef = useRef<HTMLInputElement>(null)
   const text = t[language]
   const isRename = Boolean(initialName)
 
   useEffect(() => {
-    // Auto-select the text so the user can type immediately
-    setTimeout(() => {
-      inputRef.current?.select()
-    }, 50)
+    setTimeout(() => inputRef.current?.select(), 50)
   }, [])
 
   const handleConfirm = () => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    onConfirm(trimmed)
+    const trimmedName = name.trim()
+    if (!trimmedName) return
+    onConfirm(trimmedName, subject.trim() || undefined)
     onClose()
   }
 
@@ -60,14 +72,17 @@ export function CreateFolderModal({ language, initialName = "", onConfirm, onClo
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
             <FolderPlus className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
-          <h3 className="font-semibold text-foreground">{isRename ? text.titleRename : text.titleCreate}</h3>
+          <h3 className="font-semibold text-foreground">
+            {isRename ? text.titleRename : text.titleCreate}
+          </h3>
           <Button variant="ghost" size="icon" onClick={onClose} className="ml-auto h-7 w-7">
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Input */}
-        <div className="px-5 py-4">
+        {/* Inputs */}
+        <div className="space-y-3 px-5 py-4">
+          {/* Tên thư mục */}
           <input
             ref={inputRef}
             value={name}
@@ -76,15 +91,32 @@ export function CreateFolderModal({ language, initialName = "", onConfirm, onClo
               if (e.key === "Enter") handleConfirm()
               if (e.key === "Escape") onClose()
             }}
-            placeholder={text.placeholder}
+            placeholder={text.namePlaceholder}
             className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
           />
+
+          {/* Môn học (BR-082) */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              {text.subjectLabel}
+            </label>
+            <input
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleConfirm()
+                if (e.key === "Escape") onClose()
+              }}
+              placeholder={text.subjectPlaceholder}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
+            />
+          </div>
         </div>
 
         {/* Footer */}
         <div className="flex gap-2 border-t border-border px-5 py-4">
           <Button
-            className="flex-1 gap-2"
+            className="flex-1"
             onClick={handleConfirm}
             disabled={!name.trim()}
           >

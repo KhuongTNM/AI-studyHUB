@@ -43,12 +43,14 @@ export interface GroupChatMessage {
   senderName: string
   content: string
   timestamp: Date
-  messageType: "text" | "document" | "system"
+  messageType: "text" | "document" | "image" | "system"
   documentId?: string
   documentName?: string
   documentSubject?: string
   documentVisibility?: "public" | "private"
   documentDownloadable?: boolean
+  imageUrl?: string
+  imageName?: string
 }
 
 export interface GroupChat {
