@@ -5,6 +5,7 @@ import com.aistudyhub.backend.dto.ChangePasswordRequest;
 import com.aistudyhub.backend.dto.GoogleLoginRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
+import com.aistudyhub.backend.dto.StorageUsageResponse;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.UpdateThemePreferenceRequest;
@@ -208,6 +209,12 @@ public class AuthService {
         userRepository.save(user);
 
         return Map.of("message", "Đổi mật khẩu thành công.");
+    }
+
+    @Transactional(readOnly = true)
+    public StorageUsageResponse getStorageUsage() {
+        User user = getAuthenticatedUser();
+        return StorageUsageResponse.from(user);
     }
 
     public void logout() {

@@ -34,6 +34,7 @@ public class DocumentService {
     private final UserRepository userRepository;
     private final DocumentScanProcessor scanProcessor;
     private final FolderRepository folderRepository;   // FR-23
+    private final StorageService storageService;
     private final Path uploadDir;
 
     public DocumentService(
@@ -41,11 +42,13 @@ public class DocumentService {
             UserRepository userRepository,
             DocumentScanProcessor scanProcessor,
             FolderRepository folderRepository,
+            StorageService storageService,
             @Value("${app.upload.dir:./uploads}") String uploadDirPath) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.scanProcessor = scanProcessor;
         this.folderRepository = folderRepository;
+        this.storageService = storageService;
         this.uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.uploadDir);
@@ -102,8 +105,7 @@ public class DocumentService {
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
 
-        user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
-        userRepository.save(user);
+        storageService.addUsed(userId, file.getSize());
 
         Document saved = documentRepository.save(doc);
         scanProcessor.simulateScan(saved.getId());
@@ -155,6 +157,8 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
+
+        storageService.subtractUsed(userId, doc.getFileSizeBytes());
     }
 
     // ==================== BR-022/023: SOFT DELETE & RESTORE ====================
@@ -203,7 +207,16 @@ public class DocumentService {
         doc.setStatus(DocumentStatus.READY);
         doc.setDeletedAt(null);
         doc.setUpdatedAt(LocalDateTime.now());
-        return documentRepository.save(doc);
+        Document restored = documentRepository.save(doc);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại."));
+        if (user.getStorageUsedBytes() + doc.getFileSizeBytes() > user.getStorageLimitBytes()) {
+            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ để khôi phục.");
+        }
+        storageService.addUsed(userId, doc.getFileSizeBytes());
+
+        return restored;
     }
 
     @Transactional
