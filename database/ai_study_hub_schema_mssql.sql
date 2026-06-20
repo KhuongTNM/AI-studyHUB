@@ -726,3 +726,25 @@ ALTER TABLE study_room_messages
     CHECK (message_type IN (N'user', N'system', N'document'));
 GO
 
+-- =============================================================
+-- MIGRATION: Thêm khóa ngoại user_id vào password_reset_tokens
+-- =============================================================
+
+ALTER TABLE password_reset_tokens
+    ADD user_id UNIQUEIDENTIFIER NULL
+        CONSTRAINT fk_prt_user
+        REFERENCES users(id) ON DELETE CASCADE;
+GO
+
+UPDATE prt
+SET prt.user_id = u.id
+FROM password_reset_tokens prt
+JOIN users u ON u.email = prt.email COLLATE Vietnamese_CI_AS;
+GO
+
+DELETE FROM password_reset_tokens
+WHERE user_id IS NULL;
+GO
+
+CREATE INDEX idx_prt_user_id ON password_reset_tokens(user_id);
+GO
