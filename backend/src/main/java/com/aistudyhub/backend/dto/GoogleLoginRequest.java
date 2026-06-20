@@ -2,17 +2,17 @@ package com.aistudyhub.backend.dto;
 
 import jakarta.validation.constraints.NotBlank;
 
-/** DTO nhận ID Token từ phía client khi đăng nhập bằng Google. */
+/** DTO nhận access token từ phía client khi đăng nhập bằng Google OAuth2. */
 public class GoogleLoginRequest {
 
-    @NotBlank(message = "ID Token Google không được để trống.")
-    private String idToken;
+    @NotBlank(message = "Access token Google không được để trống.")
+    private String accessToken;
 
-    public String getIdToken() {
-        return idToken;
+    public String getAccessToken() {
+        return accessToken;
     }
 
-    public void setIdToken(String idToken) {
-        this.idToken = idToken;
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
     }
 }
