@@ -134,12 +134,15 @@ export function DocumentManager() {
     setCurrentFolderId(folder.id)
     setFolderPath(prev => [...prev, folder])
     setSearchQuery("")
+    // Reset subject filter when entering a folder so all files in the folder are visible
+    setSelectedSubject("all")
   }, [])
 
   const navigateToRoot = useCallback(() => {
     setCurrentFolderId(null)
     setFolderPath([])
     setSearchQuery("")
+    setSelectedSubject("all")
   }, [])
 
   const navigateToBreadcrumb = useCallback((index: number) => {
@@ -150,6 +153,7 @@ export function DocumentManager() {
       setCurrentFolderId(folder.id)
       setFolderPath(prev => prev.slice(0, index + 1))
       setSearchQuery("")
+      setSelectedSubject("all")
     }
   }, [folderPath, navigateToRoot])
 
