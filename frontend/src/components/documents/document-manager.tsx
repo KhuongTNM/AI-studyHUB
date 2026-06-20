@@ -96,13 +96,27 @@ export function DocumentManager() {
 
   const subjects = Array.from(
     new Set([
-      ...customSubjects,
-      ...activeDocs.map(d => d.subject?.trim()).filter((s): s is string => Boolean(s)),
-      ...folders.map(f => f.subject?.trim()).filter((s): s is string => Boolean(s))
+      ...customSubjects.map(s => s.trim().toLowerCase()),
+      ...activeDocs.map(d => d.subject?.trim().toLowerCase()).filter((s): s is string => Boolean(s)),
+      ...folders.map(f => f.subject?.trim().toLowerCase()).filter((s): s is string => Boolean(s))
     ])
   ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
 
   const currentFolderName = folderPath.length > 0 ? folderPath[folderPath.length - 1].name : text.title
+
+  const currentFolderSubject = (() => {
+    if (!currentFolderId) return undefined
+    for (let i = folderPath.length - 1; i >= 0; i--) {
+      if (folderPath[i].subject) return folderPath[i].subject
+    }
+    let folder = folders.find(f => f.id === currentFolderId)
+    while (folder) {
+      if (folder.subject) return folder.subject
+      const parentId = folder.parentId
+      folder = parentId ? folders.find(f => f.id === parentId) : undefined
+    }
+    return undefined
+  })()
 
   const filtered = docsInFolder
     .filter(d => {
@@ -110,7 +124,7 @@ export function DocumentManager() {
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-      const matchSubject = selectedSubject === "all" || d.subject?.trim() === selectedSubject
+      const matchSubject = selectedSubject === "all" || d.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
       return matchSearch && matchSubject
     })
     .sort((a, b) => {
@@ -123,7 +137,7 @@ export function DocumentManager() {
 
   const filteredFolders = foldersInView.filter(f => {
     const matchSearch = !searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchSubject = selectedSubject === "all" || f.subject === selectedSubject
+    const matchSubject = selectedSubject === "all" || f.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
     return matchSearch && matchSubject
   })
 
@@ -158,25 +172,24 @@ export function DocumentManager() {
   }, [folderPath, navigateToRoot])
 
   /** Chuyển filter môn học + reset về root để tránh hiển thị folder của môn khác */
-  const handleSelectSubject = useCallback((subject: string) => {
-    setSelectedSubject(subject)
-    setCurrentFolderId(null)
-    setFolderPath([])
-    setSearchQuery("")
-  }, [])
+const handleSelectSubject = useCallback((subject: string) => {
+  setSelectedSubject(subject)
+  setSearchQuery("")
+}, [])
 
 
   const handleUpload = useCallback(async (files: File[], subject: string) => {
     if (!currentUser) return
     setUploadError(null)
+    const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
     for (const file of files) {
-      const result = await uploadDocument(file, subject, "private", currentFolderId)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId)
       if (!result.success && result.error) {
         setUploadError(result.error)
         break
       }
     }
-  }, [currentUser, uploadDocument, currentFolderId])
+  }, [currentUser, uploadDocument, currentFolderId, currentFolderSubject, selectedSubject])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -207,16 +220,16 @@ export function DocumentManager() {
    * BR-082: gắn môn học; BR-086: backend validate tên trùng.
    */
   const handleCreateFolder = useCallback(async (name: string, subject?: string) => {
-    const resolvedSubject = subject ?? (selectedSubject !== "all" ? selectedSubject : undefined)
+    const resolvedSubject = subject ?? currentFolderSubject ?? (selectedSubject !== "all" ? selectedSubject : undefined)
     const result = await createFolder(name, currentFolderId, resolvedSubject)
     if (!result.success && result.error) setFolderError(result.error)
-  }, [createFolder, currentFolderId, selectedSubject])
+  }, [createFolder, currentFolderId, currentFolderSubject, selectedSubject])
 
   /**
    * Thêm môn học mới vào danh sách và tự động chuyển filter sang môn học đó.
    */
   const handleCreateSubject = useCallback((name: string) => {
-    const trimmed = name.trim()
+    const trimmed = name.trim().toLowerCase()
     if (!trimmed) return
     setCustomSubjects(prev => {
       const next = prev.includes(trimmed) ? prev : [...prev, trimmed]
@@ -383,25 +396,27 @@ export function DocumentManager() {
             )}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Filter className="h-3 w-3" />
-                {selectedSubject === "all" ? text.allSubjects : selectedSubject}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleSelectSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {subjects.map(subject => (
-                <DropdownMenuItem key={subject} onClick={() => handleSelectSubject(subject)}>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
-                  {subject}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {currentFolderId === null && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Filter className="h-3 w-3" />
+                  {selectedSubject === "all" ? text.allSubjects : selectedSubject}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleSelectSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {subjects.map(subject => (
+                  <DropdownMenuItem key={subject} onClick={() => handleSelectSubject(subject)}>
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
+                    {subject}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -429,7 +444,7 @@ export function DocumentManager() {
         </div>
 
         {/* Category tabs */}
-        {subjects.length > 0 && (
+        {currentFolderId === null && subjects.length > 0 && (
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => handleSelectSubject("all")}
@@ -602,14 +617,15 @@ export function DocumentManager() {
           }}
           onToggleVisibility={doc => handleToggleVisibility(doc.id, !doc.isPublic)}
           onMoveFile={doc => setMoveTarget(doc)}
-          isSubjectSelected={selectedSubject !== "all"}
+          isSubjectSelected={selectedSubject !== "all" || currentFolderId !== null}
         />
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────────── */}
       {showUploadModal && (
         <UploadModal
-          initialSubject={selectedSubject !== "all" ? selectedSubject : ""}
+          initialSubject={currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all"}
           onClose={() => setShowUploadModal(false)}
           onUpload={handleUpload}
         />
@@ -631,7 +647,8 @@ export function DocumentManager() {
       {showCreateFolder && (
         <CreateFolderModal
           language={language}
-          initialSubject={selectedSubject !== "all" ? selectedSubject : undefined}
+          initialSubject={currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : undefined)}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all"}
           onConfirm={handleCreateFolder}
           onClose={() => setShowCreateFolder(false)}
         />
@@ -643,6 +660,7 @@ export function DocumentManager() {
           language={language}
           initialName={renameTarget.name}
           initialSubject={renameTarget.subject}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all" || !!renameTarget.subject}
           onConfirm={handleRenameFolder}
           onClose={() => setRenameTarget(null)}
         />

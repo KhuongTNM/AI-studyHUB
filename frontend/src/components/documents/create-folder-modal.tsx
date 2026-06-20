@@ -10,6 +10,7 @@ interface Props {
   initialName?: string
   /** Pre-fills subject (BR-082) */
   initialSubject?: string
+  hideSubject?: boolean
   onConfirm: (name: string, subject?: string) => void
   onClose: () => void
 }
@@ -41,6 +42,7 @@ export function CreateFolderModal({
   language,
   initialName = "",
   initialSubject = "",
+  hideSubject = false,
   onConfirm,
   onClose,
 }: Props) {
@@ -96,21 +98,23 @@ export function CreateFolderModal({
           />
 
           {/* Môn học (BR-082) */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              {text.subjectLabel}
-            </label>
-            <input
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter") handleConfirm()
-                if (e.key === "Escape") onClose()
-              }}
-              placeholder={text.subjectPlaceholder}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
-            />
-          </div>
+          {!hideSubject && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                {text.subjectLabel}
+              </label>
+              <input
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") handleConfirm()
+                  if (e.key === "Escape") onClose()
+                }}
+                placeholder={text.subjectPlaceholder}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
+              />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
