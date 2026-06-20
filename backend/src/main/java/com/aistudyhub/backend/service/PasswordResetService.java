@@ -8,6 +8,7 @@ import com.aistudyhub.backend.repository.PasswordResetTokenRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,20 +40,27 @@ public class PasswordResetService {
     public Map<String, String> forgotPassword(String email) {
         String normalizedEmail = email.trim().toLowerCase();
 
-        boolean userExists = userRepository.existsByEmailIgnoreCase(normalizedEmail);
+        // Tìm user theo email — nếu không tồn tại vẫn trả về message giống nhau
+        // để tránh user enumeration attack (không để lộ email nào đã đăng ký)
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalizedEmail);
 
-        if (userExists) {
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+
             PasswordResetToken resetToken = new PasswordResetToken();
             resetToken.setId(UUID.randomUUID());
-            resetToken.setEmail(normalizedEmail);
+            resetToken.setUser(user);                    // FK → users(id)
+            resetToken.setEmail(normalizedEmail);        // giữ lại để log/display
             resetToken.setToken(UUID.randomUUID().toString());
             resetToken.setExpiry(LocalDateTime.now().plusMinutes(TOKEN_EXPIRY_MINUTES));
             resetToken.setUsed(false);
             passwordResetTokenRepository.save(resetToken);
 
-            LOGGER.info("Reset link: http://localhost:8080/api/auth/reset-password?token={}", resetToken.getToken());
+            LOGGER.info("Reset link: http://localhost:8080/api/auth/reset-password?token={}",
+                    resetToken.getToken());
         }
 
+        // Luôn trả về cùng một message dù email có tồn tại hay không
         return Map.of("message", "Link đã được gửi đến email của bạn");
     }
 
@@ -69,8 +77,13 @@ public class PasswordResetService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Token đã hết hạn (quá 15 phút).");
         }
 
-        User user = userRepository.findByEmailIgnoreCase(resetToken.getEmail())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        // Lấy user trực tiếp từ FK thay vì phải tra cứu lại theo email
+        User user = resetToken.getUser();
+        if (user == null) {
+            // Fallback cho token cũ (trước migration) không có user_id
+            user = userRepository.findByEmailIgnoreCase(resetToken.getEmail())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        }
 
         PasswordPolicyValidator.validate(request.getNewPassword());
 
