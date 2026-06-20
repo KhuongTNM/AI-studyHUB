@@ -43,7 +43,6 @@ public class DocumentService {
     private final DocumentScanProcessor scanProcessor;
     private final FolderRepository folderRepository;
     private final TagRepository tagRepository;
-    private final StorageService storageService;
 
     @Value("${app.upload.dir:./uploads}")
     private String uploadDirPath;
@@ -111,7 +110,11 @@ public class DocumentService {
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
 
-        storageService.addUsed(userId, file.getSize());
+        // Inline storage update inside this transaction to avoid nested @Transactional
+        // + PESSIMISTIC_WRITE deadlock on MSSQL
+        user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
 
         Document saved = documentRepository.save(doc);
         scanProcessor.simulateScan(saved.getId());
@@ -168,7 +171,12 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
-        storageService.subtractUsed(userId, doc.getFileSizeBytes());
+        // Inline storage subtraction to avoid nested @Transactional PESSIMISTIC_WRITE deadlock
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setStorageUsedBytes(Math.max(0, u.getStorageUsedBytes() - doc.getFileSizeBytes()));
+            u.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(u);
+        });
     }
 
     @Transactional(readOnly = true)
@@ -222,7 +230,10 @@ public class DocumentService {
         if (user.getStorageUsedBytes() + doc.getFileSizeBytes() > user.getStorageLimitBytes()) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ để khôi phục.");
         }
-        storageService.addUsed(userId, doc.getFileSizeBytes());
+        // Inline storage addition to avoid nested @Transactional PESSIMISTIC_WRITE deadlock
+        user.setStorageUsedBytes(user.getStorageUsedBytes() + doc.getFileSizeBytes());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
 
         return restored;
     }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   Search, Filter, Grid3X3, List, ChevronDown, X,
   ArrowUpDown, FolderPlus, Home, ChevronRight,
@@ -54,6 +54,23 @@ export function DocumentManager() {
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [showCreateSubject, setShowCreateSubject] = useState(false)
   const [customSubjects, setCustomSubjects] = useState<string[]>([])
+
+  // Load custom subjects from localStorage on mount/user change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+      try {
+        const saved = window.localStorage.getItem(key)
+        if (saved) {
+          setCustomSubjects(JSON.parse(saved))
+        } else {
+          setCustomSubjects([])
+        }
+      } catch (e) {
+        console.error("Failed to load custom subjects", e)
+      }
+    }
+  }, [currentUser])
   const [renameTarget, setRenameTarget] = useState<Folder | null>(null)
   const [moveTarget, setMoveTarget] = useState<Document | null>(null)
   const [moveFolderTarget, setMoveFolderTarget] = useState<Folder | null>(null) // FR-23 / BR-087
@@ -80,7 +97,8 @@ export function DocumentManager() {
   const subjects = Array.from(
     new Set([
       ...customSubjects,
-      ...activeDocs.map(d => d.subject?.trim()).filter((s): s is string => Boolean(s))
+      ...activeDocs.map(d => d.subject?.trim()).filter((s): s is string => Boolean(s)),
+      ...folders.map(f => f.subject?.trim()).filter((s): s is string => Boolean(s))
     ])
   ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
 
@@ -116,12 +134,15 @@ export function DocumentManager() {
     setCurrentFolderId(folder.id)
     setFolderPath(prev => [...prev, folder])
     setSearchQuery("")
+    // Reset subject filter when entering a folder so all files in the folder are visible
+    setSelectedSubject("all")
   }, [])
 
   const navigateToRoot = useCallback(() => {
     setCurrentFolderId(null)
     setFolderPath([])
     setSearchQuery("")
+    setSelectedSubject("all")
   }, [])
 
   const navigateToBreadcrumb = useCallback((index: number) => {
@@ -132,6 +153,7 @@ export function DocumentManager() {
       setCurrentFolderId(folder.id)
       setFolderPath(prev => prev.slice(0, index + 1))
       setSearchQuery("")
+      setSelectedSubject("all")
     }
   }, [folderPath, navigateToRoot])
 
@@ -191,13 +213,25 @@ export function DocumentManager() {
   }, [createFolder, currentFolderId, selectedSubject])
 
   /**
-   * Thêm môn học mới vào danh sách nhưng KHÔNG tự động chuyển filter.
-   * Nếu auto-switch, folders của môn hiện tại sẽ bị ẩn → user tưởng mất data.
+   * Thêm môn học mới vào danh sách và tự động chuyển filter sang môn học đó.
    */
   const handleCreateSubject = useCallback((name: string) => {
-    setCustomSubjects(prev => prev.includes(name) ? prev : [...prev, name])
-    // Không gọi setSelectedSubject — giữ nguyên view hiện tại.
-  }, [])
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setCustomSubjects(prev => {
+      const next = prev.includes(trimmed) ? prev : [...prev, trimmed]
+      if (typeof window !== "undefined") {
+        const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+        try {
+          window.localStorage.setItem(key, JSON.stringify(next))
+        } catch (e) {
+          console.error("Failed to save custom subjects", e)
+        }
+      }
+      return next
+    })
+    setSelectedSubject(trimmed)
+  }, [currentUser])
 
   /**
    * FR-23: Đổi tên thư mục (+ tùy chọn cập nhật môn học).
