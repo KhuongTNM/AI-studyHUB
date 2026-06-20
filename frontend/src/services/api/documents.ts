@@ -17,7 +17,7 @@ interface ApiDocument {
   fileType: string
   subject: string
   description?: string | null
-  tags?: string | null
+  tags?: string[] | string | null
   status: string
   visibility: string
   downloadCount: number
@@ -77,7 +77,9 @@ export function mapApiDocumentToDocument(api: ApiDocument): Document {
     folderId: api.folderId ?? null,   // FR-23: map folderId từ backend
     status: mapStatus(api.status),
     description: api.description ?? undefined,
-    tags: api.tags
+    tags: Array.isArray(api.tags)
+      ? api.tags
+      : typeof api.tags === "string"
       ? api.tags.split(",").map(t => t.trim()).filter(Boolean)
       : [],
     downloadCount: api.downloadCount,

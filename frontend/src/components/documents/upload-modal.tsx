@@ -29,7 +29,11 @@ export function UploadModal({
   ]
 
   const handleFiles = (files: File[]) => {
-    const valid = files.filter(f => validTypes.includes(f.type))
+    const valid = files.filter(f => {
+      const ext = f.name.split(".").pop()?.toLowerCase()
+      const isValidExt = ext && ["pdf", "docx", "pptx"].includes(ext)
+      return validTypes.includes(f.type) || isValidExt
+    })
     setSelectedFiles(prev => [...prev, ...valid])
   }
 

@@ -261,6 +261,30 @@ GO
 
 
 -- =============================================================
+-- tags & document_tags
+-- =============================================================
+
+CREATE TABLE tags (
+    id   BIGINT IDENTITY(1,1) PRIMARY KEY,
+    name NVARCHAR(100) NOT NULL UNIQUE
+);
+GO
+
+CREATE TABLE document_tags (
+    document_id UNIQUEIDENTIFIER NOT NULL
+        CONSTRAINT fk_dt_document REFERENCES documents(id) ON DELETE CASCADE,
+    tag_id      BIGINT NOT NULL
+        CONSTRAINT fk_dt_tag REFERENCES tags(id) ON DELETE CASCADE,
+    CONSTRAINT pk_document_tags PRIMARY KEY (document_id, tag_id)
+);
+GO
+
+CREATE INDEX idx_dt_document ON document_tags(document_id);
+CREATE INDEX idx_dt_tag ON document_tags(tag_id);
+GO
+
+
+-- =============================================================
 -- 4. CHAT_SESSIONS
 -- Phiên trò chuyện với AI Chatbot
 -- BR-032, BR-033, BR-034, BR-035, BR-036
