@@ -102,7 +102,7 @@ public class DocumentService {
         doc.setFileUrl("uploads/" + storedName);
         doc.setFileSizeBytes(file.getSize());
         doc.setFileType(ext);
-        doc.setSubject(subject);
+        doc.setSubject(subject != null ? subject.trim().toLowerCase() : null);
         doc.setTags(resolvedTags);
         doc.setStatus(DocumentStatus.UPLOADING);
         doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
@@ -302,7 +302,7 @@ public class DocumentService {
             doc.setTitle(request.getTitle().strip());
         }
         if (request.getSubject() != null && !request.getSubject().isBlank()) {
-            doc.setSubject(request.getSubject().strip());
+            doc.setSubject(request.getSubject().strip().toLowerCase());
         }
         if (request.getDescription() != null) {
             doc.setDescription(request.getDescription());
