@@ -8,16 +8,19 @@ import { useApp } from "@/lib/store"
 
 export function UploadModal({
   initialSubject = "",
+  hideSubject = false,
   onClose,
   onUpload,
 }: {
   initialSubject?: string
+  hideSubject?: boolean
   onClose: () => void
   onUpload: (files: File[], subject: string) => void
 }) {
   const [subject, setSubject] = useState(initialSubject)
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { language } = useApp()
   const text = uploadText[language]
@@ -28,13 +31,60 @@ export function UploadModal({
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ]
 
+  const maxFileSize = 50 * 1024 * 1024 // 50MB
+  const maxFilesCount = 5
+
   const handleFiles = (files: File[]) => {
-    const valid = files.filter(f => validTypes.includes(f.type))
-    setSelectedFiles(prev => [...prev, ...valid])
+    setError(null)
+    const valid: File[] = []
+    let hasOversized = false
+    let hasInvalidType = false
+
+    for (const f of files) {
+      const ext = f.name.split(".").pop()?.toLowerCase()
+      const isValidExt = ext && ["pdf", "docx", "pptx"].includes(ext)
+      const isValidType = validTypes.includes(f.type) || isValidExt
+
+      if (!isValidType) {
+        hasInvalidType = true
+        continue
+      }
+
+      if (f.size > maxFileSize) {
+        hasOversized = true
+        continue
+      }
+
+      valid.push(f)
+    }
+
+    if (hasInvalidType) {
+      setError(language === "vi" 
+        ? "Chỉ hỗ trợ file PDF, DOCX, PPTX." 
+        : "Only PDF, DOCX, and PPTX files are supported."
+      )
+    } else if (hasOversized) {
+      setError(language === "vi" 
+        ? "Có file vượt quá dung lượng tối đa cho phép (50MB)." 
+        : "Some files exceed the maximum allowed size (50MB)."
+      )
+    }
+
+    setSelectedFiles(prev => {
+      const combined = [...prev, ...valid]
+      if (combined.length > maxFilesCount) {
+        setError(language === "vi" 
+          ? `Chỉ được upload tối đa ${maxFilesCount} file cùng lúc.` 
+          : `You can only upload up to ${maxFilesCount} files at a time.`
+        )
+        return combined.slice(0, maxFilesCount)
+      }
+      return combined
+    })
   }
 
   const handleUpload = () => {
-    if (!selectedFiles.length || !subject.trim()) return
+    if (!selectedFiles.length || (!hideSubject && !subject.trim())) return
     onUpload(selectedFiles, subject.trim())
     onClose()
   }
@@ -42,7 +92,7 @@ export function UploadModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between border-b border-border p-4">
           <h3 className="font-semibold text-foreground">{text.title}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -50,18 +100,29 @@ export function UploadModal({
           </Button>
         </div>
         <div className="space-y-4 p-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <span className="flex-1 font-medium">{error}</span>
+              <button onClick={() => setError(null)} className="text-destructive hover:opacity-80">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Subject name */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">
-              {text.subject} <span className="text-destructive">*</span>
-            </label>
-            <input
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              placeholder={text.subjectPlaceholder}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
+          {!hideSubject && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                {text.subject} <span className="text-destructive">*</span>
+              </label>
+              <input
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                placeholder={text.subjectPlaceholder}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          )}
 
           {/* Drop zone */}
           <div
@@ -88,6 +149,11 @@ export function UploadModal({
               {text.dropOrClick}
             </p>
             <p className="text-xs text-muted-foreground">PDF, DOCX, PPTX</p>
+            <p className="mt-1 text-xs text-amber-500 font-medium">
+              {language === "vi" 
+                ? "Tối đa 5 file, mỗi file không quá 50MB" 
+                : "Max 5 files, up to 50MB per file"}
+            </p>
             <input
               ref={inputRef}
               type="file"
@@ -122,7 +188,7 @@ export function UploadModal({
           <Button
             className="flex-1 gap-2"
             onClick={handleUpload}
-            disabled={!selectedFiles.length || !subject.trim()}
+            disabled={!selectedFiles.length || (!hideSubject && !subject.trim())}
           >
             <Upload className="h-4 w-4" />
             {text.upload} {selectedFiles.length > 0 ? `(${selectedFiles.length} file)` : ""}

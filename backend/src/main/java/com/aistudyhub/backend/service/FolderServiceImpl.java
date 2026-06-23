@@ -45,7 +45,7 @@ public class FolderServiceImpl implements FolderService {
 
         Folder parent = null;
         // Khởi tạo subject từ request; có thể được ghi đè bởi kế thừa BR-083 bên dưới
-        String resolvedSubject = request.getSubject();
+        String resolvedSubject = request.getSubject() != null ? request.getSubject().trim().toLowerCase() : null;
 
         if (request.getParentId() != null) {
 
@@ -62,7 +62,7 @@ public class FolderServiceImpl implements FolderService {
 
             // BR-083: Kế thừa môn học từ thư mục cha nếu request không truyền subject
             if (resolvedSubject == null) {
-                resolvedSubject = parent.getSubject();
+                resolvedSubject = parent.getSubject() != null ? parent.getSubject().toLowerCase() : null;
             }
         }
 
@@ -71,7 +71,7 @@ public class FolderServiceImpl implements FolderService {
 
         // Fail-Fast 4 (BR-086): Kiểm tra trùng tên trong cùng cấp độ (không phân biệt hoa/thường)
         boolean trungTen = (parent == null)
-                ? folderRepository.existsByUser_IdAndParentIsNullAndNameIgnoreCase(userId, trimmedName)
+                ? folderRepository.existsByUser_IdAndParentIsNullAndSubjectAndNameIgnoreCase(userId, resolvedSubject, trimmedName)
                 : folderRepository.existsByUser_IdAndParent_IdAndNameIgnoreCase(userId, parent.getId(), trimmedName);
 
         if (trungTen) {
@@ -144,9 +144,13 @@ public class FolderServiceImpl implements FolderService {
         String trimmedName = request.getName().trim();
 
         // Fail-Fast 3 (BR-086): Kiểm tra trùng tên, loại trừ chính thư mục này
+        String resolvedSubject = folder.getSubject() != null ? folder.getSubject().toLowerCase() : null;
+        if (request.getSubject() != null) {
+            resolvedSubject = request.getSubject().isBlank() ? null : request.getSubject().trim().toLowerCase();
+        }
         boolean trungTen = (folder.getParent() == null)
-                ? folderRepository.existsByUser_IdAndParentIsNullAndNameIgnoreCaseAndIdNot(
-                        userId, trimmedName, folderId)
+                ? folderRepository.existsByUser_IdAndParentIsNullAndSubjectAndNameIgnoreCaseAndIdNot(
+                        userId, resolvedSubject, trimmedName, folderId)
                 : folderRepository.existsByUser_IdAndParent_IdAndNameIgnoreCaseAndIdNot(
                         userId, folder.getParent().getId(), trimmedName, folderId);
 
@@ -158,7 +162,7 @@ public class FolderServiceImpl implements FolderService {
         folder.setName(trimmedName);
         // subject: null trong request = giữ nguyên giá trị cũ; chuỗi rỗng = xóa nhãn
         if (request.getSubject() != null) {
-            folder.setSubject(request.getSubject().isBlank() ? null : request.getSubject().trim());
+            folder.setSubject(request.getSubject().isBlank() ? null : request.getSubject().trim().toLowerCase());
         }
         folder.setUpdatedAt(LocalDateTime.now());
 
@@ -214,8 +218,8 @@ public class FolderServiceImpl implements FolderService {
             }
         }
         boolean trungTen = (newParent == null)
-                ? folderRepository.existsByUser_IdAndParentIsNullAndNameIgnoreCaseAndIdNot(
-                        userId, folder.getName(), folderId)
+                ? folderRepository.existsByUser_IdAndParentIsNullAndSubjectAndNameIgnoreCaseAndIdNot(
+                        userId, folder.getSubject() != null ? folder.getSubject().toLowerCase() : null, folder.getName(), folderId)
                 : folderRepository.existsByUser_IdAndParent_IdAndNameIgnoreCaseAndIdNot(
                         userId, targetParentId, folder.getName(), folderId);
 
@@ -227,7 +231,7 @@ public class FolderServiceImpl implements FolderService {
         if (newParent != null
                 && newParent.getSubject() != null
                 && folder.getSubject() == null) {
-            folder.setSubject(newParent.getSubject());
+            folder.setSubject(newParent.getSubject().toLowerCase());
         }
 
         folder.setUpdatedAt(LocalDateTime.now());
@@ -262,9 +266,13 @@ public class FolderServiceImpl implements FolderService {
         } else if (!parentChanged) {
             newParent = folder.getParent();
         }
+        String resolvedSubject = folder.getSubject() != null ? folder.getSubject().toLowerCase() : null;
+        if (request.getSubject() != null) {
+            resolvedSubject = request.getSubject().isBlank() ? null : request.getSubject().trim().toLowerCase();
+        }
         boolean trungTen = (newParent == null)
-                ? folderRepository.existsByUser_IdAndParentIsNullAndNameIgnoreCaseAndIdNot(
-                        userId, trimmedName, folderId)
+                ? folderRepository.existsByUser_IdAndParentIsNullAndSubjectAndNameIgnoreCaseAndIdNot(
+                        userId, resolvedSubject, trimmedName, folderId)
                 : folderRepository.existsByUser_IdAndParent_IdAndNameIgnoreCaseAndIdNot(
                         userId, newParent.getId(), trimmedName, folderId);
         if (trungTen) {
@@ -273,12 +281,12 @@ public class FolderServiceImpl implements FolderService {
         }
         folder.setName(trimmedName);
         if (request.getSubject() != null) {
-            folder.setSubject(request.getSubject().isBlank() ? null : request.getSubject().trim());
+            folder.setSubject(request.getSubject().isBlank() ? null : request.getSubject().trim().toLowerCase());
         }
         if (parentChanged) {
             folder.setParent(newParent);
             if (newParent != null && newParent.getSubject() != null && folder.getSubject() == null) {
-                folder.setSubject(newParent.getSubject());
+                folder.setSubject(newParent.getSubject().toLowerCase());
             }
         }
 

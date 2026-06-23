@@ -43,7 +43,6 @@ public class DocumentService {
     private final DocumentScanProcessor scanProcessor;
     private final FolderRepository folderRepository;
     private final TagRepository tagRepository;
-    private final StorageService storageService;
 
     @Value("${app.upload.dir:./uploads}")
     private String uploadDirPath;
@@ -100,7 +99,7 @@ public class DocumentService {
         doc.setFileUrl("uploads/" + storedName);
         doc.setFileSizeBytes(file.getSize());
         doc.setFileType(ext);
-        doc.setSubject(subject);
+        doc.setSubject(subject != null ? subject.trim().toLowerCase() : null);
         doc.setTags(resolvedTags);
         doc.setStatus(DocumentStatus.UPLOADING);
         doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
@@ -108,14 +107,20 @@ public class DocumentService {
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
 
-        storageService.addUsed(userId, file.getSize());
+        // Inline storage update inside this transaction to avoid nested @Transactional
+        // + PESSIMISTIC_WRITE deadlock on MSSQL
+        user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
         Document saved = documentRepository.save(doc);
 
         try {
             Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             documentRepository.deleteById(saved.getId());
-            storageService.subtractUsed(userId, file.getSize());
+            user.setStorageUsedBytes(Math.max(0, user.getStorageUsedBytes() - file.getSize()));
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + e.getMessage());
         }
 
@@ -149,6 +154,21 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Document getDocumentForPreview(UUID id, UUID userId, String role) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (doc.getDeletedAt() != null || doc.getStatus() != DocumentStatus.READY) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại.");
+        }
+        boolean isOwner = doc.getUserId().equals(userId);
+        boolean isAdminOrSubAdmin = "admin".equals(role) || "sub_admin".equals(role);
+        if (!isOwner && !isAdminOrSubAdmin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài liệu này.");
+        }
+        return doc;
+    }
+
+    @Transactional(readOnly = true)
     public List<Document> getUserDocuments(UUID userId) {
         return documentRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId);
     }
@@ -173,7 +193,12 @@ public class DocumentService {
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
         documentRepository.save(doc);
-        storageService.subtractUsed(userId, doc.getFileSizeBytes());
+        // Inline storage subtraction to avoid nested @Transactional PESSIMISTIC_WRITE deadlock
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setStorageUsedBytes(Math.max(0, u.getStorageUsedBytes() - doc.getFileSizeBytes()));
+            u.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(u);
+        });
     }
 
     @Transactional(readOnly = true)
@@ -227,7 +252,10 @@ public class DocumentService {
         if (user.getStorageUsedBytes() + doc.getFileSizeBytes() > user.getStorageLimitBytes()) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ để khôi phục.");
         }
-        storageService.addUsed(userId, doc.getFileSizeBytes());
+        // Inline storage addition to avoid nested @Transactional PESSIMISTIC_WRITE deadlock
+        user.setStorageUsedBytes(user.getStorageUsedBytes() + doc.getFileSizeBytes());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
 
         return restored;
     }
@@ -296,7 +324,7 @@ public class DocumentService {
             doc.setTitle(request.getTitle().strip());
         }
         if (request.getSubject() != null && !request.getSubject().isBlank()) {
-            doc.setSubject(request.getSubject().strip());
+            doc.setSubject(request.getSubject().strip().toLowerCase());
         }
         if (request.getDescription() != null) {
             doc.setDescription(request.getDescription());

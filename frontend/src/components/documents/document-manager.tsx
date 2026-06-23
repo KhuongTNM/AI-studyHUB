@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   Search, Filter, Grid3X3, List, ChevronDown, X,
   ArrowUpDown, FolderPlus, Home, ChevronRight,
@@ -54,6 +54,23 @@ export function DocumentManager() {
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [showCreateSubject, setShowCreateSubject] = useState(false)
   const [customSubjects, setCustomSubjects] = useState<string[]>([])
+
+  // Load custom subjects from localStorage on mount/user change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+      try {
+        const saved = window.localStorage.getItem(key)
+        if (saved) {
+          setCustomSubjects(JSON.parse(saved))
+        } else {
+          setCustomSubjects([])
+        }
+      } catch (e) {
+        console.error("Failed to load custom subjects", e)
+      }
+    }
+  }, [currentUser])
   const [renameTarget, setRenameTarget] = useState<Folder | null>(null)
   const [moveTarget, setMoveTarget] = useState<Document | null>(null)
   const [moveFolderTarget, setMoveFolderTarget] = useState<Folder | null>(null) // FR-23 / BR-087
@@ -79,12 +96,27 @@ export function DocumentManager() {
 
   const subjects = Array.from(
     new Set([
-      ...customSubjects,
-      ...activeDocs.map(d => d.subject?.trim()).filter((s): s is string => Boolean(s))
+      ...customSubjects.map(s => s.trim().toLowerCase()),
+      ...activeDocs.map(d => d.subject?.trim().toLowerCase()).filter((s): s is string => Boolean(s)),
+      ...folders.map(f => f.subject?.trim().toLowerCase()).filter((s): s is string => Boolean(s))
     ])
   ).sort((a, b) => a.localeCompare(b, language === "vi" ? "vi" : "en"))
 
   const currentFolderName = folderPath.length > 0 ? folderPath[folderPath.length - 1].name : text.title
+
+  const currentFolderSubject = (() => {
+    if (!currentFolderId) return undefined
+    for (let i = folderPath.length - 1; i >= 0; i--) {
+      if (folderPath[i].subject) return folderPath[i].subject
+    }
+    let folder = folders.find(f => f.id === currentFolderId)
+    while (folder) {
+      if (folder.subject) return folder.subject
+      const parentId = folder.parentId
+      folder = parentId ? folders.find(f => f.id === parentId) : undefined
+    }
+    return undefined
+  })()
 
   const filtered = docsInFolder
     .filter(d => {
@@ -92,7 +124,7 @@ export function DocumentManager() {
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-      const matchSubject = selectedSubject === "all" || d.subject?.trim() === selectedSubject
+      const matchSubject = selectedSubject === "all" || d.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
       return matchSearch && matchSubject
     })
     .sort((a, b) => {
@@ -105,7 +137,7 @@ export function DocumentManager() {
 
   const filteredFolders = foldersInView.filter(f => {
     const matchSearch = !searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchSubject = selectedSubject === "all" || f.subject === selectedSubject
+    const matchSubject = selectedSubject === "all" || f.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
     return matchSearch && matchSubject
   })
 
@@ -116,12 +148,15 @@ export function DocumentManager() {
     setCurrentFolderId(folder.id)
     setFolderPath(prev => [...prev, folder])
     setSearchQuery("")
+    // Reset subject filter when entering a folder so all files in the folder are visible
+    setSelectedSubject("all")
   }, [])
 
   const navigateToRoot = useCallback(() => {
     setCurrentFolderId(null)
     setFolderPath([])
     setSearchQuery("")
+    setSelectedSubject("all")
   }, [])
 
   const navigateToBreadcrumb = useCallback((index: number) => {
@@ -132,29 +167,29 @@ export function DocumentManager() {
       setCurrentFolderId(folder.id)
       setFolderPath(prev => prev.slice(0, index + 1))
       setSearchQuery("")
+      setSelectedSubject("all")
     }
   }, [folderPath, navigateToRoot])
 
   /** Chuyển filter môn học + reset về root để tránh hiển thị folder của môn khác */
-  const handleSelectSubject = useCallback((subject: string) => {
-    setSelectedSubject(subject)
-    setCurrentFolderId(null)
-    setFolderPath([])
-    setSearchQuery("")
-  }, [])
+const handleSelectSubject = useCallback((subject: string) => {
+  setSelectedSubject(subject)
+  setSearchQuery("")
+}, [])
 
 
   const handleUpload = useCallback(async (files: File[], subject: string) => {
     if (!currentUser) return
     setUploadError(null)
+    const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
     for (const file of files) {
-      const result = await uploadDocument(file, subject, "private", currentFolderId)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId)
       if (!result.success && result.error) {
         setUploadError(result.error)
         break
       }
     }
-  }, [currentUser, uploadDocument, currentFolderId])
+  }, [currentUser, uploadDocument, currentFolderId, currentFolderSubject, selectedSubject])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -185,19 +220,31 @@ export function DocumentManager() {
    * BR-082: gắn môn học; BR-086: backend validate tên trùng.
    */
   const handleCreateFolder = useCallback(async (name: string, subject?: string) => {
-    const resolvedSubject = subject ?? (selectedSubject !== "all" ? selectedSubject : undefined)
+    const resolvedSubject = subject ?? currentFolderSubject ?? (selectedSubject !== "all" ? selectedSubject : undefined)
     const result = await createFolder(name, currentFolderId, resolvedSubject)
     if (!result.success && result.error) setFolderError(result.error)
-  }, [createFolder, currentFolderId, selectedSubject])
+  }, [createFolder, currentFolderId, currentFolderSubject, selectedSubject])
 
   /**
-   * Thêm môn học mới vào danh sách nhưng KHÔNG tự động chuyển filter.
-   * Nếu auto-switch, folders của môn hiện tại sẽ bị ẩn → user tưởng mất data.
+   * Thêm môn học mới vào danh sách và tự động chuyển filter sang môn học đó.
    */
   const handleCreateSubject = useCallback((name: string) => {
-    setCustomSubjects(prev => prev.includes(name) ? prev : [...prev, name])
-    // Không gọi setSelectedSubject — giữ nguyên view hiện tại.
-  }, [])
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed) return
+    setCustomSubjects(prev => {
+      const next = prev.includes(trimmed) ? prev : [...prev, trimmed]
+      if (typeof window !== "undefined") {
+        const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+        try {
+          window.localStorage.setItem(key, JSON.stringify(next))
+        } catch (e) {
+          console.error("Failed to save custom subjects", e)
+        }
+      }
+      return next
+    })
+    setSelectedSubject(trimmed)
+  }, [currentUser])
 
   /**
    * FR-23: Đổi tên thư mục (+ tùy chọn cập nhật môn học).
@@ -349,25 +396,27 @@ export function DocumentManager() {
             )}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Filter className="h-3 w-3" />
-                {selectedSubject === "all" ? text.allSubjects : selectedSubject}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleSelectSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {subjects.map(subject => (
-                <DropdownMenuItem key={subject} onClick={() => handleSelectSubject(subject)}>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
-                  {subject}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {currentFolderId === null && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Filter className="h-3 w-3" />
+                  {selectedSubject === "all" ? text.allSubjects : selectedSubject}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleSelectSubject("all")}>{text.allSubjectsFull}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {subjects.map(subject => (
+                  <DropdownMenuItem key={subject} onClick={() => handleSelectSubject(subject)}>
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary" />
+                    {subject}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -395,7 +444,7 @@ export function DocumentManager() {
         </div>
 
         {/* Category tabs */}
-        {subjects.length > 0 && (
+        {currentFolderId === null && subjects.length > 0 && (
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => handleSelectSubject("all")}
@@ -568,14 +617,15 @@ export function DocumentManager() {
           }}
           onToggleVisibility={doc => handleToggleVisibility(doc.id, !doc.isPublic)}
           onMoveFile={doc => setMoveTarget(doc)}
-          isSubjectSelected={selectedSubject !== "all"}
+          isSubjectSelected={selectedSubject !== "all" || currentFolderId !== null}
         />
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────────── */}
       {showUploadModal && (
         <UploadModal
-          initialSubject={selectedSubject !== "all" ? selectedSubject : ""}
+          initialSubject={currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all"}
           onClose={() => setShowUploadModal(false)}
           onUpload={handleUpload}
         />
@@ -597,7 +647,8 @@ export function DocumentManager() {
       {showCreateFolder && (
         <CreateFolderModal
           language={language}
-          initialSubject={selectedSubject !== "all" ? selectedSubject : undefined}
+          initialSubject={currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : undefined)}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all"}
           onConfirm={handleCreateFolder}
           onClose={() => setShowCreateFolder(false)}
         />
@@ -609,6 +660,7 @@ export function DocumentManager() {
           language={language}
           initialName={renameTarget.name}
           initialSubject={renameTarget.subject}
+          hideSubject={currentFolderId !== null || selectedSubject !== "all" || !!renameTarget.subject}
           onConfirm={handleRenameFolder}
           onClose={() => setRenameTarget(null)}
         />
