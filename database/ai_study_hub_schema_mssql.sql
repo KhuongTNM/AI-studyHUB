@@ -76,7 +76,8 @@ CREATE TABLE users (
                            CONSTRAINT fk_users_creator
                                REFERENCES users(id) ON DELETE NO ACTION,
                        created_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
-                       updated_at              DATETIME2        NOT NULL DEFAULT GETDATE()
+                       updated_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
+                       deleted_at              DATETIME2        NULL
 );
 GO
 
@@ -433,13 +434,20 @@ GO
 -- TRIGGERS — Cập nhật updated_at tự động
 -- =============================================================
 
-CREATE TRIGGER trg_subscription_plans_updated_at ON subscription_plans AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE subscription_plans SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_users_updated_at ON users AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE users SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_folders_updated_at ON folders AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE folders SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_documents_updated_at ON documents AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE documents SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_chat_sessions_updated_at ON chat_sessions AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE chat_sessions SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_flashcards_updated_at ON flashcards AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE flashcards SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
-CREATE TRIGGER trg_groups_updated_at ON groups AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE groups SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_subscription_plans_updated_at ON subscription_plans AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE subscription_plans SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_users_updated_at ON users AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE users SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_folders_updated_at ON folders AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE folders SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_documents_updated_at ON documents AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE documents SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_chat_sessions_updated_at ON chat_sessions AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE chat_sessions SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_flashcards_updated_at ON flashcards AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE flashcards SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
+CREATE TRIGGER trg_groups_updated_at ON groups AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE groups SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; 
+GO
 
 
 -- =============================================================
