@@ -99,15 +99,12 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
   )
 
   const register = useCallback(
-    async (email: string, password: string, displayName: string) => {
+    async (email: string, password: string, confirmPassword: string, displayName: string) => {
       try {
-        const result = await registerApi(email, password, displayName)
+        const result = await registerApi(email, password, confirmPassword, displayName)
         if (!result.success) return result
-        setCurrentUser(result.user)
-        setLanguageState(result.user.languagePreference ?? "vi")
-        onAuthenticated?.(result.user)
         closeAuthModal()
-        return { success: true }
+        return { success: true, message: "Đăng ký thành công. Vui lòng đăng nhập." }
       } catch {
         return {
           success: false,
