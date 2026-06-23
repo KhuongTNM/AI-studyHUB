@@ -86,14 +86,16 @@ CREATE INDEX idx_users_plan         ON users(subscription_plan_id);
 CREATE INDEX idx_users_is_locked    ON users(is_locked);
 GO
 
--- Seed data mẫu
+-- Seed: tài khoản Admin mặc định
 INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
 SELECT N'admin@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'System Admin', N'admin', 1073741824, sp.id
 FROM subscription_plans sp WHERE sp.name = N'free';
+GO
 
 INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
 SELECT N'subAdmin@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'Sub Admin', N'sub_admin', 1073741824, sp.id
 FROM subscription_plans sp WHERE sp.name = N'free';
+GO
 
 INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
 SELECT N'student@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'Student', N'user', 536870912, sp.id
@@ -102,7 +104,33 @@ GO
 
 
 -- =============================================================
--- 3. DOCUMENTS
+-- 3. FOLDERS
+-- Lưu trữ cấu trúc thư mục của người dùng
+-- =============================================================
+
+CREATE TABLE folders (
+                         id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                         user_id         UNIQUEIDENTIFIER NOT NULL
+                             CONSTRAINT fk_folders_user
+                                 REFERENCES users(id) ON DELETE CASCADE,
+                         parent_id       UNIQUEIDENTIFIER NULL
+                             CONSTRAINT fk_folders_parent
+                                 REFERENCES folders(id) ON DELETE NO ACTION,
+                         name            NVARCHAR(255)    NOT NULL,
+                         subject         NVARCHAR(100)    NULL,
+                         created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+                         updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
+);
+GO
+
+CREATE INDEX idx_folders_user_id ON folders(user_id);
+CREATE INDEX idx_folders_parent_id ON folders(parent_id);
+CREATE INDEX idx_folders_subject ON folders(subject);
+GO
+
+
+-- =============================================================
+-- 4. DOCUMENTS
 -- Tài liệu học tập: PDF / DOCX / PPTX
 -- =============================================================
 
@@ -111,6 +139,9 @@ CREATE TABLE documents (
                            user_id         UNIQUEIDENTIFIER NOT NULL
                                CONSTRAINT fk_docs_user
                                    REFERENCES users(id) ON DELETE CASCADE,
+                           folder_id       UNIQUEIDENTIFIER NULL
+                               CONSTRAINT fk_docs_folder
+                                   REFERENCES folders(id) ON DELETE NO ACTION,
                            original_name   NVARCHAR(255)    NOT NULL,
                            title           NVARCHAR(255)    NOT NULL,
                            file_url        NVARCHAR(MAX)    NOT NULL,
@@ -148,7 +179,31 @@ GO
 
 
 -- =============================================================
--- 4. CHAT_SESSIONS
+-- tags & document_tags
+-- =============================================================
+
+CREATE TABLE tags (
+                      id   BIGINT IDENTITY(1,1) PRIMARY KEY,
+                      name NVARCHAR(100) NOT NULL UNIQUE
+);
+GO
+
+CREATE TABLE document_tags (
+                               document_id UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_dt_document REFERENCES documents(id) ON DELETE CASCADE,
+                               tag_id      BIGINT NOT NULL
+                                   CONSTRAINT fk_dt_tag REFERENCES tags(id) ON DELETE CASCADE,
+                               CONSTRAINT pk_document_tags PRIMARY KEY (document_id, tag_id)
+);
+GO
+
+CREATE INDEX idx_dt_document ON document_tags(document_id);
+CREATE INDEX idx_dt_tag ON document_tags(tag_id);
+GO
+
+
+-- =============================================================
+-- 5. CHAT_SESSIONS
 -- Phiên trò chuyện với AI Chatbot
 -- =============================================================
 
@@ -171,7 +226,7 @@ GO
 
 
 -- =============================================================
--- 5. CHAT_MESSAGES
+-- 6. CHAT_MESSAGES
 -- Tin nhắn trong một chat session
 -- =============================================================
 
@@ -193,7 +248,7 @@ GO
 
 
 -- =============================================================
--- 6. FLASHCARDS
+-- 7. FLASHCARDS
 -- Thẻ ghi nhớ: thủ công hoặc AI tạo từ tài liệu
 -- =============================================================
 
@@ -223,7 +278,7 @@ GO
 
 
 -- =============================================================
--- 7. GROUPS (Thay thế Study Rooms)
+-- 8. GROUPS (Thay thế Study Rooms)
 -- Phòng học nhóm / Chat nhóm
 -- =============================================================
 
@@ -247,7 +302,7 @@ GO
 
 
 -- =============================================================
--- 8. GROUP_MEMBERS (Thay thế Study Room Members)
+-- 9. GROUP_MEMBERS (Thay thế Study Room Members)
 -- Danh sách thành viên trong nhóm
 -- =============================================================
 
@@ -274,7 +329,7 @@ GO
 
 
 -- =============================================================
--- 9. GROUP_MESSAGES (Thay thế Study Room Messages)
+-- 10. GROUP_MESSAGES (Thay thế Study Room Messages)
 -- Tin nhắn trong nhóm chat học tập
 -- =============================================================
 
@@ -304,7 +359,7 @@ GO
 
 
 -- =============================================================
--- 10. GROUP_REPORTS
+-- 11. GROUP_REPORTS
 -- Báo cáo sai phạm phòng chat nhóm công khai
 -- =============================================================
 
@@ -326,7 +381,7 @@ GO
 
 
 -- =============================================================
--- 11. ACTIVITY_LOGS
+-- 12. ACTIVITY_LOGS
 -- Nhật ký hoạt động admin/sub_admin
 -- =============================================================
 
@@ -352,38 +407,39 @@ GO
 
 
 -- =============================================================
+-- 13. PASSWORD_RESET_TOKENS
+-- Forgot password — BR: Forgot Password
+-- =============================================================
+
+CREATE TABLE password_reset_tokens (
+                                       id          UNIQUEIDENTIFIER PRIMARY KEY,
+                                       email       NVARCHAR(255)    NOT NULL,
+                                       token       NVARCHAR(36)     NOT NULL UNIQUE,
+                                       expiry      DATETIME2        NOT NULL,
+                                       used        BIT              NOT NULL DEFAULT 0,
+                                       user_id     UNIQUEIDENTIFIER NULL
+                                           CONSTRAINT fk_prt_user
+                                               REFERENCES users(id) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX idx_prt_email  ON password_reset_tokens(email);
+CREATE INDEX idx_prt_token  ON password_reset_tokens(token);
+CREATE INDEX idx_prt_user_id ON password_reset_tokens(user_id);
+GO
+
+
+-- =============================================================
 -- TRIGGERS — Cập nhật updated_at tự động
 -- =============================================================
 
-CREATE TRIGGER trg_subscription_plans_updated_at ON subscription_plans AFTER UPDATE AS BEGIN
-                                                                             SET NOCOUNT ON; UPDATE subscription_plans SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_users_updated_at ON users AFTER UPDATE AS BEGIN
-                                                   SET NOCOUNT ON; UPDATE users SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_documents_updated_at ON documents AFTER UPDATE AS BEGIN
-                                                           SET NOCOUNT ON; UPDATE documents SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_chat_sessions_updated_at ON chat_sessions AFTER UPDATE AS BEGIN
-                                                                   SET NOCOUNT ON; UPDATE chat_sessions SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_flashcards_updated_at ON flashcards AFTER UPDATE AS BEGIN
-                                                             SET NOCOUNT ON; UPDATE flashcards SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_groups_updated_at ON groups AFTER UPDATE AS BEGIN
-                                                     SET NOCOUNT ON; UPDATE groups SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
+CREATE TRIGGER trg_subscription_plans_updated_at ON subscription_plans AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE subscription_plans SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_users_updated_at ON users AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE users SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_folders_updated_at ON folders AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE folders SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_documents_updated_at ON documents AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE documents SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_chat_sessions_updated_at ON chat_sessions AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE chat_sessions SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_flashcards_updated_at ON flashcards AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE flashcards SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_groups_updated_at ON groups AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE groups SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
 
 
 -- =============================================================
@@ -395,12 +451,12 @@ CREATE TRIGGER trg_documents_sync_storage
     AS BEGIN
     SET NOCOUNT ON;
     DECLARE @AffectedUsers TABLE (user_id UNIQUEIDENTIFIER);
-INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM INSERTED;
-INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM DELETED;
+    INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM INSERTED;
+    INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM DELETED;
 
-UPDATE u
-SET u.storage_used_bytes = COALESCE(
-        (SELECT SUM(d.file_size_bytes) FROM documents d WHERE d.user_id = u.id AND d.status != N'deleted' AND d.deleted_at IS NULL),
+    UPDATE u
+    SET u.storage_used_bytes = COALESCE(
+            (SELECT SUM(d.file_size_bytes) FROM documents d WHERE d.user_id = u.id AND d.status != N'deleted' AND d.deleted_at IS NULL),
             0
                                )
     FROM users u WHERE u.id IN (SELECT DISTINCT user_id FROM @AffectedUsers);
