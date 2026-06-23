@@ -46,7 +46,7 @@ export interface AppState {
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  register: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
+  register: (email: string, password: string, confirmPassword: string, displayName: string) => Promise<{ success: boolean; error?: string }>
   /** Đăng nhập/đăng ký bằng Google — idToken là JWT từ Google Identity Services */
   loginWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void

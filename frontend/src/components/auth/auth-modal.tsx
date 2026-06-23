@@ -47,7 +47,7 @@ export function AuthModal() {
     enterEmail: "Vui lòng nhập email.",
     resetSent: "Link đặt lại mật khẩu đã được gửi đến email của bạn!",
     strength: "Độ mạnh:",
-    strengthLabel: ["", "Yếu", "Trung bình", "Tốt", "Mạnh"],
+    strengthLabel: ["", "Yếu", "Trung bình", "Mạnh", "Rất Mạnh"],
     namePlaceholder: "Nguyễn Văn A",
     passwordPlaceholder: "Tối thiểu 8 ký tự, có chữ và số",
     orContinueWith: "Hoặc tiếp tục với",
@@ -76,7 +76,7 @@ export function AuthModal() {
     enterEmail: "Please enter your email.",
     resetSent: "A password reset link has been sent to your email.",
     strength: "Strength:",
-    strengthLabel: ["", "Weak", "Medium", "Good", "Strong"],
+    strengthLabel: ["", "Weak", "Medium", "Strong", "Very Strong"],
     namePlaceholder: "Alex Nguyen",
     passwordPlaceholder: "At least 8 characters with letters and numbers",
     orContinueWith: "Or continue with",
@@ -113,7 +113,7 @@ export function AuthModal() {
       setError(text.letterNumber); return
     }
     setLoading(true)
-    const result = await register(email, password, displayName)
+    const result = await register(email, password, confirmPassword, displayName)
     setLoading(false)
     if (!result.success) setError(result.error || text.failedRegister)
   }
