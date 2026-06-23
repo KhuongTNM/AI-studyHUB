@@ -26,14 +26,17 @@ public class PasswordResetService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     public PasswordResetService(
             PasswordResetTokenRepository passwordResetTokenRepository,
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            EmailService emailService) {
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -56,8 +59,7 @@ public class PasswordResetService {
             resetToken.setUsed(false);
             passwordResetTokenRepository.save(resetToken);
 
-            LOGGER.info("Reset link: http://localhost:8080/api/auth/reset-password?token={}",
-                    resetToken.getToken());
+            emailService.sendResetEmail(normalizedEmail, resetToken.getToken());
         }
 
         // Luôn trả về cùng một message dù email có tồn tại hay không
