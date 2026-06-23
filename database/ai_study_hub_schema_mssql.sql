@@ -284,7 +284,7 @@ GO
 
 CREATE TABLE groups (
                         id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-                        group_code      VARCHAR(32)         NOT NULL UNIQUE,
+                        group_code      NVARCHAR(32)        NOT NULL UNIQUE, -- Đã update thành NVARCHAR(32)
                         password_hash   NVARCHAR(255)       NOT NULL,
                         name            NVARCHAR(120)       NOT NULL,
                         description     NVARCHAR(500)       NULL,
@@ -313,9 +313,9 @@ CREATE TABLE group_members (
                                user_id     UNIQUEIDENTIFIER    NOT NULL
                                    CONSTRAINT fk_group_members_user
                                        REFERENCES users(id) ON DELETE NO ACTION,
-                               role        VARCHAR(20)         NOT NULL DEFAULT 'member'
+                               role        NVARCHAR(20)        NOT NULL DEFAULT N'member' -- Đã update thành NVARCHAR
                                    CONSTRAINT chk_group_members_role
-                                       CHECK (role IN ('owner', 'member')),
+                                       CHECK (role IN (N'owner', N'member')),
                                muted       BIT                 NOT NULL DEFAULT 0,
                                pinned      BIT                 NOT NULL DEFAULT 0,
                                joined_at   DATETIME2           NOT NULL DEFAULT GETDATE(),
@@ -342,9 +342,9 @@ CREATE TABLE group_messages (
                                     CONSTRAINT fk_group_messages_sender
                                         REFERENCES users(id) ON DELETE SET NULL,
                                 content         NVARCHAR(MAX)    NOT NULL,
-                                message_type    VARCHAR(20)      NOT NULL
+                                message_type    NVARCHAR(20)     NOT NULL -- Đã update thành NVARCHAR
                                     CONSTRAINT chk_group_messages_type
-                                        CHECK (message_type IN ('text', 'document', 'image', 'system')),
+                                        CHECK (message_type IN (N'text', N'document', N'image', N'system')),
                                 document_id     UNIQUEIDENTIFIER NULL
                                     CONSTRAINT fk_group_messages_document
                                         REFERENCES documents(id) ON DELETE NO ACTION,
