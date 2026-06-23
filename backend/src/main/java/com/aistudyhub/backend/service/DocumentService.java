@@ -147,6 +147,21 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Document getDocumentForPreview(UUID id, UUID userId, String role) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (doc.getDeletedAt() != null || doc.getStatus() != DocumentStatus.READY) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại.");
+        }
+        boolean isOwner = doc.getUserId().equals(userId);
+        boolean isAdmin = "admin".equals(role);
+        if (!isOwner && !isAdmin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài liệu này.");
+        }
+        return doc;
+    }
+
+    @Transactional(readOnly = true)
     public List<Document> getUserDocuments(UUID userId) {
         return documentRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId);
     }
