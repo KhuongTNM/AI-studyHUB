@@ -35,4 +35,8 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Modifying
     @Query("UPDATE Document d SET d.folderId = NULL WHERE d.folderId IN :folderIds")
     void clearFolderIdByFolderIds(Collection<UUID> folderIds);
+
+    @Modifying
+    @Query("UPDATE Document d SET d.deletedAt = :deletedAt WHERE d.userId = :userId AND d.deletedAt IS NULL")
+    void softDeleteByUserId(@Param("userId") UUID userId, @Param("deletedAt") java.time.LocalDateTime deletedAt);
 }

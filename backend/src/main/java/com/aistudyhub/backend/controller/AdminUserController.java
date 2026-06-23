@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -74,5 +76,12 @@ public class AdminUserController {
             @PathVariable UUID userId,
             @Valid @RequestBody GrantSubscriptionRequest request) {
         return ResponseEntity.ok(adminUserService.grantSubscription(userId, request));
+    }
+
+    @DeleteMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUB_ADMIN')")
+    public ResponseEntity<Void> deleteUser(@PathVariable UUID userId) {
+        adminUserService.deleteUser(userId);
+        return ResponseEntity.noContent().build();
     }
 }
