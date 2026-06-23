@@ -179,3 +179,40 @@ export async function updateLanguagePreferenceApi(language: Language): Promise<U
 
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
+
+export async function forgotPasswordApi(
+  email: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+    if (!response.ok) {
+      return { success: false, error: await parseError(response) }
+    }
+    return { success: true }
+  } catch {
+    return { success: false, error: "Không thể kết nối đến máy chủ." }
+  }
+}
+
+export async function resetPasswordApi(
+  token: string,
+  newPassword: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, newPassword }),
+    })
+    if (!response.ok) {
+      return { success: false, error: await parseError(response) }
+    }
+    return { success: true }
+  } catch {
+    return { success: false, error: "Không thể kết nối đến máy chủ." }
+  }
+}
