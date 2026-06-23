@@ -286,11 +286,11 @@ public class AdminUserService {
     private void writeCreateSubAdminLog(User admin, User subAdmin, LocalDateTime createdAt) {
         ActivityLog log = new ActivityLog();
         log.setId(UUID.randomUUID());
-        log.setActorId(admin.getId());
-        log.setAction("create_sub_admin");
-        log.setTargetType("user");
-        log.setTargetId(subAdmin.getId().toString());
-        log.setDetails(toJson(Map.of(
+        log.setUserId(admin.getId());
+        log.setAction(ActivityLog.Action.CREATE_SUB_ADMIN);
+        log.setTargetType(ActivityLog.TargetType.USER);
+        log.setTargetId(subAdmin.getId());
+        log.setDescription(toJson(Map.of(
                 "email", subAdmin.getEmail(),
                 "displayName", subAdmin.getDisplayName(),
                 "storageLimitBytes", subAdmin.getStorageLimitBytes()

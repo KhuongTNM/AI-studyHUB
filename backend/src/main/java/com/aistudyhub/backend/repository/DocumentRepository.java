@@ -39,4 +39,14 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Modifying
     @Query("UPDATE Document d SET d.deletedAt = :deletedAt WHERE d.userId = :userId AND d.deletedAt IS NULL")
     void softDeleteByUserId(@Param("userId") UUID userId, @Param("deletedAt") java.time.LocalDateTime deletedAt);
+    @Query("SELECT DISTINCT d FROM Document d LEFT JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL " +
+           "AND (:keyword IS NULL OR LOWER(d.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+           "     OR LOWER(d.originalName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+           "AND (:subject IS NULL OR LOWER(d.subject) = LOWER(:subject)) " +
+           "AND (:tag IS NULL OR LOWER(t.name) = LOWER(:tag)) " +
+           "ORDER BY d.createdAt DESC")
+    List<Document> searchUserDocuments(@Param("userId") UUID userId,
+                                       @Param("keyword") String keyword,
+                                       @Param("subject") String subject,
+                                       @Param("tag") String tag);
 }
