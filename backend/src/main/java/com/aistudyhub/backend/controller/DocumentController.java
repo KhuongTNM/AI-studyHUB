@@ -65,10 +65,10 @@ public class DocumentController {
     @GetMapping
     public ResponseEntity<List<DocumentResponse>> list(
             @AuthenticationPrincipal AuthUserPrincipal principal,
-            @RequestParam(value = "tag", required = false) String tag) {
-        List<Document> docs = (tag != null && !tag.isBlank())
-                ? documentService.getUserDocumentsByTag(principal.getId(), tag.trim().toLowerCase())
-                : documentService.getUserDocuments(principal.getId());
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String subject) {
+        List<Document> docs = documentService.searchDocuments(principal.getId(), keyword, subject, tag);
         return ResponseEntity.ok(docs.stream().map(DocumentResponse::from).toList());
     }
 
