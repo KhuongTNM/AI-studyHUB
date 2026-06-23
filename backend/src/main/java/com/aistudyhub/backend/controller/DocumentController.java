@@ -123,6 +123,37 @@ public class DocumentController {
         return ResponseEntity.ok(DocumentResponse.from(doc));
     }
 
+    @GetMapping("/{id}/preview")
+    public ResponseEntity<?> preview(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id) {
+        Document doc = documentService.getDocumentForPreview(id, principal.getId(), principal.getRole());
+        String fileUrl = doc.getFileUrl();
+
+        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, fileUrl)
+                    .build();
+        }
+
+        Path filePath = documentService.getFilePath(doc);
+        if (!Files.exists(filePath)) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            InputStream is = Files.newInputStream(filePath);
+            String mimeType = URLConnection.guessContentTypeFromName(doc.getOriginalName());
+            if (mimeType == null) mimeType = "application/octet-stream";
+            Resource resource = new InputStreamResource(is);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(mimeType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + doc.getOriginalName() + "\"")
+                    .body(resource);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @PostMapping("/{id}/download")
     public ResponseEntity<Resource> download(
             @AuthenticationPrincipal AuthUserPrincipal principal,
