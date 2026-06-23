@@ -10,4 +10,6 @@ import org.springframework.stereotype.Repository;
 public interface GroupReportRepository extends JpaRepository<GroupReport, UUID> {
 
     List<GroupReport> findByGroupId(UUID groupId);
+
+    boolean existsByGroupIdAndReporterId(UUID groupId, UUID reporterId);
 }

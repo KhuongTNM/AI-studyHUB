@@ -1,5 +1,7 @@
 package com.aistudyhub.backend.dto;
 
+import com.aistudyhub.backend.entity.GroupMember;
+import com.aistudyhub.backend.entity.User;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -20,4 +22,13 @@ public class GroupMemberResponse {
     private String avatar;
     private String role;
     private LocalDateTime joinedAt;
+
+    public static GroupMemberResponse from(GroupMember member, User user) {
+        return GroupMemberResponse.builder()
+                .userId(member.getId().getUserId())
+                .displayName(user != null ? user.getDisplayName() : "Unknown")
+                .role(member.getRole().toJson())
+                .joinedAt(member.getJoinedAt())
+                .build();
+    }
 }

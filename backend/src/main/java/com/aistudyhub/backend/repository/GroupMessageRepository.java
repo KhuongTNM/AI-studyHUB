@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface GroupMessageRepository extends JpaRepository<GroupMessage, UUID> {
 
-    List<GroupMessage> findByGroup_IdOrderByCreatedAtAsc(UUID groupId);
+    List<GroupMessage> findByGroupIdOrderByCreatedAtAsc(UUID groupId);
 
     Page<GroupMessage> findByGroupIdOrderByCreatedAtDesc(UUID groupId, Pageable pageable);
 }

@@ -1,31 +1,32 @@
 package com.aistudyhub.backend.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
-
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "group_reports")
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
 public class GroupReport {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne
-    @JoinColumn(name = "group_id", nullable = false)
-    private Group group;
+    @Column(name = "group_id", nullable = false)
+    private UUID groupId;
 
     @Column(name = "reporter_id", nullable = false)
     private UUID reporterId;
 
-    @Column(name = "reason", length = 500, nullable = false)
+    @Column(name = "reason", nullable = false, length = 500, columnDefinition = "NVARCHAR(500)")
     private String reason;
 
     @Column(name = "created_at", nullable = false)
