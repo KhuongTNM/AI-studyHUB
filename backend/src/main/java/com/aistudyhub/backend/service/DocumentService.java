@@ -348,6 +348,9 @@ public class DocumentService {
         String cleanKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
         String cleanSubject = (subject == null || subject.isBlank()) ? null : subject.trim();
         String cleanTag = (tag == null || tag.isBlank()) ? null : tag.trim();
+        if (cleanKeyword == null && cleanSubject == null && cleanTag == null) {
+            return getUserDocuments(userId);
+        }
         return documentRepository.searchUserDocuments(userId, cleanKeyword, cleanSubject, cleanTag);
     }
 

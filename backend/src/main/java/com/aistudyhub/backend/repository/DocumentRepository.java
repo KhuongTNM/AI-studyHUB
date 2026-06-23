@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.lang.Nullable;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
@@ -46,7 +47,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
            "AND (:tag IS NULL OR LOWER(t.name) = LOWER(:tag)) " +
            "ORDER BY d.createdAt DESC")
     List<Document> searchUserDocuments(@Param("userId") UUID userId,
-                                       @Param("keyword") String keyword,
-                                       @Param("subject") String subject,
-                                       @Param("tag") String tag);
+                                       @Nullable @Param("keyword") String keyword,
+                                       @Nullable @Param("subject") String subject,
+                                       @Nullable @Param("tag") String tag);
 }
