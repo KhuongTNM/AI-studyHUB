@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { forgotPasswordApi } from "@/services/api/auth"
 
 export function AuthModal() {
   const { showAuthModal, authModalTab, closeAuthModal, login, register, loginWithGoogle, language, isDarkMode } = useApp()
@@ -46,6 +47,7 @@ export function AuthModal() {
     failedRegister: "Đăng ký thất bại.",
     enterEmail: "Vui lòng nhập email.",
     resetSent: "Link đặt lại mật khẩu đã được gửi đến email của bạn!",
+    failedForgot: "Gửi email thất bại. Vui lòng thử lại.",
     strength: "Độ mạnh:",
     strengthLabel: ["", "Yếu", "Trung bình", "Mạnh", "Rất Mạnh"],
     namePlaceholder: "Nguyễn Văn A",
@@ -75,6 +77,7 @@ export function AuthModal() {
     failedRegister: "Registration failed.",
     enterEmail: "Please enter your email.",
     resetSent: "A password reset link has been sent to your email.",
+    failedForgot: "Failed to send email. Please try again.",
     strength: "Strength:",
     strengthLabel: ["", "Weak", "Medium", "Strong", "Very Strong"],
     namePlaceholder: "Alex Nguyen",
@@ -123,9 +126,10 @@ export function AuthModal() {
     setError("")
     if (!email) { setError(text.enterEmail); return }
     setLoading(true)
-    await new Promise(r => setTimeout(r, 1000))
+    const result = await forgotPasswordApi(email)
     setLoading(false)
-    setSuccess(text.resetSent)
+    if (!result.success) setError(result.error || text.failedForgot)
+    else setSuccess(text.resetSent)
   }
 
   const handleGoogleCredential = async (idToken: string) => {
