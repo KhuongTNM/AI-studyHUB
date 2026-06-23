@@ -2,6 +2,7 @@
 -- AI STUDY HUB — Database Schema (Microsoft SQL Server / T-SQL)
 -- Group 07 | SU26SWP391
 -- Dựa trên 70 Business Rules + Functional Requirements
+-- Đã cập nhật: Thay thế Study Room bằng Group Chat (Task 18)
 -- =============================================================
 
 USE master;
@@ -9,7 +10,7 @@ GO
 
 -- Tạo database (bỏ qua nếu đã có sẵn)
 IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'AIStudyHub')
-    CREATE DATABASE AIStudyHub COLLATE Vietnamese_CI_AS;
+CREATE DATABASE AIStudyHub COLLATE Vietnamese_CI_AS;
 GO
 
 USE AIStudyHub;
@@ -19,24 +20,19 @@ GO
 -- =============================================================
 -- 1. SUBSCRIPTION_PLANS
 -- Gói dịch vụ: Free / 2-4 người / 5+ người
--- BR-008, BR-043, BR-046, BR-057, BR-065, BR-066
 -- =============================================================
 
 CREATE TABLE subscription_plans (
-    id                    INT           IDENTITY(1,1) PRIMARY KEY,
-    -- 'free' | 'plan_2_4' | 'plan_5_plus'
-    name                  NVARCHAR(20)  NOT NULL UNIQUE
-                              CONSTRAINT chk_sp_name
-                              CHECK (name IN (N'free', N'plan_2_4', N'plan_5_plus')),
-    display_name          NVARCHAR(50)  NOT NULL,
-    -- BR-066: chỉ Admin mới được sửa price
-    price                 DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    -- BR-046: 0 = không tạo phòng được; 4 = plan_2_4; 99 = plan_5_plus
-    max_room_members      SMALLINT      NOT NULL DEFAULT 0,
-    -- Dung lượng mặc định theo gói (bytes): 512MB / 1GB / 5GB
-    default_storage_bytes BIGINT        NOT NULL DEFAULT 536870912,
-    created_at            DATETIME2     NOT NULL DEFAULT GETDATE(),
-    updated_at            DATETIME2     NOT NULL DEFAULT GETDATE()
+                                    id                    INT           IDENTITY(1,1) PRIMARY KEY,
+                                    name                  NVARCHAR(20)  NOT NULL UNIQUE
+                                        CONSTRAINT chk_sp_name
+                                            CHECK (name IN (N'free', N'plan_2_4', N'plan_5_plus')),
+                                    display_name          NVARCHAR(50)  NOT NULL,
+                                    price                 DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                                    max_room_members      SMALLINT      NOT NULL DEFAULT 0,
+                                    default_storage_bytes BIGINT        NOT NULL DEFAULT 536870912,
+                                    created_at            DATETIME2     NOT NULL DEFAULT GETDATE(),
+                                    updated_at            DATETIME2     NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -52,50 +48,35 @@ GO
 -- =============================================================
 -- 2. USERS
 -- Tất cả tài khoản: user / admin / sub_admin
--- BR-001→BR-012, BR-027, BR-052→BR-057, BR-058→BR-070
 -- =============================================================
 
 CREATE TABLE users (
-    id                      UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    -- BR-001: validate format ở app layer; BR-004: unique
-    email                   NVARCHAR(255)    NOT NULL UNIQUE,
-    -- BR-002: min 8 ký tự, 1 chữ cái, 1 số (validate ở app layer)
-    password_hash           NVARCHAR(255)    NOT NULL,
-    -- BR-003: không trống, max 50 ký tự
-    display_name            NVARCHAR(50)     NOT NULL,
-    -- BR-007: default 'user'
-    role                    NVARCHAR(10)     NOT NULL DEFAULT N'user'
-                                CONSTRAINT chk_users_role
-                                CHECK (role IN (N'user', N'admin', N'sub_admin')),
-    -- BR-009: BIT thay cho BOOLEAN
-    is_locked               BIT              NOT NULL DEFAULT 0,
-    -- BR-010: tăng khi sai mật khẩu, reset về 0 khi đăng nhập thành công
-    login_attempts          SMALLINT         NOT NULL DEFAULT 0,
-    -- BR-027: mặc định 512MB; BR-067: admin chỉnh riêng từng user (đơn vị GB)
-    storage_limit_bytes     BIGINT           NOT NULL DEFAULT 536870912,
-    -- Cập nhật tự động qua trigger khi documents thay đổi
-    storage_used_bytes      BIGINT           NOT NULL DEFAULT 0,
-    -- BR-008: gói mặc định free; BR-057: user tự mua; BR-065: admin cấp
-    subscription_plan_id    INT              NULL
-                                CONSTRAINT fk_users_plan
-                                REFERENCES subscription_plans(id) ON DELETE SET NULL,
-    -- NULL = gói Free (không hết hạn); BR-057: 30 ngày từ ngày mua
-    subscription_expires_at DATETIME2        NULL,
-    -- BR-056: 'vi' (mặc định) | 'en'
-    language_pref           NVARCHAR(5)      NOT NULL DEFAULT N'vi'
-                                CONSTRAINT chk_users_lang
-                                CHECK (language_pref IN (N'vi', N'en')),
-    -- BR-055: 'light' (mặc định) | 'dark'
-    theme_pref              NVARCHAR(10)     NOT NULL DEFAULT N'light'
-                                CONSTRAINT chk_users_theme
-                                CHECK (theme_pref IN (N'light', N'dark')),
-    -- BR-064: sub_admin do admin tạo → ghi lại creator
-    created_by_admin_id     UNIQUEIDENTIFIER NULL
-                                CONSTRAINT fk_users_creator
-                                REFERENCES users(id) ON DELETE NO ACTION,
-    created_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
-    deleted_at              DATETIME2        NULL
+                       id                      UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                       email                   NVARCHAR(255)    NOT NULL UNIQUE,
+                       password_hash           NVARCHAR(255)    NOT NULL,
+                       display_name            NVARCHAR(50)     NOT NULL,
+                       role                    NVARCHAR(10)     NOT NULL DEFAULT N'user'
+                           CONSTRAINT chk_users_role
+                               CHECK (role IN (N'user', N'admin', N'sub_admin')),
+                       is_locked               BIT              NOT NULL DEFAULT 0,
+                       login_attempts          SMALLINT         NOT NULL DEFAULT 0,
+                       storage_limit_bytes     BIGINT           NOT NULL DEFAULT 536870912,
+                       storage_used_bytes      BIGINT           NOT NULL DEFAULT 0,
+                       subscription_plan_id    INT              NULL
+                           CONSTRAINT fk_users_plan
+                               REFERENCES subscription_plans(id) ON DELETE SET NULL,
+                       subscription_expires_at DATETIME2        NULL,
+                       language_pref           NVARCHAR(5)      NOT NULL DEFAULT N'vi'
+                           CONSTRAINT chk_users_lang
+                               CHECK (language_pref IN (N'vi', N'en')),
+                       theme_pref              NVARCHAR(10)     NOT NULL DEFAULT N'light'
+                           CONSTRAINT chk_users_theme
+                               CHECK (theme_pref IN (N'light', N'dark')),
+                       created_by_admin_id     UNIQUEIDENTIFIER NULL
+                           CONSTRAINT fk_users_creator
+                               REFERENCES users(id) ON DELETE NO ACTION,
+                       created_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
+                       updated_at              DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -106,63 +87,19 @@ CREATE INDEX idx_users_is_locked    ON users(is_locked);
 GO
 
 -- Seed: tài khoản Admin mặc định
--- Default accounts for demo
-
-INSERT INTO users (
-    email,
-    password_hash,
-    display_name,
-    role,
-    storage_limit_bytes,
-    subscription_plan_id
-)
-SELECT
-    N'admin@gmail.com',
-    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
-    N'System Admin',
-    N'admin',
-    1073741824,
-    sp.id
-FROM subscription_plans sp
-WHERE sp.name = N'free';
+INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
+SELECT N'admin@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'System Admin', N'admin', 1073741824, sp.id
+FROM subscription_plans sp WHERE sp.name = N'free';
 GO
 
-INSERT INTO users (
-    email,
-    password_hash,
-    display_name,
-    role,
-    storage_limit_bytes,
-    subscription_plan_id
-)
-SELECT
-    N'subAdmin@gmail.com',
-    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
-    N'Sub Admin',
-    N'sub_admin',
-    1073741824,
-    sp.id
-FROM subscription_plans sp
-WHERE sp.name = N'free';
+INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
+SELECT N'subAdmin@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'Sub Admin', N'sub_admin', 1073741824, sp.id
+FROM subscription_plans sp WHERE sp.name = N'free';
 GO
 
-INSERT INTO users (
-    email,
-    password_hash,
-    display_name,
-    role,
-    storage_limit_bytes,
-    subscription_plan_id
-)
-SELECT
-    N'student@gmail.com',
-    N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm',
-    N'Student',
-    N'user',
-    536870912,
-    sp.id
-FROM subscription_plans sp
-WHERE sp.name = N'free';
+INSERT INTO users (email, password_hash, display_name, role, storage_limit_bytes, subscription_plan_id)
+SELECT N'student@gmail.com', N'$2a$10$lL3v90wAqtnydXcSzNdGJOP3MKCEiIbzXDf1vqsUArj9tLBUHEdpm', N'Student', N'user', 536870912, sp.id
+FROM subscription_plans sp WHERE sp.name = N'free';
 GO
 
 
@@ -172,19 +109,17 @@ GO
 -- =============================================================
 
 CREATE TABLE folders (
-    id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id         UNIQUEIDENTIFIER NOT NULL
-                        CONSTRAINT fk_folders_user
-                        REFERENCES users(id) ON DELETE CASCADE,
-    -- parent_id: NULL nghĩa là thư mục gốc (root)
-    parent_id       UNIQUEIDENTIFIER NULL
-                        CONSTRAINT fk_folders_parent
-                        REFERENCES folders(id) ON DELETE NO ACTION,
-    name            NVARCHAR(255)    NOT NULL,
-    -- subject: Dùng để lọc thư mục theo môn học
-    subject         NVARCHAR(100)    NULL,
-    created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
+                         id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                         user_id         UNIQUEIDENTIFIER NOT NULL
+                             CONSTRAINT fk_folders_user
+                                 REFERENCES users(id) ON DELETE CASCADE,
+                         parent_id       UNIQUEIDENTIFIER NULL
+                             CONSTRAINT fk_folders_parent
+                                 REFERENCES folders(id) ON DELETE NO ACTION,
+                         name            NVARCHAR(255)    NOT NULL,
+                         subject         NVARCHAR(100)    NULL,
+                         created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+                         updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -197,55 +132,40 @@ GO
 -- =============================================================
 -- 4. DOCUMENTS
 -- Tài liệu học tập: PDF / DOCX / PPTX
--- BR-013→BR-026, BR-031
 -- =============================================================
 
 CREATE TABLE documents (
-    id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id         UNIQUEIDENTIFIER NOT NULL
-                        CONSTRAINT fk_docs_user
-                        REFERENCES users(id) ON DELETE CASCADE,
-    -- folder_id: Tài liệu nằm trong thư mục nào
-    folder_id       UNIQUEIDENTIFIER NULL
-                        CONSTRAINT fk_docs_folder
-                        REFERENCES folders(id) ON DELETE NO ACTION,
-    -- Tên file gốc khi upload
-    original_name   NVARCHAR(255)    NOT NULL,
-    -- Tiêu đề hiển thị (user có thể chỉnh)
-    title           NVARCHAR(255)    NOT NULL,
-    -- URL lưu trữ cloud (Cloudinary / Azure Blob / S3)
-    file_url        NVARCHAR(MAX)    NOT NULL,
-    -- BR-014: kiểm tra không vượt dung lượng còn trống
-    file_size_bytes BIGINT           NOT NULL,
-    -- BR-013: chỉ 3 loại hợp lệ
-    file_type       NVARCHAR(10)     NOT NULL
-                        CONSTRAINT chk_docs_file_type
-                        CHECK (file_type IN (N'pdf', N'docx', N'pptx')),
-    -- BR-015: bắt buộc nhập khi upload
-    subject         NVARCHAR(100)    NOT NULL,
-    description     NVARCHAR(MAX)    NULL,
-    -- BR-021: tags phân cách dấu phẩy, vd: "toán,tích phân,bài tập"
-    tags            NVARCHAR(500)    NULL,
-    -- BR-016: uploading → scanning → ready | failed; BR-023: deleted = thùng rác
-    status          NVARCHAR(20)     NOT NULL DEFAULT N'uploading'
-                        CONSTRAINT chk_docs_status
-                        CHECK (status IN (N'uploading', N'scanning', N'ready', N'failed', N'deleted')),
-    -- BR-018: mặc định private
-    visibility      NVARCHAR(10)     NOT NULL DEFAULT N'private'
-                        CONSTRAINT chk_docs_visibility
-                        CHECK (visibility IN (N'private', N'public')),
-    -- BR-019: none → pending → approved | rejected
-    share_status    NVARCHAR(10)     NOT NULL DEFAULT N'none'
-                        CONSTRAINT chk_docs_share_status
-                        CHECK (share_status IN (N'none', N'pending', N'approved', N'rejected')),
-    -- BR-026: lý do xin duyệt (user) hoặc lý do từ chối (admin)
-    share_note      NVARCHAR(MAX)    NULL,
-    -- BR-022: chỉ tăng, không giảm
-    download_count  INT              NOT NULL DEFAULT 0,
-    created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
-    -- BR-023: soft delete — NULL = bình thường; có giá trị = đang ở thùng rác
-    deleted_at      DATETIME2        NULL
+                           id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                           user_id         UNIQUEIDENTIFIER NOT NULL
+                               CONSTRAINT fk_docs_user
+                                   REFERENCES users(id) ON DELETE CASCADE,
+                           folder_id       UNIQUEIDENTIFIER NULL
+                               CONSTRAINT fk_docs_folder
+                                   REFERENCES folders(id) ON DELETE NO ACTION,
+                           original_name   NVARCHAR(255)    NOT NULL,
+                           title           NVARCHAR(255)    NOT NULL,
+                           file_url        NVARCHAR(MAX)    NOT NULL,
+                           file_size_bytes BIGINT           NOT NULL,
+                           file_type       NVARCHAR(10)     NOT NULL
+                               CONSTRAINT chk_docs_file_type
+                                   CHECK (file_type IN (N'pdf', N'docx', N'pptx')),
+                           subject         NVARCHAR(100)    NOT NULL,
+                           description     NVARCHAR(MAX)    NULL,
+                           tags            NVARCHAR(500)    NULL,
+                           status          NVARCHAR(20)     NOT NULL DEFAULT N'uploading'
+                               CONSTRAINT chk_docs_status
+                                   CHECK (status IN (N'uploading', N'scanning', N'ready', N'failed', N'deleted')),
+                           visibility      NVARCHAR(10)     NOT NULL DEFAULT N'private'
+                               CONSTRAINT chk_docs_visibility
+                                   CHECK (visibility IN (N'private', N'public')),
+                           share_status    NVARCHAR(10)     NOT NULL DEFAULT N'none'
+                               CONSTRAINT chk_docs_share_status
+                                   CHECK (share_status IN (N'none', N'pending', N'approved', N'rejected')),
+                           share_note      NVARCHAR(MAX)    NULL,
+                           download_count  INT              NOT NULL DEFAULT 0,
+                           created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+                           updated_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+                           deleted_at      DATETIME2        NULL
 );
 GO
 
@@ -254,9 +174,6 @@ CREATE INDEX idx_docs_subject    ON documents(subject);
 CREATE INDEX idx_docs_status     ON documents(status);
 CREATE INDEX idx_docs_visibility ON documents(visibility, share_status);
 CREATE INDEX idx_docs_deleted_at ON documents(deleted_at);
-
--- BR-025: tìm kiếm title/subject dùng LIKE ở app layer
--- (Full-Text Search bị tắt → dùng idx_docs_title_subject thay thế)
 CREATE INDEX idx_docs_title_subject ON documents(title, subject);
 GO
 
@@ -266,17 +183,17 @@ GO
 -- =============================================================
 
 CREATE TABLE tags (
-    id   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    name NVARCHAR(100) NOT NULL UNIQUE
+                      id   BIGINT IDENTITY(1,1) PRIMARY KEY,
+                      name NVARCHAR(100) NOT NULL UNIQUE
 );
 GO
 
 CREATE TABLE document_tags (
-    document_id UNIQUEIDENTIFIER NOT NULL
-        CONSTRAINT fk_dt_document REFERENCES documents(id) ON DELETE CASCADE,
-    tag_id      BIGINT NOT NULL
-        CONSTRAINT fk_dt_tag REFERENCES tags(id) ON DELETE CASCADE,
-    CONSTRAINT pk_document_tags PRIMARY KEY (document_id, tag_id)
+                               document_id UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_dt_document REFERENCES documents(id) ON DELETE CASCADE,
+                               tag_id      BIGINT NOT NULL
+                                   CONSTRAINT fk_dt_tag REFERENCES tags(id) ON DELETE CASCADE,
+                               CONSTRAINT pk_document_tags PRIMARY KEY (document_id, tag_id)
 );
 GO
 
@@ -286,25 +203,21 @@ GO
 
 
 -- =============================================================
--- 4. CHAT_SESSIONS
+-- 5. CHAT_SESSIONS
 -- Phiên trò chuyện với AI Chatbot
--- BR-032, BR-033, BR-034, BR-035, BR-036
 -- =============================================================
 
 CREATE TABLE chat_sessions (
-    id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    -- BR-032: chỉ user đã đăng nhập
-    user_id     UNIQUEIDENTIFIER NOT NULL
-                    CONSTRAINT fk_cs_user
-                    REFERENCES users(id) ON DELETE CASCADE,
-    -- BR-033: tiêu đề tự sinh từ nội dung câu hỏi đầu tiên
-    title       NVARCHAR(255)    NULL,
-    -- BR-034: NULL = hỏi chung; có giá trị = hỏi theo ngữ cảnh tài liệu
-    document_id UNIQUEIDENTIFIER NULL
-                    CONSTRAINT fk_cs_doc
-                    REFERENCES documents(id) ON DELETE NO ACTION,
-    created_at  DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at  DATETIME2        NOT NULL DEFAULT GETDATE()
+                               id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                               user_id     UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_cs_user
+                                       REFERENCES users(id) ON DELETE CASCADE,
+                               title       NVARCHAR(255)    NULL,
+                               document_id UNIQUEIDENTIFIER NULL
+                                   CONSTRAINT fk_cs_doc
+                                       REFERENCES documents(id) ON DELETE NO ACTION,
+                               created_at  DATETIME2        NOT NULL DEFAULT GETDATE(),
+                               updated_at  DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -313,23 +226,20 @@ GO
 
 
 -- =============================================================
--- 5. CHAT_MESSAGES
+-- 6. CHAT_MESSAGES
 -- Tin nhắn trong một chat session
--- BR-033, BR-037
 -- =============================================================
 
 CREATE TABLE chat_messages (
-    id         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    session_id UNIQUEIDENTIFIER NOT NULL
-                   CONSTRAINT fk_cm_session
-                   REFERENCES chat_sessions(id) ON DELETE CASCADE,
-    -- 'user' = người dùng gửi; 'assistant' = AI phản hồi
-    role       NVARCHAR(10)     NOT NULL
-                   CONSTRAINT chk_cm_role
-                   CHECK (role IN (N'user', N'assistant')),
-    -- BR-037: Markdown, render phía client
-    content    NVARCHAR(MAX)    NOT NULL,
-    created_at DATETIME2        NOT NULL DEFAULT GETDATE()
+                               id         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                               session_id UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_cm_session
+                                       REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                               role       NVARCHAR(10)     NOT NULL
+                                   CONSTRAINT chk_cm_role
+                                       CHECK (role IN (N'user', N'assistant')),
+                               content    NVARCHAR(MAX)    NOT NULL,
+                               created_at DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -338,33 +248,26 @@ GO
 
 
 -- =============================================================
--- 6. FLASHCARDS
+-- 7. FLASHCARDS
 -- Thẻ ghi nhớ: thủ công hoặc AI tạo từ tài liệu
--- BR-038→BR-042
 -- =============================================================
 
 CREATE TABLE flashcards (
-    id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id         UNIQUEIDENTIFIER NOT NULL
-                        CONSTRAINT fk_fc_user
-                        REFERENCES users(id) ON DELETE CASCADE,
-    -- BR-039: NULL = thủ công; BR-038: có ID = AI sinh từ tài liệu
-    -- NO ACTION thay vì SET NULL: SQL Server không cho 2 đường cascade
-    -- đến cùng 1 bảng (users→documents→flashcards & users→flashcards)
-    -- App layer tự set document_id = NULL khi document bị xóa/soft-delete
-    document_id     UNIQUEIDENTIFIER NULL
-                        CONSTRAINT fk_fc_doc
-                        REFERENCES documents(id) ON DELETE NO ACTION,
-    question        NVARCHAR(MAX)    NOT NULL,
-    answer          NVARCHAR(MAX)    NOT NULL,
-    -- BR-040: new → learning → mastered
-    status          NVARCHAR(10)     NOT NULL DEFAULT N'new'
-                        CONSTRAINT chk_fc_status
-                        CHECK (status IN (N'new', N'learning', N'mastered')),
-    -- BR-038: đánh dấu thẻ do AI tạo tự động
-    is_ai_generated BIT              NOT NULL DEFAULT 0,
-    created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
+                            id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                            user_id         UNIQUEIDENTIFIER NOT NULL
+                                CONSTRAINT fk_fc_user
+                                    REFERENCES users(id) ON DELETE CASCADE,
+                            document_id     UNIQUEIDENTIFIER NULL
+                                CONSTRAINT fk_fc_doc
+                                    REFERENCES documents(id) ON DELETE NO ACTION,
+                            question        NVARCHAR(MAX)    NOT NULL,
+                            answer          NVARCHAR(MAX)    NOT NULL,
+                            status          NVARCHAR(10)     NOT NULL DEFAULT N'new'
+                                CONSTRAINT chk_fc_status
+                                    CHECK (status IN (N'new', N'learning', N'mastered')),
+                            is_ai_generated BIT              NOT NULL DEFAULT 0,
+                            created_at      DATETIME2        NOT NULL DEFAULT GETDATE(),
+                            updated_at      DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -375,120 +278,125 @@ GO
 
 
 -- =============================================================
--- 7. STUDY_ROOMS
--- Phòng học nhóm realtime
--- BR-043→BR-051
+-- 8. GROUPS (Thay thế Study Rooms)
+-- Phòng học nhóm / Chat nhóm
 -- =============================================================
 
-CREATE TABLE study_rooms (
-    id                   UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    -- BR-044: UPPERCASE, unique
-    code                 NVARCHAR(20)     NOT NULL UNIQUE,
-    -- BR-043: host phải có gói trả phí hoặc là admin/sub_admin
-    host_id              UNIQUEIDENTIFIER NOT NULL
-                             CONSTRAINT fk_sr_host
-                             REFERENCES users(id) ON DELETE NO ACTION,
-    -- BR-045: NULL = phòng mở không cần mật khẩu
-    password_hash        NVARCHAR(255)    NULL,
-    -- BR-046: 4 (plan_2_4) hoặc 99 (plan_5_plus)
-    max_members          SMALLINT         NOT NULL,
-    -- Đếm thực tế từ study_room_members; cập nhật khi join/leave
-    current_member_count SMALLINT         NOT NULL DEFAULT 1,
-    -- BR-049: khi host rời → is_active = 0
-    is_active            BIT              NOT NULL DEFAULT 1,
-    created_at           DATETIME2        NOT NULL DEFAULT GETDATE(),
-    -- BR-049: ghi lại thời điểm phòng đóng
-    closed_at            DATETIME2        NULL
+CREATE TABLE groups (
+                        id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                        group_code      NVARCHAR(32)        NOT NULL UNIQUE, -- Đã update thành NVARCHAR(32)
+                        password_hash   NVARCHAR(255)       NOT NULL,
+                        name            NVARCHAR(120)       NOT NULL,
+                        description     NVARCHAR(500)       NULL,
+                        owner_id        UNIQUEIDENTIFIER    NOT NULL
+                            CONSTRAINT fk_groups_owner
+                                REFERENCES users(id) ON DELETE NO ACTION,
+                        created_at      DATETIME2           NOT NULL DEFAULT GETDATE(),
+                        updated_at      DATETIME2           NOT NULL DEFAULT GETDATE()
 );
 GO
 
-CREATE INDEX idx_sr_code      ON study_rooms(code);
-CREATE INDEX idx_sr_host_id   ON study_rooms(host_id);
-CREATE INDEX idx_sr_is_active ON study_rooms(is_active);
+CREATE INDEX idx_groups_code     ON groups(group_code);
+CREATE INDEX idx_groups_owner_id ON groups(owner_id);
 GO
 
 
 -- =============================================================
--- 8. STUDY_ROOM_MEMBERS
--- Danh sách thành viên tham gia phòng
--- BR-046, BR-047, BR-048, BR-049, BR-050
+-- 9. GROUP_MEMBERS (Thay thế Study Room Members)
+-- Danh sách thành viên trong nhóm
 -- =============================================================
 
-CREATE TABLE study_room_members (
-    id        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    room_id   UNIQUEIDENTIFIER NOT NULL
-                  CONSTRAINT fk_srm_room
-                  REFERENCES study_rooms(id) ON DELETE CASCADE,
-    user_id   UNIQUEIDENTIFIER NOT NULL
-                  CONSTRAINT fk_srm_user
-                  REFERENCES users(id) ON DELETE NO ACTION,
-    joined_at DATETIME2        NOT NULL DEFAULT GETDATE(),
-    -- BR-050: NULL = đang trong phòng; có giá trị = đã rời
-    -- BR-049: khi phòng đóng → set left_at = GETDATE() cho tất cả thành viên
-    left_at   DATETIME2        NULL,
-    CONSTRAINT uq_srm UNIQUE (room_id, user_id)
+CREATE TABLE group_members (
+                               group_id    UNIQUEIDENTIFIER    NOT NULL
+                                   CONSTRAINT fk_group_members_group
+                                       REFERENCES groups(id) ON DELETE CASCADE,
+                               user_id     UNIQUEIDENTIFIER    NOT NULL
+                                   CONSTRAINT fk_group_members_user
+                                       REFERENCES users(id) ON DELETE NO ACTION,
+                               role        NVARCHAR(20)        NOT NULL DEFAULT N'member' -- Đã update thành NVARCHAR
+                                   CONSTRAINT chk_group_members_role
+                                       CHECK (role IN (N'owner', N'member')),
+                               muted       BIT                 NOT NULL DEFAULT 0,
+                               pinned      BIT                 NOT NULL DEFAULT 0,
+                               joined_at   DATETIME2           NOT NULL DEFAULT GETDATE(),
+                               CONSTRAINT PK_group_members PRIMARY KEY (group_id, user_id)
 );
 GO
 
-CREATE INDEX idx_srm_room_id  ON study_room_members(room_id, left_at);
-CREATE INDEX idx_srm_user_id  ON study_room_members(user_id);
+CREATE INDEX idx_gmem_group_id ON group_members(group_id);
+CREATE INDEX idx_gmem_user_id  ON group_members(user_id);
 GO
 
 
 -- =============================================================
--- 9. STUDY_ROOM_MESSAGES
--- Tin nhắn realtime trong phòng học
--- BR-051
+-- 10. GROUP_MESSAGES (Thay thế Study Room Messages)
+-- Tin nhắn trong nhóm chat học tập
 -- =============================================================
 
-CREATE TABLE study_room_messages (
-    id           UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    room_id      UNIQUEIDENTIFIER NOT NULL
-                     CONSTRAINT fk_srmsg_room
-                     REFERENCES study_rooms(id) ON DELETE CASCADE,
-    -- BR-051: NULL khi là tin nhắn hệ thống (vào/ra phòng)
-    user_id      UNIQUEIDENTIFIER NULL
-                     CONSTRAINT fk_srmsg_user
-                     REFERENCES users(id) ON DELETE SET NULL,
-    content      NVARCHAR(MAX)    NOT NULL,
-    -- BR-051: 'user' = người dùng; 'system' = thông báo hệ thống; 'document' = chia sẻ tài liệu trong phòng
-    message_type NVARCHAR(20)     NOT NULL DEFAULT N'user'
-                     CONSTRAINT chk_srmsg_type
-                     CHECK (message_type IN (N'user', N'system', N'document')),
-    document_id  UNIQUEIDENTIFIER NULL
-                     CONSTRAINT fk_srmsg_document
-                     REFERENCES documents(id) ON DELETE NO ACTION,
-    created_at   DATETIME2        NOT NULL DEFAULT GETDATE()
+CREATE TABLE group_messages (
+                                id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                                group_id        UNIQUEIDENTIFIER NOT NULL
+                                    CONSTRAINT fk_group_messages_group
+                                        REFERENCES groups(id) ON DELETE CASCADE,
+                                sender_id       UNIQUEIDENTIFIER NULL
+                                    CONSTRAINT fk_group_messages_sender
+                                        REFERENCES users(id) ON DELETE SET NULL,
+                                content         NVARCHAR(MAX)    NOT NULL,
+                                message_type    NVARCHAR(20)     NOT NULL -- Đã update thành NVARCHAR
+                                    CONSTRAINT chk_group_messages_type
+                                        CHECK (message_type IN (N'text', N'document', N'image', N'system')),
+                                document_id     UNIQUEIDENTIFIER NULL
+                                    CONSTRAINT fk_group_messages_document
+                                        REFERENCES documents(id) ON DELETE NO ACTION,
+                                image_url       NVARCHAR(1000)   NULL,
+                                image_name      NVARCHAR(255)    NULL,
+                                created_at      DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
-CREATE INDEX idx_srmsg_room_id ON study_room_messages(room_id, created_at ASC);
+CREATE INDEX idx_gmsg_group_id ON group_messages(group_id, created_at ASC);
 GO
 
 
 -- =============================================================
--- 10. ACTIVITY_LOGS
+-- 11. GROUP_REPORTS
+-- Báo cáo sai phạm phòng chat nhóm công khai
+-- =============================================================
+
+CREATE TABLE group_reports (
+                               id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                               group_id        UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_group_reports_group
+                                       REFERENCES groups(id) ON DELETE CASCADE,
+                               reporter_id     UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_group_reports_reporter
+                                       REFERENCES users(id) ON DELETE NO ACTION,
+                               reason          NVARCHAR(500)    NOT NULL,
+                               created_at      DATETIME2        NOT NULL DEFAULT GETDATE()
+);
+GO
+
+CREATE INDEX idx_greports_group ON group_reports(group_id);
+GO
+
+
+-- =============================================================
+-- 12. ACTIVITY_LOGS
 -- Nhật ký hoạt động admin/sub_admin
--- BR-064, BR-068
 -- =============================================================
 
 CREATE TABLE activity_logs (
-    id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    -- Admin / Sub-admin thực hiện hành động
-    actor_id    UNIQUEIDENTIFIER NOT NULL
-                    CONSTRAINT fk_al_actor
-                    REFERENCES users(id) ON DELETE NO ACTION,
-    -- Ví dụ: 'lock_user', 'delete_document', 'grant_subscription', 'create_sub_admin'
-    action      NVARCHAR(100)    NOT NULL,
-    -- Loại đối tượng: 'user', 'document', 'subscription', 'study_room', ...
-    target_type NVARCHAR(50)     NULL,
-    -- ID của đối tượng bị tác động
-    target_id   NVARCHAR(255)    NULL,
-    -- Chi tiết bổ sung dạng JSON (SQL Server 2016+ hỗ trợ JSON functions trên NVARCHAR)
-    details     NVARCHAR(MAX)    NULL
-                    CONSTRAINT chk_al_details_json
-                    CHECK (details IS NULL OR ISJSON(details) = 1),
-    created_at  DATETIME2        NOT NULL DEFAULT GETDATE()
+                               id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+                               actor_id    UNIQUEIDENTIFIER NOT NULL
+                                   CONSTRAINT fk_al_actor
+                                       REFERENCES users(id) ON DELETE NO ACTION,
+                               action      NVARCHAR(100)    NOT NULL,
+                               target_type NVARCHAR(50)     NULL,
+                               target_id   NVARCHAR(255)    NULL,
+                               details     NVARCHAR(MAX)    NULL
+                                   CONSTRAINT chk_al_details_json
+                                       CHECK (details IS NULL OR ISJSON(details) = 1),
+                               created_at  DATETIME2        NOT NULL DEFAULT GETDATE()
 );
 GO
 
@@ -499,21 +407,25 @@ GO
 
 
 -- =============================================================
--- TABLE: password_reset_tokens
+-- 13. PASSWORD_RESET_TOKENS
 -- Forgot password — BR: Forgot Password
 -- =============================================================
 
 CREATE TABLE password_reset_tokens (
-    id          UNIQUEIDENTIFIER PRIMARY KEY,
-    email       NVARCHAR(255)    NOT NULL,
-    token       NVARCHAR(36)     NOT NULL UNIQUE,
-    expiry      DATETIME2        NOT NULL,
-    used        BIT              NOT NULL DEFAULT 0
+                                       id          UNIQUEIDENTIFIER PRIMARY KEY,
+                                       email       NVARCHAR(255)    NOT NULL,
+                                       token       NVARCHAR(36)     NOT NULL UNIQUE,
+                                       expiry      DATETIME2        NOT NULL,
+                                       used        BIT              NOT NULL DEFAULT 0,
+                                       user_id     UNIQUEIDENTIFIER NULL
+                                           CONSTRAINT fk_prt_user
+                                               REFERENCES users(id) ON DELETE CASCADE
 );
 GO
 
 CREATE INDEX idx_prt_email  ON password_reset_tokens(email);
 CREATE INDEX idx_prt_token  ON password_reset_tokens(token);
+CREATE INDEX idx_prt_user_id ON password_reset_tokens(user_id);
 GO
 
 
@@ -521,94 +433,33 @@ GO
 -- TRIGGERS — Cập nhật updated_at tự động
 -- =============================================================
 
-CREATE TRIGGER trg_subscription_plans_updated_at
-ON subscription_plans AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE subscription_plans
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_users_updated_at
-ON users AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE users
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_folders_updated_at
-ON folders AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE folders
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_documents_updated_at
-ON documents AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE documents
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_chat_sessions_updated_at
-ON chat_sessions AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE chat_sessions
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
-
-CREATE TRIGGER trg_flashcards_updated_at
-ON flashcards AFTER UPDATE
-AS BEGIN
-    SET NOCOUNT ON;
-    UPDATE flashcards
-    SET updated_at = GETDATE()
-    WHERE id IN (SELECT id FROM INSERTED);
-END;
-GO
+CREATE TRIGGER trg_subscription_plans_updated_at ON subscription_plans AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE subscription_plans SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_users_updated_at ON users AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE users SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_folders_updated_at ON folders AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE folders SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_documents_updated_at ON documents AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE documents SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_chat_sessions_updated_at ON chat_sessions AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE chat_sessions SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_flashcards_updated_at ON flashcards AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE flashcards SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
+CREATE TRIGGER trg_groups_updated_at ON groups AFTER UPDATE AS BEGIN SET NOCOUNT ON; UPDATE groups SET updated_at = GETDATE() WHERE id IN (SELECT id FROM INSERTED); END; GO
 
 
 -- =============================================================
 -- TRIGGER — Đồng bộ storage_used_bytes khi documents thay đổi
--- BR-014 (kiểm tra dung lượng), BR-028/BR-030 (hiển thị realtime)
 -- =============================================================
 
 CREATE TRIGGER trg_documents_sync_storage
-ON documents AFTER INSERT, UPDATE, DELETE
-AS BEGIN
+    ON documents AFTER INSERT, UPDATE, DELETE
+    AS BEGIN
     SET NOCOUNT ON;
-
-    -- Lấy tất cả user_id bị ảnh hưởng (cả INSERT lẫn DELETE)
     DECLARE @AffectedUsers TABLE (user_id UNIQUEIDENTIFIER);
     INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM INSERTED;
     INSERT INTO @AffectedUsers SELECT DISTINCT user_id FROM DELETED;
 
-    -- Cập nhật storage_used_bytes: tổng file_size của docs chưa deleted
     UPDATE u
     SET u.storage_used_bytes = COALESCE(
-        (SELECT SUM(d.file_size_bytes)
-         FROM documents d
-         WHERE d.user_id = u.id
-           AND d.status != N'deleted'
-           AND d.deleted_at IS NULL),
-        0
-    )
-    FROM users u
-    WHERE u.id IN (SELECT DISTINCT user_id FROM @AffectedUsers);
+            (SELECT SUM(d.file_size_bytes) FROM documents d WHERE d.user_id = u.id AND d.status != N'deleted' AND d.deleted_at IS NULL),
+            0
+                               )
+    FROM users u WHERE u.id IN (SELECT DISTINCT user_id FROM @AffectedUsers);
 END;
 GO
 
@@ -617,135 +468,29 @@ GO
 -- VIEWS tiện ích
 -- =============================================================
 
--- View: thông tin user kèm tên gói subscription
--- BR-059: Admin/Sub-admin xem danh sách user
 CREATE VIEW v_users_with_subscription AS
 SELECT
-    u.id,
-    u.email,
-    u.display_name,
-    u.role,
-    u.is_locked,
-    u.storage_limit_bytes,
-    u.storage_used_bytes,
-    ROUND(
-        CAST(u.storage_used_bytes AS FLOAT) * 100.0
-        / NULLIF(u.storage_limit_bytes, 0),
-    1) AS storage_pct,
-    sp.name          AS subscription_name,
-    sp.display_name  AS subscription_display,
-    u.subscription_expires_at,
-    u.created_at
-FROM users u
-LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id;
+    u.id, u.email, u.display_name, u.role, u.is_locked, u.storage_limit_bytes, u.storage_used_bytes,
+    ROUND(CAST(u.storage_used_bytes AS FLOAT) * 100.0 / NULLIF(u.storage_limit_bytes, 0), 1) AS storage_pct,
+    sp.name AS subscription_name, sp.display_name AS subscription_display, u.subscription_expires_at, u.created_at
+FROM users u LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id;
 GO
 
--- View: tài liệu chưa bị xóa (không gồm thùng rác)
--- BR-023: soft delete
 CREATE VIEW v_active_documents AS
-SELECT *
-FROM documents
-WHERE deleted_at IS NULL
-  AND status != N'deleted';
+SELECT * FROM documents WHERE deleted_at IS NULL AND status != N'deleted';
 GO
 
--- View: tài liệu đang chờ duyệt public
--- BR-026: Admin/Sub-admin xét duyệt
 CREATE VIEW v_pending_share_requests AS
-SELECT
-    d.id,
-    d.title,
-    d.subject,
-    d.share_note,
-    d.created_at     AS requested_at,
-    u.display_name   AS owner_name,
-    u.email          AS owner_email
-FROM documents d
-JOIN users u ON d.user_id = u.id
-WHERE d.share_status = N'pending'
-  AND d.deleted_at IS NULL;
+SELECT d.id, d.title, d.subject, d.share_note, d.created_at AS requested_at, u.display_name AS owner_name, u.email AS owner_email
+FROM documents d JOIN users u ON d.user_id = u.id WHERE d.share_status = N'pending' AND d.deleted_at IS NULL;
 GO
 
--- View: thống kê nhanh từng user (Profile page)
--- BR-054: số tài liệu, dung lượng, gói subscription, ngày hết hạn
 CREATE VIEW v_user_stats AS
 SELECT
-    u.id,
-    COUNT(d.id)              AS total_documents,
-    u.storage_used_bytes,
-    u.storage_limit_bytes,
-    sp.display_name          AS subscription_name,
-    u.subscription_expires_at
+    u.id, COUNT(d.id) AS total_documents, u.storage_used_bytes, u.storage_limit_bytes,
+    sp.display_name AS subscription_name, u.subscription_expires_at
 FROM users u
-LEFT JOIN documents d
-    ON d.user_id = u.id
-    AND d.deleted_at IS NULL
-    AND d.status != N'deleted'
-LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
-GROUP BY
-    u.id,
-    u.storage_used_bytes,
-    u.storage_limit_bytes,
-    sp.display_name,
-    u.subscription_expires_at;
-GO
-
--- =============================================================
--- MERGED COMPATIBILITY MIGRATION
--- Safe to run after the full schema; needed only for existing DBs.
--- =============================================================
-
-USE AIStudyHub;
-GO
-
-IF COL_LENGTH('study_room_messages', 'document_id') IS NULL
-BEGIN
-    ALTER TABLE study_room_messages
-        ADD document_id UNIQUEIDENTIFIER NULL;
-
-    ALTER TABLE study_room_messages
-        ADD CONSTRAINT fk_srmsg_document
-        FOREIGN KEY (document_id) REFERENCES documents(id);
-END;
-GO
-
-DECLARE @constraintName NVARCHAR(128);
-SELECT @constraintName = cc.name
-FROM sys.check_constraints cc
-JOIN sys.tables t ON cc.parent_object_id = t.object_id
-WHERE t.name = 'study_room_messages'
-  AND cc.name = 'chk_srmsg_type';
-
-IF @constraintName IS NOT NULL
-BEGIN
-    ALTER TABLE study_room_messages DROP CONSTRAINT chk_srmsg_type;
-END;
-GO
-
-ALTER TABLE study_room_messages
-    ADD CONSTRAINT chk_srmsg_type
-    CHECK (message_type IN (N'user', N'system', N'document'));
-GO
-
--- =============================================================
--- MIGRATION: Thêm khóa ngoại user_id vào password_reset_tokens
--- =============================================================
-
-ALTER TABLE password_reset_tokens
-    ADD user_id UNIQUEIDENTIFIER NULL
-        CONSTRAINT fk_prt_user
-        REFERENCES users(id) ON DELETE CASCADE;
-GO
-
-UPDATE prt
-SET prt.user_id = u.id
-FROM password_reset_tokens prt
-JOIN users u ON u.email = prt.email COLLATE Vietnamese_CI_AS;
-GO
-
-DELETE FROM password_reset_tokens
-WHERE user_id IS NULL;
-GO
-
-CREATE INDEX idx_prt_user_id ON password_reset_tokens(user_id);
+         LEFT JOIN documents d ON d.user_id = u.id AND d.deleted_at IS NULL AND d.status != N'deleted'
+         LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+GROUP BY u.id, u.storage_used_bytes, u.storage_limit_bytes, sp.display_name, u.subscription_expires_at;
 GO
