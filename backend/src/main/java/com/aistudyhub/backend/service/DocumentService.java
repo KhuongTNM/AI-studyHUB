@@ -59,9 +59,11 @@ public class DocumentService {
         }
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public Document upload(UUID userId, MultipartFile file, String subject, String title,
                            Visibility visibility, String tags) {
+        if (subject == null || subject.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Môn học không được để trống.");
+        }
         if (file.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "File không được để trống.");
         }
@@ -87,13 +89,8 @@ public class DocumentService {
 
         String storedName = UUID.randomUUID() + "_" + originalName;
         Path targetPath = uploadDir.resolve(storedName);
-        try {
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + e.getMessage());
-        }
-
         LocalDateTime now = LocalDateTime.now();
+
         Document doc = new Document();
         doc.setId(UUID.randomUUID());
         doc.setUserId(userId);
@@ -115,8 +112,18 @@ public class DocumentService {
         user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
-
         Document saved = documentRepository.save(doc);
+
+        try {
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            documentRepository.deleteById(saved.getId());
+            user.setStorageUsedBytes(Math.max(0, user.getStorageUsedBytes() - file.getSize()));
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + e.getMessage());
+        }
+
         scanProcessor.simulateScan(saved.getId());
         return saved;
     }
@@ -334,6 +341,14 @@ public class DocumentService {
         }
         doc.setUpdatedAt(LocalDateTime.now());
         return documentRepository.save(doc);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Document> searchDocuments(UUID userId, String keyword, String subject, String tag) {
+        String cleanKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+        String cleanSubject = (subject == null || subject.isBlank()) ? null : subject.trim();
+        String cleanTag = (tag == null || tag.isBlank()) ? null : tag.trim();
+        return documentRepository.searchUserDocuments(userId, cleanKeyword, cleanSubject, cleanTag);
     }
 
     public Path getFilePath(Document doc) {
