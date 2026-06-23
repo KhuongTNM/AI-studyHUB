@@ -19,8 +19,8 @@ public class ResendEmailService implements EmailService {
     @Value("${resend.from-email}")
     private String fromEmail;
 
-    @Value("${app.base-url}")
-    private String baseUrl;
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     public ResendEmailService(Resend resend) {
         this.resend = resend;
@@ -29,7 +29,9 @@ public class ResendEmailService implements EmailService {
     @Override
     @Async("taskExecutor")
     public void sendResetEmail(String to, String token) {
-        String resetLink = baseUrl + "/api/auth/reset-password?token=" + token;
+        // Link này sẽ trỏ về màn hình Đổi Mật Khẩu của FRONTEND (React/Vue/Thymeleaf)
+        // chứ không phải trỏ thẳng vào Backend API.
+        String resetLink = frontendUrl + "/reset-password?token=" + token;
 
         String htmlContent = "<p>Bạn đã yêu cầu đặt lại mật khẩu. Vui lòng click <a href='" + resetLink + "'>vào đây</a> để tiến hành. Link này sẽ hết hạn trong 15 phút.</p>";
 
