@@ -81,6 +81,16 @@ async function handleAuthResponse(
   return { success: true, user: mapApiUserToStoreUser(data.user) }
 }
 
+async function handleRegisterResponse(
+  response: Response
+): Promise<{ success: true } | { success: false; error: string }> {
+  if (!response.ok) {
+    return { success: false, error: await parseError(response) }
+  }
+
+  return { success: true }
+}
+
 export async function loginApi(email: string, password: string): Promise<{ success: true; user: User } | { success: false; error: string }> {
   const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: "POST",
@@ -93,14 +103,15 @@ export async function loginApi(email: string, password: string): Promise<{ succe
 export async function registerApi(
   email: string,
   password: string,
+  confirmPassword: string,
   displayName: string
-): Promise<{ success: true; user: User } | { success: false; error: string }> {
+): Promise<{ success: true } | { success: false; error: string }> {
   const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, displayName }),
+    body: JSON.stringify({ email, password, confirmPassword, displayName }),
   })
-  return handleAuthResponse(response)
+  return handleRegisterResponse(response)
 }
 
 /**
