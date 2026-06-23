@@ -154,8 +154,8 @@ public class DocumentService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại.");
         }
         boolean isOwner = doc.getUserId().equals(userId);
-        boolean isAdmin = "admin".equals(role);
-        if (!isOwner && !isAdmin) {
+        boolean isAdminOrSubAdmin = "admin".equals(role) || "sub_admin".equals(role);
+        if (!isOwner && !isAdminOrSubAdmin) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài liệu này.");
         }
         return doc;
