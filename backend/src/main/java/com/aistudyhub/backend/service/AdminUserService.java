@@ -10,6 +10,7 @@ import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.ActivityLogRepository;
+import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
@@ -41,18 +42,21 @@ public class AdminUserService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ObjectMapper objectMapper;
+    private final DocumentRepository documentRepository;
 
     public AdminUserService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             SubscriptionPlanRepository subscriptionPlanRepository,
             ActivityLogRepository activityLogRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            DocumentRepository documentRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.activityLogRepository = activityLogRepository;
         this.objectMapper = objectMapper;
+        this.documentRepository = documentRepository;
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +235,26 @@ public class AdminUserService {
         target.setLoginAttempts((short) 0);
         target.setUpdatedAt(LocalDateTime.now());
         return UserResponse.from(userRepository.save(target));
+    }
+
+    @Transactional
+    public void deleteUser(UUID userId) {
+        User actor = requireAdminOrSubAdmin();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
+        validateNotAdmin(actor, target);
+
+        if (target.getId().equals(actor.getId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể tự xóa tài khoản hiện tại.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        target.setDeletedAt(now);
+        target.setUpdatedAt(now);
+        userRepository.save(target);
+
+        documentRepository.softDeleteByUserId(userId, now);
     }
 
     private User requireAdminOrSubAdmin() {
