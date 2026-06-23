@@ -2,89 +2,56 @@ package com.aistudyhub.backend.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "activity_logs")
 public class ActivityLog {
 
+    public enum Action {
+        UPLOAD_DOCUMENT,
+        DELETE_DOCUMENT,
+        RESTORE_DOCUMENT,
+        PREVIEW_DOCUMENT,
+        CREATE_SUB_ADMIN
+    }
+
+    public enum TargetType {
+        DOCUMENT,
+        FOLDER,
+        USER
+    }
+
     @Id
     private UUID id;
 
-    @Column(name = "actor_id", nullable = false)
-    private UUID actorId;
+    @Column(name = "user_id", nullable = false)
+    private UUID userId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, length = 100)
-    private String action;
+    private Action action;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "target_type", length = 50)
-    private String targetType;
+    private TargetType targetType;
 
-    @Column(name = "target_id", length = 255)
-    private String targetId;
+    @Column(name = "target_id")
+    private UUID targetId;
 
-    @Column(name = "details", columnDefinition = "NVARCHAR(MAX)")
-    private String details;
+    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+    private String description;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
-
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getActorId() {
-        return actorId;
-    }
-
-    public void setActorId(UUID actorId) {
-        this.actorId = actorId;
-    }
-
-    public String getAction() {
-        return action;
-    }
-
-    public void setAction(String action) {
-        this.action = action;
-    }
-
-    public String getTargetType() {
-        return targetType;
-    }
-
-    public void setTargetType(String targetType) {
-        this.targetType = targetType;
-    }
-
-    public String getTargetId() {
-        return targetId;
-    }
-
-    public void setTargetId(String targetId) {
-        this.targetId = targetId;
-    }
-
-    public String getDetails() {
-        return details;
-    }
-
-    public void setDetails(String details) {
-        this.details = details;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
 }
