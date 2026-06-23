@@ -94,7 +94,8 @@ CREATE TABLE users (
                                 CONSTRAINT fk_users_creator
                                 REFERENCES users(id) ON DELETE NO ACTION,
     created_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
-    updated_at              DATETIME2        NOT NULL DEFAULT GETDATE()
+    updated_at              DATETIME2        NOT NULL DEFAULT GETDATE(),
+    deleted_at              DATETIME2        NULL
 );
 GO
 
