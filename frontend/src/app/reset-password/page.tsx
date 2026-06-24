@@ -19,6 +19,7 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("Mật khẩu đã được đặt lại thành công!")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,6 +49,7 @@ function ResetPasswordForm() {
     if (!result.success) {
       setError(result.error || "Đặt lại mật khẩu thất bại. Vui lòng thử lại.")
     } else {
+      setSuccessMessage(result.message || "Mật khẩu đã được đặt lại thành công!")
       setSuccess(true)
     }
   }
@@ -89,7 +91,7 @@ function ResetPasswordForm() {
             <div className="space-y-4 text-center">
               <div className="flex flex-col items-center gap-2 rounded-lg bg-green-500/10 p-4 text-green-600 dark:text-green-400">
                 <CheckCircle2 className="h-8 w-8" />
-                <p className="font-medium">Mật khẩu đã được đặt lại thành công!</p>
+                <p className="font-medium">{successMessage}</p>
                 <p className="text-sm text-muted-foreground">Bạn có thể đăng nhập bằng mật khẩu mới.</p>
               </div>
               <Button className="w-full" onClick={() => router.push("/")}>

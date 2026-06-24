@@ -223,6 +223,21 @@ export async function downloadDocumentApi(id: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
+/** GET /api/documents/{id}/preview — stream file inline for preview before download. */
+export async function previewDocumentApi(id: string): Promise<{ url: string; contentType: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}/preview`, {
+    method: "GET",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+
+  const blob = await response.blob()
+  return {
+    url: URL.createObjectURL(blob),
+    contentType: response.headers.get("Content-Type") || blob.type || "application/octet-stream",
+  }
+}
+
 /**
  * PATCH /api/documents/{id}
  * FR-23: Di chuyển tài liệu vào thư mục khác hoặc về root.
