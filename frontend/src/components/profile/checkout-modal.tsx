@@ -75,7 +75,9 @@ export function CheckoutModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95">
+      <div className="flex w-full max-w-md flex-col rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh]">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-6">
         {!purchaseSuccess ? (
           <>
             <h3 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
@@ -170,21 +172,6 @@ export function CheckoutModal({
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={onClose}>
-                {text.cancel}
-              </Button>
-              {!purchaseOrder ? (
-                <Button className="flex-1 gap-2" disabled={isCreatingPurchase} onClick={createVietQrPurchase}>
-                  {isCreatingPurchase ? text.creatingQr : text.createQr}
-                </Button>
-              ) : (
-                <Button className="flex-1 gap-2" disabled={isCompletingPurchase} onClick={completeVietQrPurchaseForDev}>
-                  {isCompletingPurchase ? text.confirming : text.devComplete}
-                </Button>
-              )}
-            </div>
           </>
         ) : (
           <div className="text-center py-6">
@@ -202,6 +189,27 @@ export function CheckoutModal({
             <Button className="w-full" onClick={onSuccess}>
               {text.back}
             </Button>
+          </div>
+        )}
+        </div>{/* end scrollable body */}
+
+        {/* Footer actions — luôn visible, không bị scroll */}
+        {!purchaseSuccess && (
+          <div className="shrink-0 border-t border-border p-4">
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={onClose}>
+                {text.cancel}
+              </Button>
+              {!purchaseOrder ? (
+                <Button className="flex-1 gap-2" disabled={isCreatingPurchase} onClick={createVietQrPurchase}>
+                  {isCreatingPurchase ? text.creatingQr : text.createQr}
+                </Button>
+              ) : (
+                <Button className="flex-1 gap-2" disabled={isCompletingPurchase} onClick={completeVietQrPurchaseForDev}>
+                  {isCompletingPurchase ? text.confirming : text.devComplete}
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>
