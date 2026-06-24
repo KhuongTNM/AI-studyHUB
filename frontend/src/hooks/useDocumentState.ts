@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { MOCK_CATEGORIES } from "@/states/mock-data"
 import {
   fetchDocumentsApi,
@@ -26,6 +26,9 @@ interface DocumentStateDeps {
 
 export function useDocumentState({ currentUser }: DocumentStateDeps) {
   const [documents, setDocuments] = useState<Document[]>([])
+  // Ref để uploadDocument luôn đọc documents mới nhất (tránh stale closure)
+  const documentsRef = useRef<Document[]>(documents)
+  useEffect(() => { documentsRef.current = documents }, [documents])
   const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES)
   const [folders, setFolders] = useState<Folder[]>([])
 
@@ -83,11 +86,44 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
+      // ── Xử lý trùng tên file (giống logic backend restoreDocument) ─────────
+      const lastDot = file.name.lastIndexOf(".")
+      const base    = lastDot > 0 ? file.name.slice(0, lastDot) : file.name
+      const dotExt  = lastDot > 0 ? file.name.slice(lastDot) : ""
+
+      // Dùng documentsRef.current để tránh stale closure trong useCallback
+      const activeNames = new Set(
+        documentsRef.current
+          .filter(d => d.status !== "deleted")
+          .map(d => d.name)
+      )
+
+      const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const escapedExt  = dotExt.replace(".", "\\.")
+      const suffixRe    = new RegExp(`^${escapedBase} \\((\\d+)\\)${escapedExt}$`)
+      let maxN = 0
+      for (const name of activeNames) {
+        const m = name.match(suffixRe)
+        if (m) {
+          const n = parseInt(m[1], 10)
+          if (n > maxN) maxN = n
+        }
+      }
+
+      let resolvedFile = file
+      if (activeNames.has(file.name)) {
+        const newName = maxN > 0
+          ? `${base} (${maxN + 1})${dotExt}`
+          : `${base} (2)${dotExt}`
+        resolvedFile = new File([file], newName, { type: file.type })
+      }
+      // ── Hết xử lý trùng tên ───────────────────────────────────────────────
+
       const tempId = `temp-${Date.now()}-${Math.random()}`
-      const ext = (file.name.split(".").pop() ?? "pdf").toLowerCase() as "pdf" | "docx" | "pptx"
+      const ext = (resolvedFile.name.split(".").pop() ?? "pdf").toLowerCase() as "pdf" | "docx" | "pptx"
       const tempDoc: Document = {
         id: tempId,
-        name: file.name,
+        name: resolvedFile.name,
         type: ext,
         size: "",
         sizeBytes: file.size,
@@ -106,7 +142,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       setDocuments(prev => [tempDoc, ...prev])
 
       try {
-        const realDoc = await uploadDocumentApi(file, subject, undefined, visibility, progress => {
+        const realDoc = await uploadDocumentApi(resolvedFile, subject, undefined, visibility, progress => {
           setDocuments(prev =>
             prev.map(d => d.id === tempId ? { ...d, uploadProgress: progress } : d),
           )
