@@ -28,6 +28,10 @@ interface ErrorBody {
   message?: string
 }
 
+interface MessageBody {
+  message?: string
+}
+
 async function parseError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ErrorBody
@@ -182,7 +186,7 @@ export async function updateLanguagePreferenceApi(language: Language): Promise<U
 
 export async function forgotPasswordApi(
   email: string
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true; message?: string } | { success: false; error: string }> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
       method: "POST",
@@ -192,7 +196,8 @@ export async function forgotPasswordApi(
     if (!response.ok) {
       return { success: false, error: await parseError(response) }
     }
-    return { success: true }
+    const body = (await response.json()) as MessageBody
+    return { success: true, message: body.message }
   } catch {
     return { success: false, error: "Không thể kết nối đến máy chủ." }
   }
@@ -201,7 +206,7 @@ export async function forgotPasswordApi(
 export async function resetPasswordApi(
   token: string,
   newPassword: string
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true; message?: string } | { success: false; error: string }> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
       method: "POST",
@@ -211,7 +216,8 @@ export async function resetPasswordApi(
     if (!response.ok) {
       return { success: false, error: await parseError(response) }
     }
-    return { success: true }
+    const body = (await response.json()) as MessageBody
+    return { success: true, message: body.message }
   } catch {
     return { success: false, error: "Không thể kết nối đến máy chủ." }
   }

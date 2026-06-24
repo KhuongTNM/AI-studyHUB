@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { forgotPasswordApi } from "@/services/api/auth"
 
 export function AuthModal() {
-  const { showAuthModal, authModalTab, closeAuthModal, login, register, loginWithGoogle, language, isDarkMode } = useApp()
+  const { showAuthModal, authModalTab, closeAuthModal, login, register, loginWithGoogle, language } = useApp()
   const [tab, setTab] = useState<"login" | "register" | "forgot">(authModalTab)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -129,7 +129,7 @@ export function AuthModal() {
     const result = await forgotPasswordApi(email)
     setLoading(false)
     if (!result.success) setError(result.error || text.failedForgot)
-    else setSuccess(text.resetSent)
+    else setSuccess(result.message || text.resetSent)
   }
 
   const handleGoogleCredential = async (idToken: string) => {
@@ -201,7 +201,6 @@ export function AuthModal() {
             <>
               <GoogleSignInButton
                 onCredential={handleGoogleCredential}
-                theme={isDarkMode ? "filled_black" : "outline"}
                 text="signin_with"
                 disabled={loading}
                 onError={msg => setError(msg)}
