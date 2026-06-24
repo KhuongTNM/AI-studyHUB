@@ -171,18 +171,18 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
               id="login-btn"
               variant="ghost"
               size="sm"
-              onClick={() => openAuthModal("login")}
+              asChild
             >
-              {text.login}
+              <a href="/login">{text.login}</a>
             </Button>
 
             {/* Register Button */}
             <Button
               id="register-btn"
               size="sm"
-              onClick={() => openAuthModal("register")}
+              asChild
             >
-              {text.register}
+              <a href="/register">{text.register}</a>
             </Button>
           </>
         )}

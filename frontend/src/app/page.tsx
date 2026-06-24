@@ -133,18 +133,20 @@ function HomePage() {
                 id="hero-register-btn"
                 size="lg"
                 className="gap-2 px-8"
-                onClick={() => openAuthModal("register")}
+                asChild
               >
-                <GraduationCap className="h-5 w-5" />
-                {text.startFree}
+                <a href="/register">
+                  <GraduationCap className="h-5 w-5" />
+                  {text.startFree}
+                </a>
               </Button>
               <Button
                 id="hero-login-btn"
                 size="lg"
                 variant="outline"
-                onClick={() => openAuthModal("login")}
+                asChild
               >
-                {text.login}
+                <a href="/login">{text.login}</a>
               </Button>
             </>
           ) : (
