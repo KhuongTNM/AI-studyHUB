@@ -63,14 +63,14 @@ export function DocumentPreviewModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border p-4">
+      <div className="relative flex w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh]">
+        <div className="flex shrink-0 items-center justify-between border-b border-border p-4">
           <h3 className="font-semibold text-foreground">{text.title}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="mb-4 overflow-hidden rounded-xl border border-border bg-muted/30">
             {loadingPreview ? (
               <div className="flex h-72 items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -87,7 +87,7 @@ export function DocumentPreviewModal({
               <iframe
                 title={doc.name}
                 src={previewUrl}
-                className="h-[420px] w-full bg-background"
+                className="h-[40vh] min-h-[200px] w-full bg-background"
               />
             ) : previewUrl ? (
               <div className="flex h-72 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -151,7 +151,7 @@ export function DocumentPreviewModal({
             </div>
           </div>
         </div>
-        <div className="flex gap-2 border-t border-border p-4">
+        <div className="flex shrink-0 gap-2 border-t border-border p-4">
           {previewUrl && (
             <Button variant="outline" className="gap-2" onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}>
               <ExternalLink className="h-4 w-4" />
