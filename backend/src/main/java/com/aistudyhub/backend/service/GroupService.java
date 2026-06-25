@@ -5,10 +5,10 @@ import com.aistudyhub.backend.dto.GroupResponse;
 import com.aistudyhub.backend.dto.GroupSettingsResponse;
 import com.aistudyhub.backend.dto.request.*;
 import com.aistudyhub.backend.entity.*;
-import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.exception.BusinessException;
+import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +17,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -65,13 +67,13 @@ public class GroupService {
 
     private void requireMembership(UUID groupId, UUID userId) {
         if (!groupMemberRepository.existsByIdGroupIdAndIdUserId(groupId, userId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GROUP_ACCESS_DENIED");
+            throw new BusinessException(ErrorCode.GROUP_ACCESS_DENIED);
         }
     }
 
     private GroupMember getMembership(UUID groupId, UUID userId) {
         return groupMemberRepository.findById(new GroupMemberId(groupId, userId))
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "GROUP_ACCESS_DENIED"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_ACCESS_DENIED));
     }
 
     private GroupResponse buildResponse(Group g) {
@@ -93,17 +95,17 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public GroupResponse createGroup(CreateGroupRequest req, UUID userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         Limits lim = limits(user);
 
         if (!lim.canCreate()) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GROUP_CREATE_NOT_ALLOWED");
+            throw new BusinessException(ErrorCode.GROUP_CREATE_NOT_ALLOWED);
         }
         if (groupRepository.countByOwnerId(userId) >= lim.maxCreated()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_CREATE_LIMIT_REACHED");
+            throw new BusinessException(ErrorCode.GROUP_CREATE_LIMIT_REACHED);
         }
-        if (groupMemberRepository.countByIdUserId(userId) >= lim.maxJoined()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_JOIN_LIMIT_REACHED");
+        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= lim.maxJoined()) {
+            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
         }
 
         String code = req.getGroupCode() != null && !req.getGroupCode().isBlank()
@@ -111,7 +113,7 @@ public class GroupService {
                 : "GRP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         if (groupRepository.existsByGroupCode(code)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_CODE_ALREADY_EXISTS");
+            throw new BusinessException(ErrorCode.GROUP_CODE_ALREADY_EXISTS);
         }
 
         Group g = new Group();
@@ -137,25 +139,29 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public void joinGroup(JoinGroupRequest req, UUID userId) {
         Group g = groupRepository.findByGroupCode(req.getGroupCode().trim().toUpperCase())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "GROUP_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
         if (groupMemberRepository.existsByIdGroupIdAndIdUserId(g.getId(), userId)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_ALREADY_JOINED");
+            throw new BusinessException(ErrorCode.GROUP_ALREADY_JOINED);
         }
         if (!passwordEncoder.matches(req.getPassword().trim(), g.getPasswordHash())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GROUP_PASSWORD_INVALID");
+            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         User owner = userRepository.findById(g.getOwnerId()).orElseThrow();
         Limits ownerLim = limits(owner);
-        // Lưu ý: bảng Group không có maxCapacity, phải tính qua hàm limits của owner
+        // Nhóm không có cột maxCapacity riêng, sức chứa tối đa được tính theo plan của OWNER.
+        // -> Đây là số THÀNH VIÊN trong 1 NHÓM, dùng countByIdGroupId.
         if (groupMemberRepository.countByIdGroupId(g.getId()) >= ownerLim.maxCapacity()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_FULL");
+            throw new BusinessException(ErrorCode.GROUP_FULL);
         }
 
         Limits userLim = limits(userRepository.findById(userId).orElseThrow());
-        if (groupMemberRepository.countByIdUserId(userId) >= userLim.maxJoined()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_JOIN_LIMIT_REACHED");
+        // Đây là tổng số NHÓM mà USER đang tham gia, KHÁC với check ở trên.
+        // Dùng countGroupsJoinedByUser thay vì countByIdUserId để tránh nhầm lẫn
+        // giữa "đếm theo nhóm" và "đếm theo user" khi đọc lướt 2 dòng check liền kề nhau.
+        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= userLim.maxJoined()) {
+            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
         }
 
         GroupMember m = new GroupMember();
@@ -169,13 +175,13 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteGroup(UUID groupId, DeleteGroupRequest req, UUID userId) {
         Group g = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "GROUP_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
         if (!g.getOwnerId().equals(userId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GROUP_OWNER_REQUIRED");
+            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
         if (!passwordEncoder.matches(req.getPassword().trim(), g.getPasswordHash())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "GROUP_PASSWORD_INVALID");
+            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         groupRepository.delete(g);
@@ -184,10 +190,10 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public void leaveGroup(UUID groupId, UUID userId) {
         Group g = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "GROUP_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
         if (g.getOwnerId().equals(userId)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "GROUP_OWNER_CANNOT_LEAVE");
+            throw new BusinessException(ErrorCode.GROUP_OWNER_CANNOT_LEAVE);
         }
 
         GroupMember member = getMembership(groupId, userId);
@@ -256,7 +262,7 @@ public class GroupService {
     @Transactional(readOnly = true)
     public GroupResponse getGroupDetail(UUID userId, UUID groupId) {
         Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "GROUP_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
         requireMembership(groupId, userId);
         return buildResponse(group);
@@ -271,10 +277,25 @@ public class GroupService {
             return List.of();
         }
 
+        // GroupMember chỉ giữ userId (qua GroupMemberId), không có quan hệ tới User,
+        // nên phải batch-load User theo danh sách userId để lấy displayName.
+        List<UUID> userIds = members.stream()
+                .map(member -> member.getId().getUserId())
+                .toList();
+        Map<UUID, User> usersById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+
         return members.stream().map(member -> {
-            GroupMemberResponse res = new GroupMemberResponse();
-            // Lát tự map các trường của Member vào DTO res tại đây
-            return res;
+            UUID memberUserId = member.getId().getUserId();
+            User user = usersById.get(memberUserId);
+
+            return GroupMemberResponse.builder()
+                    .userId(memberUserId)
+                    .displayName(user != null ? user.getDisplayName() : null)
+                    .avatar(null)
+                    .role(member.getRole())
+                    .joinedAt(member.getJoinedAt())
+                    .build();
         }).toList();
     }
 }

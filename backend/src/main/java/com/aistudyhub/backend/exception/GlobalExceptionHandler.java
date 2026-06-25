@@ -49,4 +49,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("message", "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."));
     }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<Map<String, String>> handleBusinessException(BusinessException ex) {
+        return ResponseEntity.status(ex.getErrorCode().getStatus())
+                .body(Map.of("message", ex.getErrorCode().getMessage()));
+    }
 }
