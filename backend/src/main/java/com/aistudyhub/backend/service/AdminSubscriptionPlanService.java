@@ -41,6 +41,67 @@ public class AdminSubscriptionPlanService {
     }
 
     @Transactional
+    public SubscriptionPlanResponse createPlan(com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest request) {
+        if (subscriptionPlanRepository.existsByDisplayName(request.getDisplayName())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
+        }
+
+        String baseSlug = generateSlug(request.getDisplayName());
+        String finalSlug = baseSlug;
+        if (subscriptionPlanRepository.existsByName(finalSlug)) {
+            finalSlug = baseSlug + "_" + System.currentTimeMillis();
+        }
+
+        SubscriptionPlan plan = new SubscriptionPlan();
+        plan.setName(finalSlug);
+        plan.setDisplayName(request.getDisplayName());
+        plan.setPrice(request.getPrice());
+        plan.setMaxRoomMembers(request.getMaxRoomMembers());
+        plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
+        plan.setCreateGroupLimit(request.getCreateGroupLimit());
+        plan.setJoinGroupLimit(request.getJoinGroupLimit());
+        plan.setCreatedAt(LocalDateTime.now());
+        plan.setUpdatedAt(LocalDateTime.now());
+
+        return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
+    }
+
+    @Transactional
+    public SubscriptionPlanResponse updatePlan(String planName, com.aistudyhub.backend.dto.UpdateSubscriptionPlanRequest request) {
+        SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+
+        if (!plan.getDisplayName().equals(request.getDisplayName()) && subscriptionPlanRepository.existsByDisplayName(request.getDisplayName())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
+        }
+
+        plan.setDisplayName(request.getDisplayName());
+        plan.setMaxRoomMembers(request.getMaxRoomMembers());
+        plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
+        plan.setCreateGroupLimit(request.getCreateGroupLimit());
+        plan.setJoinGroupLimit(request.getJoinGroupLimit());
+        plan.setUpdatedAt(LocalDateTime.now());
+
+        return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
+    }
+
+    @Transactional
+    public void deletePlan(String planName) {
+        if (SubscriptionPlan.FREE_PLAN_NAME.equals(planName) || "plan_2_4".equals(planName) || "plan_5_plus".equals(planName)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không được xóa các gói mặc định.");
+        }
+
+        SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+
+        if (userRepository.existsBySubscriptionPlanId(plan.getId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa gói dịch vụ đang có người sử dụng.");
+        }
+
+        subscriptionPlanRepository.delete(plan);
+    }
+
+    @Transactional
     public SubscriptionPlanResponse updatePrice(String planName, UpdatePackagePriceRequest request) {
         User admin = getCurrentAdmin();
         if (!passwordEncoder.matches(request.getAdminPassword(), admin.getPasswordHash())) {
@@ -68,5 +129,20 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin mới được chỉnh sửa giá gói.");
         }
         return user;
+    }
+
+    private String generateSlug(String displayName) {
+        String slug = displayName.toLowerCase()
+                .replaceAll("[àáạảãâầấậẩẫăằắặẳẵ]", "a")
+                .replaceAll("[èéẹẻẽêềếệểễ]", "e")
+                .replaceAll("[ìíịỉĩ]", "i")
+                .replaceAll("[òóọỏõôồốộổỗơờớợởỡ]", "o")
+                .replaceAll("[ùúụủũưừứựửữ]", "u")
+                .replaceAll("[ỳýỵỷỹ]", "y")
+                .replaceAll("đ", "d")
+                .replaceAll("[^a-z0-9\\s-]", "")
+                .trim()
+                .replaceAll("\\s+", "_");
+        return slug;
     }
 }
