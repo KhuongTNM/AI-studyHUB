@@ -145,6 +145,7 @@ export async function fetchTrashDocumentsApi(): Promise<Document[]> {
 
 /**
  * POST /api/documents/upload — upload tài liệu (BR-013 đến BR-018).
+ * tags: chuỗi phân cách dấu phẩy, ví dụ "toán, đại số" (BR-020)
  */
 export async function uploadDocumentApi(
   file: File,
@@ -152,12 +153,14 @@ export async function uploadDocumentApi(
   title?: string,
   visibility: "private" | "public" = "private",
   onProgress?: (progress: number) => void,
+  tags?: string,
 ): Promise<Document> {
   const formData = new FormData()
   formData.append("file", file)
   formData.append("subject", subject)
   if (title) formData.append("title", title)
   formData.append("visibility", visibility)
+  if (tags?.trim()) formData.append("tags", tags.trim())
 
   let fakeProgress = 0
   const progressInterval = setInterval(() => {
@@ -189,6 +192,31 @@ export async function deleteDocumentApi(id: string): Promise<void> {
     headers: authHeaders(),
   })
   if (!response.ok) throw new Error(await parseError(response))
+}
+
+/**
+ * PUT /api/documents/{id} — cập nhật metadata tài liệu (tiêu đề, môn học, mô tả, tags).
+ * tags: chuỗi phân cách dấu phẩy, ví dụ "toán, đại số" (BR-020)
+ */
+export async function updateDocumentApi(
+  id: string,
+  data: {
+    title?: string
+    subject?: string
+    description?: string
+    tags?: string
+  },
+): Promise<Document> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
 /** PUT /api/documents/{id}/visibility — đổi public/private (BR-018, BR-019) */

@@ -37,6 +37,7 @@ export function DocumentCard({
   onChat,
   onGenerateFlashcards,
   categories,
+  canPreview = true,
 }: {
   doc: Document
   viewMode: "grid" | "list"
@@ -48,6 +49,7 @@ export function DocumentCard({
   onChat: (doc: Document) => void
   onGenerateFlashcards: (doc: Document) => void
   categories: ReturnType<typeof useApp>["categories"]
+  canPreview?: boolean
 }) {
   const { language } = useApp()
   const text = documentCardText[language]
@@ -76,6 +78,11 @@ export function DocumentCard({
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
               {subject}
             </span>
+            {doc.tags.length > 0 && doc.tags.map(tag => (
+              <span key={tag} className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                #{tag}
+              </span>
+            ))}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
@@ -131,9 +138,13 @@ export function DocumentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onPreview(doc)}>
+              <DropdownMenuItem
+                onClick={() => canPreview && onPreview(doc)}
+                disabled={!canPreview}
+                className={!canPreview ? "opacity-50 cursor-not-allowed" : ""}
+              >
                 <Eye className="mr-2 h-4 w-4" />
-                {text.viewDetails}
+                {canPreview ? text.viewDetails : text.oldVersion}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(doc)}>
                 <Edit3 className="mr-2 h-4 w-4" />
@@ -164,9 +175,13 @@ export function DocumentCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onPreview(doc)}>
+            <DropdownMenuItem
+              onClick={() => canPreview && onPreview(doc)}
+              disabled={!canPreview}
+              className={!canPreview ? "opacity-50 cursor-not-allowed" : ""}
+            >
               <Eye className="mr-2 h-4 w-4" />
-              {text.viewDetails}
+              {canPreview ? text.viewDetails : text.oldVersion}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(doc)}>
               <Edit3 className="mr-2 h-4 w-4" />
@@ -193,9 +208,18 @@ export function DocumentCard({
         <span>•</span>
         <span>{doc.uploadedAt.toLocaleDateString(dateLocale)}</span>
       </div>
-      <span className="mb-3 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+      <span className="mb-2 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         {subject}
       </span>
+      {doc.tags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {doc.tags.map(tag => (
+            <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => onToggleVisibility(doc.id, !doc.isPublic)}
@@ -257,6 +281,7 @@ const documentCardText = {
     download: "Tải xuống",
     delete: "Xóa",
     viewDetails: "Xem chi tiết",
+    oldVersion: "Phiên bản cũ (không xem được)",
     edit: "Chỉnh sửa",
     publicStatus: "Public",
     privateStatus: "Private",
@@ -269,6 +294,7 @@ const documentCardText = {
     download: "Download",
     delete: "Delete",
     viewDetails: "View details",
+    oldVersion: "Old version (not previewable)",
     edit: "Edit",
     publicStatus: "Public",
     privateStatus: "Private",

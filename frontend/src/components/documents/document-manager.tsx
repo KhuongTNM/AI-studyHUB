@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   Search, Filter, Grid3X3, List, ChevronDown, X,
   ArrowUpDown, FolderPlus, Home, ChevronRight,
@@ -65,11 +65,20 @@ export function DocumentManager() {
     setIsSearchLoading(true)
     const timer = setTimeout(async () => {
       try {
-        const results = await searchDocumentsApi({
-          keyword: q,
-          subject: selectedSubject !== "all" ? selectedSubject : undefined,
+        const subjectParam = selectedSubject !== "all" ? selectedSubject : undefined
+        // Gọi song song: tìm theo keyword (tên/mô tả) VÀ theo tag chính xác
+        const [byKeyword, byTag] = await Promise.all([
+          searchDocumentsApi({ keyword: q, subject: subjectParam }),
+          searchDocumentsApi({ tag: q, subject: subjectParam }),
+        ])
+        // Gộp, loại trùng id, lọc bỏ deleted
+        const seen = new Set<string>()
+        const merged = [...byKeyword, ...byTag].filter(d => {
+          if (seen.has(d.id) || d.status === "deleted") return false
+          seen.add(d.id)
+          return true
         })
-        setSearchResults(results.filter(d => d.status !== "deleted"))
+        setSearchResults(merged)
       } catch {
         // Nếu backend lỗi, giữ nguyên filter local (searchResults = null)
         setSearchResults(null)
@@ -121,6 +130,30 @@ export function DocumentManager() {
 
   // ── Derived data ────────────────────────────────────────────────────────
   const activeDocs = documents.filter(d => d.status !== "deleted")
+
+  // Tính set ID của tài liệu "mới nhất" trong mỗi nhóm trùng tên.
+  // Pattern trùng: "report.pdf" → "report (2).pdf" → "report (3).pdf"
+  // Chỉ bản mới nhất (uploadedAt lớn nhất) mới được phép preview.
+  const latestDocIds = useMemo(() => {
+    const getBaseName = (name: string) =>
+      name.replace(/ \(\d+\)(?=\.[^.]*$|$)/, "")
+
+    const groups = new Map<string, typeof activeDocs>()
+    for (const doc of activeDocs) {
+      const key = getBaseName(doc.name)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(doc)
+    }
+
+    const ids = new Set<string>()
+    for (const group of groups.values()) {
+      const latest = group.reduce((a, b) =>
+        a.uploadedAt.getTime() >= b.uploadedAt.getTime() ? a : b
+      )
+      ids.add(latest.id)
+    }
+    return ids
+  }, [activeDocs])
 
   const docsInFolder = activeDocs.filter(d =>
     (d.folderId ?? null) === currentFolderId
@@ -221,12 +254,12 @@ const handleSelectSubject = useCallback((subject: string) => {
 }, [])
 
 
-  const handleUpload = useCallback(async (files: File[], subject: string) => {
+  const handleUpload = useCallback(async (files: File[], subject: string, tags?: string) => {
     if (!currentUser) return
     setUploadError(null)
     const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
     for (const file of files) {
-      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId, tags)
       if (!result.success && result.error) {
         setUploadError(result.error)
         break
@@ -648,6 +681,7 @@ const handleSelectSubject = useCallback((subject: string) => {
                       setCurrentPage("flashcards")
                     }}
                     categories={categories}
+                    canPreview={latestDocIds.has(doc.id)}
                   />
                 </div>
               ))}
