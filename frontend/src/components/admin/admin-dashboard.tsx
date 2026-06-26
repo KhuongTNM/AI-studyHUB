@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import {
   CheckCircle2, HardDrive, KeyRound, LayoutDashboard, Package,
-  Pencil, Plus, QrCode, Sparkles, Trash2, UserCog, Users, X,
+  Pencil, Plus, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp, type PackageTier, type User } from "@/lib/store"
@@ -25,7 +25,6 @@ interface EditablePkg {
   joinGroupLimit: number
   hasAiChat: boolean
   hasFlashcards: boolean
-  qrLink?: string
 }
 
 function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: number; maxUsers: number }): EditablePkg {
@@ -40,37 +39,6 @@ function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: numb
     joinGroupLimit: pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60,
     hasAiChat: true,
     hasFlashcards: true,
-    qrLink: "",
-  }
-}
-
-// ─── VietQR link validator ─────────────────────────────────────────────────
-type QRValidation = { valid: true } | { valid: false; error: string }
-
-function validateVietQRLink(link: string, price: number): QRValidation {
-  if (!link.trim()) return { valid: false, error: "" }
-  try {
-    const url = new URL(link)
-    if (url.hostname !== "api.vietqr.io" || !url.pathname.match(/^\/image\/.+/)) {
-      return { valid: false, error: "Link phải có dạng https://api.vietqr.io/image/..." }
-    }
-    const amountParam = url.searchParams.get("amount")
-    if (!amountParam) {
-      return { valid: false, error: "Link thiếu tham số amount (số tiền)" }
-    }
-    const amount = Number(amountParam)
-    if (isNaN(amount) || amount < 0) {
-      return { valid: false, error: "Tham số amount không hợp lệ" }
-    }
-    if (amount !== price) {
-      return {
-        valid: false,
-        error: `Số tiền QR (${amount.toLocaleString("vi-VN")}đ) không khớp với giá gói (${price.toLocaleString("vi-VN")}đ)`,
-      }
-    }
-    return { valid: true }
-  } catch {
-    return { valid: false, error: "Link không hợp lệ" }
   }
 }
 
@@ -508,53 +476,6 @@ export function AdminDashboard() {
                     <span>Tạo flashcards từ tài liệu</span>
                   </li>
                 </ul>
-
-                {/* VietQR section */}
-                {pkg.price > 0 && (() => {
-                  const qrValidation = validateVietQRLink(draft.qrLink ?? "", draft.price)
-                  const hasValidQR = !isEditing && pkg.qrLink && validateVietQRLink(pkg.qrLink, pkg.price).valid
-
-                  return isEditing ? (
-                    <div className="mb-4 space-y-2 rounded-xl border border-dashed border-border bg-muted/30 p-3">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                        <QrCode className="h-3.5 w-3.5" />
-                        Mã QR thanh toán (VietQR Quick Link)
-                      </p>
-                      <textarea
-                        rows={3}
-                        value={draft.qrLink ?? ""}
-                        onChange={e => setPkgDraft(d => ({ ...d, qrLink: e.target.value }))}
-                        placeholder="Dán Quick Link từ my.vietqr.io vào đây..."
-                        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      {(draft.qrLink ?? "").trim() !== "" && (
-                        <p className={`text-xs font-medium ${qrValidation.valid ? "text-green-600" : "text-destructive"}`}>
-                          {qrValidation.valid
-                            ? "✓ Link hợp lệ — QR sẽ hiển thị cho người dùng"
-                            : `✗ ${(qrValidation as { valid: false; error: string }).error}`}
-                        </p>
-                      )}
-                    </div>
-                  ) : hasValidQR ? (
-                    <div className="mb-4 flex flex-col items-center gap-2 rounded-xl border border-border bg-muted/20 p-3">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                        <QrCode className="h-3.5 w-3.5" />
-                        QR thanh toán
-                      </p>
-                      <img
-                        src={pkg.qrLink}
-                        alt={`QR thanh toán ${pkg.name}`}
-                        className="h-36 w-36 rounded-lg object-contain"
-                        onError={e => { (e.target as HTMLImageElement).style.display = "none" }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
-                      <QrCode className="h-4 w-4 shrink-0" />
-                      <span>Chưa có mã QR — nhấn Chỉnh sửa để thêm</span>
-                    </div>
-                  )
-                })()}
 
                 {/* Action buttons */}
                 {isEditing ? (
