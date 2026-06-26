@@ -65,11 +65,20 @@ export function DocumentManager() {
     setIsSearchLoading(true)
     const timer = setTimeout(async () => {
       try {
-        const results = await searchDocumentsApi({
-          keyword: q,
-          subject: selectedSubject !== "all" ? selectedSubject : undefined,
+        const subjectParam = selectedSubject !== "all" ? selectedSubject : undefined
+        // Gọi song song: tìm theo keyword (tên/mô tả) VÀ theo tag chính xác
+        const [byKeyword, byTag] = await Promise.all([
+          searchDocumentsApi({ keyword: q, subject: subjectParam }),
+          searchDocumentsApi({ tag: q, subject: subjectParam }),
+        ])
+        // Gộp, loại trùng id, lọc bỏ deleted
+        const seen = new Set<string>()
+        const merged = [...byKeyword, ...byTag].filter(d => {
+          if (seen.has(d.id) || d.status === "deleted") return false
+          seen.add(d.id)
+          return true
         })
-        setSearchResults(results.filter(d => d.status !== "deleted"))
+        setSearchResults(merged)
       } catch {
         // Nếu backend lỗi, giữ nguyên filter local (searchResults = null)
         setSearchResults(null)
@@ -221,12 +230,12 @@ const handleSelectSubject = useCallback((subject: string) => {
 }, [])
 
 
-  const handleUpload = useCallback(async (files: File[], subject: string) => {
+  const handleUpload = useCallback(async (files: File[], subject: string, tags?: string) => {
     if (!currentUser) return
     setUploadError(null)
     const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
     for (const file of files) {
-      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId, tags)
       if (!result.success && result.error) {
         setUploadError(result.error)
         break

@@ -15,9 +15,10 @@ export function UploadModal({
   initialSubject?: string
   hideSubject?: boolean
   onClose: () => void
-  onUpload: (files: File[], subject: string) => void
+  onUpload: (files: File[], subject: string, tags?: string) => void
 }) {
   const [subject, setSubject] = useState(initialSubject)
+  const [tags, setTags] = useState("")
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +86,7 @@ export function UploadModal({
 
   const handleUpload = () => {
     if (!selectedFiles.length || (!hideSubject && !subject.trim())) return
-    onUpload(selectedFiles, subject.trim())
+    onUpload(selectedFiles, subject.trim(), tags.trim() || undefined)
     onClose()
   }
 
@@ -123,6 +124,20 @@ export function UploadModal({
               />
             </div>
           )}
+
+          {/* Tags — BR-020 */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              {text.tags}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{text.tagsHint}</span>
+            </label>
+            <input
+              value={tags}
+              onChange={e => setTags(e.target.value)}
+              placeholder={text.tagsPlaceholder}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
 
           {/* Drop zone */}
           <div
@@ -207,6 +222,9 @@ const uploadText = {
     title: "Upload tài liệu",
     subject: "Môn học",
     subjectPlaceholder: "Nhập tên môn học",
+    tags: "Tags",
+    tagsHint: "(không bắt buộc)",
+    tagsPlaceholder: "toán học, đại số, vi tích phân...",
     dropOrClick: "Kéo thả hoặc click để chọn file",
     upload: "Upload",
     cancel: "Hủy",
@@ -215,6 +233,9 @@ const uploadText = {
     title: "Upload document",
     subject: "Subject",
     subjectPlaceholder: "Enter subject name",
+    tags: "Tags",
+    tagsHint: "(optional)",
+    tagsPlaceholder: "math, algebra, calculus...",
     dropOrClick: "Drag and drop or click to choose files",
     upload: "Upload",
     cancel: "Cancel",
