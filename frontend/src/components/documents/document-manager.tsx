@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   Search, Filter, Grid3X3, List, ChevronDown, X,
   ArrowUpDown, FolderPlus, Home, ChevronRight,
@@ -130,30 +130,6 @@ export function DocumentManager() {
 
   // ── Derived data ────────────────────────────────────────────────────────
   const activeDocs = documents.filter(d => d.status !== "deleted")
-
-  // Tính set ID của tài liệu "mới nhất" trong mỗi nhóm trùng tên.
-  // Pattern trùng: "report.pdf" → "report (2).pdf" → "report (3).pdf"
-  // Chỉ bản mới nhất (uploadedAt lớn nhất) mới được phép preview.
-  const latestDocIds = useMemo(() => {
-    const getBaseName = (name: string) =>
-      name.replace(/ \(\d+\)(?=\.[^.]*$|$)/, "")
-
-    const groups = new Map<string, typeof activeDocs>()
-    for (const doc of activeDocs) {
-      const key = getBaseName(doc.name)
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(doc)
-    }
-
-    const ids = new Set<string>()
-    for (const group of groups.values()) {
-      const latest = group.reduce((a, b) =>
-        a.uploadedAt.getTime() >= b.uploadedAt.getTime() ? a : b
-      )
-      ids.add(latest.id)
-    }
-    return ids
-  }, [activeDocs])
 
   const docsInFolder = activeDocs.filter(d =>
     (d.folderId ?? null) === currentFolderId
@@ -681,7 +657,6 @@ const handleSelectSubject = useCallback((subject: string) => {
                       setCurrentPage("flashcards")
                     }}
                     categories={categories}
-                    canPreview={latestDocIds.has(doc.id)}
                   />
                 </div>
               ))}

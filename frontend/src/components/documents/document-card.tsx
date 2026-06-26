@@ -37,7 +37,6 @@ export function DocumentCard({
   onChat,
   onGenerateFlashcards,
   categories,
-  canPreview = true,
 }: {
   doc: Document
   viewMode: "grid" | "list"
@@ -49,7 +48,6 @@ export function DocumentCard({
   onChat: (doc: Document) => void
   onGenerateFlashcards: (doc: Document) => void
   categories: ReturnType<typeof useApp>["categories"]
-  canPreview?: boolean
 }) {
   const { language } = useApp()
   const text = documentCardText[language]
@@ -138,13 +136,9 @@ export function DocumentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => canPreview && onPreview(doc)}
-                disabled={!canPreview}
-                className={!canPreview ? "opacity-50 cursor-not-allowed" : ""}
-              >
+              <DropdownMenuItem onClick={() => onPreview(doc)}>
                 <Eye className="mr-2 h-4 w-4" />
-                {canPreview ? text.viewDetails : text.oldVersion}
+                {text.viewDetails}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(doc)}>
                 <Edit3 className="mr-2 h-4 w-4" />
@@ -175,13 +169,9 @@ export function DocumentCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => canPreview && onPreview(doc)}
-              disabled={!canPreview}
-              className={!canPreview ? "opacity-50 cursor-not-allowed" : ""}
-            >
+            <DropdownMenuItem onClick={() => onPreview(doc)}>
               <Eye className="mr-2 h-4 w-4" />
-              {canPreview ? text.viewDetails : text.oldVersion}
+              {text.viewDetails}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit(doc)}>
               <Edit3 className="mr-2 h-4 w-4" />
@@ -281,7 +271,6 @@ const documentCardText = {
     download: "Tải xuống",
     delete: "Xóa",
     viewDetails: "Xem chi tiết",
-    oldVersion: "Phiên bản cũ (không xem được)",
     edit: "Chỉnh sửa",
     publicStatus: "Public",
     privateStatus: "Private",
@@ -294,7 +283,6 @@ const documentCardText = {
     download: "Download",
     delete: "Delete",
     viewDetails: "View details",
-    oldVersion: "Old version (not previewable)",
     edit: "Edit",
     publicStatus: "Public",
     privateStatus: "Private",
