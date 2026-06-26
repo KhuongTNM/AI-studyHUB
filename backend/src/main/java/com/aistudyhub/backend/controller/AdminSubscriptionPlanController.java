@@ -6,9 +6,13 @@ import com.aistudyhub.backend.service.AdminSubscriptionPlanService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,11 +28,35 @@ public class AdminSubscriptionPlanController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('admin', 'sub_admin')")
     public ResponseEntity<List<SubscriptionPlanResponse>> getPlans() {
         return ResponseEntity.ok(adminSubscriptionPlanService.getPlans());
     }
 
+    @PostMapping
+    @PreAuthorize("hasRole('admin')")
+    public ResponseEntity<SubscriptionPlanResponse> createPlan(
+            @Valid @RequestBody com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest request) {
+        return ResponseEntity.ok(adminSubscriptionPlanService.createPlan(request));
+    }
+
+    @PutMapping("/{planName}")
+    @PreAuthorize("hasRole('admin')")
+    public ResponseEntity<SubscriptionPlanResponse> updatePlan(
+            @PathVariable String planName,
+            @Valid @RequestBody com.aistudyhub.backend.dto.UpdateSubscriptionPlanRequest request) {
+        return ResponseEntity.ok(adminSubscriptionPlanService.updatePlan(planName, request));
+    }
+
+    @DeleteMapping("/{planName}")
+    @PreAuthorize("hasRole('admin')")
+    public ResponseEntity<Void> deletePlan(@PathVariable String planName) {
+        adminSubscriptionPlanService.deletePlan(planName);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{planName}/price")
+    @PreAuthorize("hasRole('admin')")
     public ResponseEntity<SubscriptionPlanResponse> updatePrice(
             @PathVariable String planName,
             @Valid @RequestBody UpdatePackagePriceRequest request) {

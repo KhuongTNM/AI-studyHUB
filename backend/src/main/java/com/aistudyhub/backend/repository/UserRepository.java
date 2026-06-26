@@ -23,4 +23,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") UUID id);
+
+    boolean existsBySubscriptionPlanId(Integer subscriptionPlanId);
 }

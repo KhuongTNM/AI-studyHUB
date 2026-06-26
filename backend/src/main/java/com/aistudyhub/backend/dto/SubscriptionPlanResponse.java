@@ -11,6 +11,8 @@ public class SubscriptionPlanResponse {
     private BigDecimal price;
     private short maxRoomMembers;
     private long defaultStorageBytes;
+    private int createGroupLimit;
+    private int joinGroupLimit;
 
     public static SubscriptionPlanResponse from(SubscriptionPlan plan) {
         SubscriptionPlanResponse response = new SubscriptionPlanResponse();
@@ -20,6 +22,8 @@ public class SubscriptionPlanResponse {
         response.price = plan.getPrice();
         response.maxRoomMembers = plan.getMaxRoomMembers();
         response.defaultStorageBytes = plan.getDefaultStorageBytes();
+        response.createGroupLimit = plan.getCreateGroupLimit();
+        response.joinGroupLimit = plan.getJoinGroupLimit();
         return response;
     }
 
@@ -45,5 +49,13 @@ public class SubscriptionPlanResponse {
 
     public long getDefaultStorageBytes() {
         return defaultStorageBytes;
+    }
+
+    public int getCreateGroupLimit() {
+        return createGroupLimit;
+    }
+
+    public int getJoinGroupLimit() {
+        return joinGroupLimit;
     }
 }
