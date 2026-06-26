@@ -100,6 +100,29 @@ export async function fetchDocumentsApi(): Promise<Document[]> {
   return docs.map(mapApiDocumentToDocument)
 }
 
+/**
+ * GET /api/documents?keyword=...&subject=...&tag=...
+ * Gọi backend search — backend xử lý tìm theo tiêu đề, môn học, tag.
+ * Nếu không truyền param nào, tương đương fetchDocumentsApi().
+ */
+export async function searchDocumentsApi(params: {
+  keyword?: string
+  subject?: string
+  tag?: string
+} = {}): Promise<Document[]> {
+  const url = new URL(`${API_BASE_URL}/api/documents`)
+  if (params.keyword?.trim()) url.searchParams.set("keyword", params.keyword.trim())
+  if (params.subject && params.subject !== "all") url.searchParams.set("subject", params.subject.trim())
+  if (params.tag?.trim()) url.searchParams.set("tag", params.tag.trim())
+
+  const response = await fetch(url.toString(), {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const docs = (await response.json()) as ApiDocument[]
+  return docs.map(mapApiDocumentToDocument)
+}
+
 /** GET /api/documents/public — lấy tài liệu public (BR-018) */
 export async function fetchPublicDocumentsApi(): Promise<Document[]> {
   const response = await fetch(`${API_BASE_URL}/api/documents/public`, {
