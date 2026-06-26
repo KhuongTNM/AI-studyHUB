@@ -7,4 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface SubscriptionPlanRepository extends JpaRepository<SubscriptionPlan, Integer> {
 
     Optional<SubscriptionPlan> findByName(String name);
+
+    boolean existsByDisplayName(String displayName);
+
+    boolean existsByName(String name);
 }
