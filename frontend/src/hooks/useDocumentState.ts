@@ -83,6 +83,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       subject: string,
       visibility: "private" | "public" = "private",
       folderId?: string | null,
+      tags?: string,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
@@ -146,7 +147,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
           setDocuments(prev =>
             prev.map(d => d.id === tempId ? { ...d, uploadProgress: progress } : d),
           )
-        })
+        }, tags)
 
         setDocuments(prev =>
           prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),

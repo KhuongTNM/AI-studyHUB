@@ -4,6 +4,7 @@ import { useState } from "react"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp, Document } from "@/lib/store"
+import { updateDocumentApi } from "@/services/api/documents"
 
 export function EditDocModal({
   doc,
@@ -17,15 +18,33 @@ export function EditDocModal({
   const [description, setDescription] = useState(doc.description || "")
   const [subject, setSubject] = useState(doc.subject)
   const [tags, setTags] = useState(doc.tags.join(", "))
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-  const handleSave = () => {
-    updateDocument(doc.id, {
-      name: title,
-      description,
-      subject,
-      tags: tags.split(",").map(t => t.trim()).filter(Boolean),
-    })
-    onClose()
+  const handleSave = async () => {
+    if (!title.trim()) return
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const updated = await updateDocumentApi(doc.id, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        subject: subject.trim(),
+        tags: tags.trim() || undefined,
+      })
+      // Đồng bộ local state sau khi API thành công
+      updateDocument(doc.id, {
+        name: updated.name,
+        description: updated.description,
+        subject: updated.subject,
+        tags: updated.tags,
+      })
+      onClose()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Không thể lưu thay đổi. Vui lòng thử lại.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -39,6 +58,12 @@ export function EditDocModal({
           </Button>
         </div>
         <div className="space-y-4 p-4">
+          {saveError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <span className="flex-1">{saveError}</span>
+              <button onClick={() => setSaveError(null)}><X className="h-3 w-3" /></button>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Tiêu đề *
@@ -72,7 +97,8 @@ export function EditDocModal({
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Tags (cách nhau bởi dấu phẩy)
+              Tags
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">(cách nhau bởi dấu phẩy)</span>
             </label>
             <input
               value={tags}
@@ -83,10 +109,14 @@ export function EditDocModal({
           </div>
         </div>
         <div className="flex gap-2 border-t border-border p-4">
-          <Button className="flex-1" onClick={handleSave} disabled={!title.trim()}>
-            Lưu thay đổi
+          <Button
+            className="flex-1"
+            onClick={handleSave}
+            disabled={!title.trim() || isSaving}
+          >
+            {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
           </Button>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>
             Hủy
           </Button>
         </div>
