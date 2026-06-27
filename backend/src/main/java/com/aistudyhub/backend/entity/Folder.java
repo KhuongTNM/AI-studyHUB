@@ -25,7 +25,7 @@ import lombok.Setter;
  * chứa các thư mục con (BR-081) lẫn các tài liệu học tập.
  */
 @Entity
-@Table(name = "folders")
+@Table(schema = "docs", name = "folders")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -44,10 +44,10 @@ public class Folder {
 
     /**
      * BR-003: Tên thư mục tối đa 50 ký tự, bắt buộc có giá trị.
-     * Dùng NVARCHAR để hỗ trợ đầy đủ Unicode (tiếng Việt, ký tự đặc biệt).
+     * Dùng VARCHAR — PostgreSQL mặc định đã UTF-8, hỗ trợ tiếng Việt và ký tự đặc biệt.
      */
     @Column(name = "name", nullable = false, length = TEN_TOI_DA,
-            columnDefinition = "NVARCHAR(" + TEN_TOI_DA + ")")
+            columnDefinition = "VARCHAR(" + TEN_TOI_DA + ")")
     private String name;
 
     /**
@@ -56,7 +56,7 @@ public class Folder {
      * thông qua logic nghiệp vụ tại tầng Service.
      */
     @Column(name = "subject", length = MON_HOC_TOI_DA,
-            columnDefinition = "NVARCHAR(" + MON_HOC_TOI_DA + ")")
+            columnDefinition = "VARCHAR(" + MON_HOC_TOI_DA + ")")
     private String subject;
 
     /**

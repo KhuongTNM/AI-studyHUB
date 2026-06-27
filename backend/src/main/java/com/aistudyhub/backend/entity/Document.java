@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "documents")
+@Table(schema = "docs", name = "documents")
 public class Document {
 
     @Id
@@ -46,12 +46,12 @@ public class Document {
     @Column(name = "subject", nullable = false, length = 100)
     private String subject;
 
-    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
     @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
-            name = "document_tags",
+            schema = "docs", name = "document_tags",
             joinColumns = @JoinColumn(name = "document_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
     private Set<Tag> tags = new HashSet<>();
@@ -67,7 +67,7 @@ public class Document {
     @Column(name = "share_status", nullable = false, length = 10)
     private String shareStatus = "none";
 
-    @Column(name = "share_note", columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "share_note", columnDefinition = "TEXT")
     private String shareNote;
 
     @Column(name = "download_count", nullable = false)

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "group_reports")
+@Table(schema = "group_chat", name = "group_reports")
 @Getter
 @Setter
 @NoArgsConstructor

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "group_messages")
+@Table(schema = "group_chat", name = "group_messages")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,7 +25,7 @@ public class GroupMessage {
     @Column(name = "sender_id", nullable = true)
     private UUID senderId;
 
-    @Column(name = "content", columnDefinition = "NVARCHAR(MAX)", nullable = false)
+    @Column(name = "content", columnDefinition = "TEXT", nullable = false)
     private String content;
 
     @Column(name = "message_type", length = 20, nullable = false)
