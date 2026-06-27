@@ -15,11 +15,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-<<<<<<< HEAD
 @Table(schema = "core", name = "activity_logs")
-=======
-
->>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class ActivityLog {
 
     public enum Action {
