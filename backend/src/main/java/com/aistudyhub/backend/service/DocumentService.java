@@ -34,6 +34,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.context.ApplicationContext;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.transaction.annotation.Propagation;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentService {
@@ -43,6 +51,8 @@ public class DocumentService {
     private final DocumentScanProcessor scanProcessor;
     private final FolderRepository folderRepository;
     private final TagRepository tagRepository;
+    private final StorageService storageService;
+    private final ApplicationContext applicationContext;
 
     @Value("${app.upload.dir:./uploads}")
     private String uploadDirPath;
@@ -416,5 +426,73 @@ public class DocumentService {
         int dot = filename.lastIndexOf('.');
         if (dot < 0) return "";
         return filename.substring(dot + 1).toLowerCase();
+    }
+
+    @Transactional
+    public void deleteDocumentPermanentAPI(UUID id, UUID userId) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa tài liệu này.");
+        }
+        if (doc.getStatus() != DocumentStatus.DELETED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu chưa được chuyển vào thùng rác.");
+        }
+        applicationContext.getBean(DocumentService.class).permanentlyDeleteDocument(doc);
+    }
+
+    @Transactional
+    public void emptyTrash(UUID userId) {
+        List<Document> trashDocs = documentRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, DocumentStatus.DELETED);
+        DocumentService self = applicationContext.getBean(DocumentService.class);
+        for (Document doc : trashDocs) {
+            try {
+                self.permanentlyDeleteDocument(doc);
+            } catch (Exception e) {
+                log.error("Failed to permanently delete document: " + doc.getId(), e);
+            }
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void permanentlyDeleteDocument(Document doc) {
+        try {
+            storageService.delete(doc.getFileUrl());
+        } catch (Exception e) {
+            log.warn("Storage delete failed, continuing... {}", e.getMessage());
+        }
+        documentRepository.deleteById(doc.getId());
+        storageService.subtractUsed(doc.getUserId(), doc.getFileSizeBytes());
+        tagRepository.deleteOrphanTags();
+    }
+
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void scheduledCleanup() {
+        log.info("Starting scheduled cleanup of deleted documents...");
+        LocalDateTime threshold = LocalDateTime.now().minusDays(30);
+        int page = 0;
+        int size = 100;
+        int cleanedCount = 0;
+        DocumentService self = applicationContext.getBean(DocumentService.class);
+
+        while (true) {
+            Page<Document> documents = documentRepository.findByStatusAndDeletedAtBefore(
+                    DocumentStatus.DELETED, threshold, PageRequest.of(page, size));
+            
+            if (documents.isEmpty()) {
+                break;
+            }
+
+            for (Document doc : documents.getContent()) {
+                try {
+                    self.permanentlyDeleteDocument(doc);
+                    cleanedCount++;
+                } catch (Exception e) {
+                    log.error("Error cleaning up document: " + doc.getId(), e);
+                }
+            }
+            page++;
+        }
+        log.info("Finished scheduled cleanup. Cleaned {} documents.", cleanedCount);
     }
 }

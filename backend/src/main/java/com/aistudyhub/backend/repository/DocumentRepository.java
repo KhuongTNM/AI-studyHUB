@@ -22,6 +22,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     List<Document> findByStatusAndDeletedAtIsNull(DocumentStatus status);
 
+    @Query("SELECT d FROM Document d WHERE d.status = :status AND d.deletedAt < :before")
+    org.springframework.data.domain.Page<Document> findByStatusAndDeletedAtBefore(@Param("status") DocumentStatus status, @Param("before") java.time.LocalDateTime before, org.springframework.data.domain.Pageable pageable);
+
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 
     List<Document> findByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, DocumentStatus status);
