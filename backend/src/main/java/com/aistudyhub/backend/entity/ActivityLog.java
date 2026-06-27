@@ -53,11 +53,7 @@ public class ActivityLog {
     @Column(name = "target_id")
     private UUID targetId;
 
-<<<<<<< HEAD
     @Column(name = "description", columnDefinition = "TEXT")
-=======
-
->>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
     private String description;
 
     @Column(name = "created_at", nullable = false)
