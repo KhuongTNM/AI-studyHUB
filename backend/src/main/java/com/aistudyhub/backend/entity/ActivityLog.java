@@ -18,7 +18,7 @@ import java.util.UUID;
 <<<<<<< HEAD
 @Table(schema = "core", name = "activity_logs")
 =======
-@Table(name = "activity_logs")
+
 >>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class ActivityLog {
 
