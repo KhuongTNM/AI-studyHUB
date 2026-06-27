@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
+import { searchDocumentsApi } from "@/services/api/documents"
 import type { Document, Folder } from "@/lib/store"
 import { UploadProgress } from "./upload-progress"
 import { DocumentPreviewModal } from "./document-preview-modal"
@@ -46,6 +47,48 @@ export function DocumentManager() {
   const [sortBy, setSortBy] = useState<"date" | "name" | "size">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+
+  // ── Backend search state ────────────────────────────────────────────────
+  // null = không có tìm kiếm đang hoạt động (dùng filter local theo folder)
+  const [searchResults, setSearchResults] = useState<import("@/states/types").Document[] | null>(null)
+  const [isSearchLoading, setIsSearchLoading] = useState(false)
+
+  // Debounce: gọi backend khi người dùng gõ keyword (400 ms)
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q) {
+      setSearchResults(null)
+      setIsSearchLoading(false)
+      return
+    }
+
+    setIsSearchLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const subjectParam = selectedSubject !== "all" ? selectedSubject : undefined
+        // Gọi song song: tìm theo keyword (tên/mô tả) VÀ theo tag chính xác
+        const [byKeyword, byTag] = await Promise.all([
+          searchDocumentsApi({ keyword: q, subject: subjectParam }),
+          searchDocumentsApi({ tag: q, subject: subjectParam }),
+        ])
+        // Gộp, loại trùng id, lọc bỏ deleted
+        const seen = new Set<string>()
+        const merged = [...byKeyword, ...byTag].filter(d => {
+          if (seen.has(d.id) || d.status === "deleted") return false
+          seen.add(d.id)
+          return true
+        })
+        setSearchResults(merged)
+      } catch {
+        // Nếu backend lỗi, giữ nguyên filter local (searchResults = null)
+        setSearchResults(null)
+      } finally {
+        setIsSearchLoading(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery, selectedSubject])
 
   // ── Modals ──────────────────────────────────────────────────────────────
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
@@ -118,8 +161,17 @@ export function DocumentManager() {
     return undefined
   })()
 
-  const filtered = docsInFolder
+  // Khi đang search (searchResults != null): dùng kết quả từ backend (xuyên folder)
+  // Khi không search: filter local theo folder hiện tại (hành vi cũ)
+  const isSearchMode = searchResults !== null
+
+  const filtered = (isSearchMode ? searchResults : docsInFolder)
     .filter(d => {
+      // Khi backend search đã lọc theo keyword rồi, chỉ cần lọc thêm subject local nếu cần
+      if (isSearchMode) {
+        return selectedSubject === "all" || d.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
+      }
+      // Chế độ folder: filter local như cũ
       const matchSearch = !searchQuery ||
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -135,7 +187,7 @@ export function DocumentManager() {
       return sortOrder === "desc" ? -cmp : cmp
     })
 
-  const filteredFolders = foldersInView.filter(f => {
+  const filteredFolders = isSearchMode ? [] : foldersInView.filter(f => {
     const matchSearch = !searchQuery || f.name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchSubject = selectedSubject === "all" || f.subject?.trim().toLowerCase() === selectedSubject.toLowerCase()
     return matchSearch && matchSubject
@@ -178,12 +230,12 @@ const handleSelectSubject = useCallback((subject: string) => {
 }, [])
 
 
-  const handleUpload = useCallback(async (files: File[], subject: string) => {
+  const handleUpload = useCallback(async (files: File[], subject: string, tags?: string) => {
     if (!currentUser) return
     setUploadError(null)
     const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
     for (const file of files) {
-      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId, tags)
       if (!result.success && result.error) {
         setUploadError(result.error)
         break
@@ -387,9 +439,16 @@ const handleSelectSubject = useCallback((subject: string) => {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder={text.searchPlaceholder}
-              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
-            {searchQuery && (
+            {isSearchLoading ? (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <svg className="h-3 w-3 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              </span>
+            ) : searchQuery && (
               <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                 <X className="h-3 w-3" />
               </button>
@@ -516,6 +575,24 @@ const handleSelectSubject = useCallback((subject: string) => {
               </p>
             </div>
           )
+        )}
+
+        {/* ── Search results banner ─────────────────────────────────── */}
+        {isSearchMode && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+            <Search className="h-4 w-4 text-primary shrink-0" />
+            <span className="flex-1 text-foreground">
+              {language === "vi"
+                ? `Kết quả từ máy chủ cho "${searchQuery.trim()}" — ${filtered.length} tài liệu`
+                : `Server results for "${searchQuery.trim()}" — ${filtered.length} document${filtered.length !== 1 ? "s" : ""}`}
+            </span>
+            <button
+              onClick={() => setSearchQuery("")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
         )}
 
         {/* ── Folders section ───────────────────────────────────────── */}

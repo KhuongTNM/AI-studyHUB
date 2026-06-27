@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
-  KeyRound, LayoutDashboard, Sparkles, UserCog,
+  CheckCircle2, HardDrive, KeyRound, LayoutDashboard, Package,
+  Pencil, Plus, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp, type PackageTier, type User } from "@/lib/store"
@@ -11,6 +12,35 @@ import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
 import { SubAdminForm } from "./sub-admin-form"
+
+// ─── Editable package type used only in admin UI ───────────────────────────
+interface EditablePkg {
+  id: string
+  tier: string
+  name: string
+  price: number
+  maxUsers: number
+  storage: string
+  createGroupLimit: number
+  joinGroupLimit: number
+  hasAiChat: boolean
+  hasFlashcards: boolean
+}
+
+function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: number; maxUsers: number }): EditablePkg {
+  return {
+    id: pkg.id,
+    tier: pkg.tier,
+    name: pkg.name,
+    price: pkg.price,
+    maxUsers: pkg.maxUsers,
+    storage: pkg.tier === "free" ? "512 MB" : pkg.tier === "2-4" ? "1 GB" : "5 GB",
+    createGroupLimit: pkg.tier === "free" ? 0 : pkg.tier === "2-4" ? 20 : 50,
+    joinGroupLimit: pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60,
+    hasAiChat: true,
+    hasFlashcards: true,
+  }
+}
 
 type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
@@ -44,6 +74,16 @@ export function AdminDashboard() {
   const [grantTier, setGrantTier] = useState<PackageTier>("2-4")
   const [grantDuration, setGrantDuration] = useState<number>(1)
 
+  // ── Package management local state ────────────────────────────────────────
+  const [editablePackages, setEditablePackages] = useState<EditablePkg[]>([])
+  const [pkgEditId, setPkgEditId] = useState<string | null>(null)
+  const [pkgDraft, setPkgDraft] = useState<Partial<EditablePkg>>({})
+  const [showAddPkgModal, setShowAddPkgModal] = useState(false)
+  const [newPkgForm, setNewPkgForm] = useState({
+    name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30,
+  })
+  const syncedRef = useRef(false)
+
   const isAdmin = currentUser?.role === "admin"
   const isSubAdmin = currentUser?.role === "sub-admin"
   const canManage = isAdmin || isSubAdmin
@@ -54,6 +94,14 @@ export function AdminDashboard() {
     window.addEventListener(ADMIN_SECTION_EVENT, syncSection)
     return () => window.removeEventListener(ADMIN_SECTION_EVENT, syncSection)
   }, [])
+
+  // Sync editable packages once from backend data on first load
+  useEffect(() => {
+    if (!syncedRef.current && packagePrices.length > 0) {
+      syncedRef.current = true
+      setEditablePackages(packagePrices.map(pkgFromPrice))
+    }
+  }, [packagePrices])
 
   const selectSection = (nextSection: AdminSection) => {
     window.sessionStorage.setItem("admin-section", nextSection)
@@ -206,46 +254,368 @@ export function AdminDashboard() {
     </div>
   )
 
+  const startEditPkg = (pkg: EditablePkg) => {
+    setPkgEditId(pkg.id)
+    setPkgDraft({ ...pkg })
+  }
+
+  const cancelEditPkg = () => {
+    setPkgEditId(null)
+    setPkgDraft({})
+  }
+
+  const savePkg = (pkg: EditablePkg) => {
+    const updated = { ...pkg, ...pkgDraft }
+    const isKnownTier = ["free", "2-4", "5+"].includes(pkg.tier)
+    if (isKnownTier && updated.price !== pkg.price) {
+      const pkgName = updated.name
+      requirePassword(
+        formatAdminText(text.updatePrice, { name: pkgName }),
+        async (password) => {
+          const result = await updatePackagePrice(pkg.tier as PackageTier, updated.price, password)
+          if (result.success) {
+            setEditablePackages(prev => prev.map(p => p.id === pkg.id ? updated : p))
+            setMessage(formatAdminText(text.priceUpdated, { name: pkgName }))
+          } else {
+            setMessage(result.error ?? text.actionFailed)
+          }
+        }
+      )
+    } else {
+      setEditablePackages(prev => prev.map(p => p.id === pkg.id ? updated : p))
+      setMessage(`Đã cập nhật gói "${updated.name}".`)
+    }
+    setPkgEditId(null)
+    setPkgDraft({})
+  }
+
+  const deletePkg = (pkg: EditablePkg) => {
+    setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
+    setMessage(`Đã xóa gói "${pkg.name}".`)
+  }
+
+  const addNewPkg = () => {
+    if (!newPkgForm.name.trim()) return
+    const id = `pkg-custom-${Date.now()}`
+    const newPkg: EditablePkg = {
+      id,
+      tier: id,
+      name: newPkgForm.name,
+      price: newPkgForm.price,
+      maxUsers: newPkgForm.joinGroupLimit,
+      storage: newPkgForm.storage,
+      createGroupLimit: newPkgForm.createGroupLimit,
+      joinGroupLimit: newPkgForm.joinGroupLimit,
+      hasAiChat: true,
+      hasFlashcards: true,
+    }
+    setEditablePackages(prev => [...prev, newPkg])
+    setShowAddPkgModal(false)
+    setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
+    setMessage(`Đã thêm gói "${newPkg.name}".`)
+  }
+
   const renderPackages = () => (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-3 flex items-center gap-2 font-semibold text-foreground">
-        <Sparkles className="h-4 w-4 text-primary" />
-        {text.packagePrices}
-      </h2>
-      <div className="grid gap-4 md:grid-cols-2">
-        {packagePrices.filter(p => p.tier !== "free").map(pkg => {
-          const packageName = pkg.tier === "2-4" ? text.package2To4People : text.package5PlusPeople
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Quản lý gói dịch vụ</h2>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            {editablePackages.length} gói
+          </span>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setShowAddPkgModal(true)}
+          className="gap-1.5"
+        >
+          <Plus className="h-4 w-4" />
+          Thêm gói
+        </Button>
+      </div>
+
+      {/* Package cards grid — mirrors the customer view */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {editablePackages.map((pkg) => {
+          const isEditing = pkgEditId === pkg.id
+          const draft = isEditing ? { ...pkg, ...pkgDraft } : pkg
+
           return (
-          <div key={pkg.id} className="rounded-lg border border-border bg-background p-4">
-            <div className="mb-3">
-              <p className="text-sm font-semibold text-foreground">{packageName}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatAdminText(text.maxRoomMembers, { count: pkg.maxUsers })}
-              </p>
+            <div
+              key={pkg.id}
+              className={`relative flex flex-col rounded-2xl border bg-card transition-all ${
+                isEditing
+                  ? "border-primary ring-2 ring-primary/20 shadow-lg"
+                  : "border-border hover:border-primary/40 hover:shadow-md"
+              }`}
+            >
+              {/* Top badge for known tiers */}
+              {pkg.tier === "free" && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-muted px-3 py-0.5 text-xs font-semibold text-muted-foreground border border-border">
+                  Mặc định
+                </span>
+              )}
+              {pkg.tier === "2-4" && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground shadow-sm">
+                  Phổ biến
+                </span>
+              )}
+              {pkg.tier === "5+" && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-white shadow-sm">
+                  Cao cấp
+                </span>
+              )}
+
+              <div className="flex flex-1 flex-col p-6">
+                {/* Package name */}
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={draft.name}
+                    onChange={e => setPkgDraft(d => ({ ...d, name: e.target.value }))}
+                    className="mb-1 w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Tên gói"
+                  />
+                ) : (
+                  <h3 className="mb-1 text-lg font-bold text-foreground">{pkg.name}</h3>
+                )}
+
+                {/* Price */}
+                <div className="mb-5 flex items-baseline gap-1">
+                  {isEditing ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={draft.price}
+                        onChange={e => setPkgDraft(d => ({ ...d, price: Number(e.target.value) }))}
+                        className="w-36 rounded-lg border border-primary bg-background px-3 py-1.5 text-xl font-extrabold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">đ/tháng</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-2xl font-extrabold text-foreground">
+                        {pkg.price === 0 ? "Miễn phí" : `${pkg.price.toLocaleString("vi-VN")}đ`}
+                      </span>
+                      {pkg.price > 0 && <span className="text-xs text-muted-foreground">/tháng</span>}
+                    </>
+                  )}
+                </div>
+
+                {/* Features list */}
+                <ul className="mb-6 flex-1 space-y-3 border-t border-border pt-4 text-sm">
+                  {/* AI Chat — always on */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    <span>AI Chat cá nhân hỏi đáp</span>
+                  </li>
+
+                  {/* Group limits */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <Users className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    {isEditing ? (
+                      <div className="flex flex-col gap-1 w-full">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs w-24 shrink-0">Tạo tối đa:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={draft.createGroupLimit ?? 0}
+                            onChange={e => setPkgDraft(d => ({ ...d, createGroupLimit: Number(e.target.value) }))}
+                            className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <span className="text-xs">nhóm</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs w-24 shrink-0">Tham gia tối đa:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={draft.joinGroupLimit ?? 0}
+                            onChange={e => setPkgDraft(d => ({ ...d, joinGroupLimit: Number(e.target.value) }))}
+                            className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <span className="text-xs">nhóm</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span>
+                        {pkg.createGroupLimit === 0
+                          ? `Không tạo nhóm, tham gia tối đa ${pkg.joinGroupLimit} nhóm`
+                          : `Tạo tối đa ${pkg.createGroupLimit} nhóm, tham gia tối đa ${pkg.joinGroupLimit} nhóm`}
+                      </span>
+                    )}
+                  </li>
+
+                  {/* Storage */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs shrink-0">Dung lượng:</span>
+                        <input
+                          type="text"
+                          value={draft.storage ?? ""}
+                          onChange={e => setPkgDraft(d => ({ ...d, storage: e.target.value }))}
+                          className="w-24 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="vd: 1 GB"
+                        />
+                      </div>
+                    ) : (
+                      <span>Dung lượng lưu trữ: {pkg.storage}</span>
+                    )}
+                  </li>
+
+                  {/* Flashcards — always on */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    <span>Tạo flashcards từ tài liệu</span>
+                  </li>
+                </ul>
+
+                {/* Action buttons */}
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1 gap-1.5"
+                      size="sm"
+                      onClick={() => savePkg(pkg)}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Cập nhật gói
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelEditPkg}
+                      className="px-3"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-1.5"
+                      size="sm"
+                      onClick={() => startEditPkg(pkg)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Chỉnh sửa
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deletePkg(pkg)}
+                      className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                step="5000"
-                defaultValue={pkg.price}
-                onBlur={e => {
-                  const newPrice = Number(e.target.value)
-                  if (!isNaN(newPrice) && newPrice >= 0 && newPrice !== pkg.price) {
-                    requirePassword(formatAdminText(text.updatePrice, { name: packageName }), async (password) => {
-                      const result = await updatePackagePrice(pkg.tier, newPrice, password)
-                      runAccountAction(result, formatAdminText(text.priceUpdated, { name: packageName }))
-                    })
-                  }
-                }}
-                className="h-9 w-32 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span className="text-xs text-muted-foreground">{text.perMonthVnd}</span>
+          )
+        })}
+      </div>
+
+      {/* Add Package Modal */}
+      {showAddPkgModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <Plus className="h-5 w-5 text-primary" />
+                Thêm gói dịch vụ mới
+              </h3>
+              <button
+                onClick={() => setShowAddPkgModal(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tên gói *</span>
+                <input
+                  type="text"
+                  value={newPkgForm.name}
+                  onChange={e => setNewPkgForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="vd: Gói Enterprise"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Giá gói (VNĐ/tháng)</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={newPkgForm.price}
+                    onChange={e => setNewPkgForm(f => ({ ...f, price: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="shrink-0 text-xs text-muted-foreground">đ/tháng</span>
+                </div>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tạo tối đa (nhóm)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newPkgForm.createGroupLimit}
+                    onChange={e => setNewPkgForm(f => ({ ...f, createGroupLimit: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tham gia tối đa (nhóm)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newPkgForm.joinGroupLimit}
+                    onChange={e => setNewPkgForm(f => ({ ...f, joinGroupLimit: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Dung lượng lưu trữ</span>
+                <input
+                  type="text"
+                  value={newPkgForm.storage}
+                  onChange={e => setNewPkgForm(f => ({ ...f, storage: e.target.value }))}
+                  placeholder="vd: 10 GB"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowAddPkgModal(false)}>
+                {text.cancel}
+              </Button>
+              <Button onClick={addNewPkg} disabled={!newPkgForm.name.trim()} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Thêm gói
+              </Button>
             </div>
           </div>
-        )})}
-      </div>
-    </section>
+        </div>
+      )}
+    </div>
   )
 
   return (

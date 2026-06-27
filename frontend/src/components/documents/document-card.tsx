@@ -76,6 +76,11 @@ export function DocumentCard({
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
               {subject}
             </span>
+            {doc.tags.length > 0 && doc.tags.map(tag => (
+              <span key={tag} className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                #{tag}
+              </span>
+            ))}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
@@ -193,9 +198,18 @@ export function DocumentCard({
         <span>•</span>
         <span>{doc.uploadedAt.toLocaleDateString(dateLocale)}</span>
       </div>
-      <span className="mb-3 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+      <span className="mb-2 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         {subject}
       </span>
+      {doc.tags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {doc.tags.map(tag => (
+            <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => onToggleVisibility(doc.id, !doc.isPublic)}

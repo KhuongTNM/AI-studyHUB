@@ -199,10 +199,15 @@ public class DocumentService {
         if (!doc.getUserId().equals(userId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa tài liệu này.");
         }
+        // Lưu lại tags trước khi soft-delete để kiểm tra orphan sau
+        Set<Tag> docTags = new HashSet<>(doc.getTags());
         doc.setStatus(DocumentStatus.DELETED);
         doc.setDeletedAt(LocalDateTime.now());
         doc.setUpdatedAt(LocalDateTime.now());
-        documentRepository.save(doc);
+        // saveAndFlush để DB phản ánh deletedAt trước khi query orphan
+        documentRepository.saveAndFlush(doc);
+        // Xóa tag mồ côi (không còn file active nào dùng)
+        deleteOrphanTags(docTags);
         // Inline storage subtraction to avoid nested @Transactional PESSIMISTIC_WRITE deadlock
         userRepository.findById(userId).ifPresent(u -> {
             u.setStorageUsedBytes(Math.max(0, u.getStorageUsedBytes() - doc.getFileSizeBytes()));
@@ -347,7 +352,16 @@ public class DocumentService {
             }
         }
         if (request.getTags() != null) {
-            doc.setTags(resolveTags(request.getTags()));
+            Set<Tag> oldTags = new HashSet<>(doc.getTags());
+            Set<Tag> newTags = resolveTags(request.getTags());
+            doc.setTags(newTags);
+            doc.setUpdatedAt(LocalDateTime.now());
+            documentRepository.saveAndFlush(doc);
+            // Xóa orphan tags từ những tag bị gỡ bỏ
+            Set<Tag> removedTags = new HashSet<>(oldTags);
+            removedTags.removeAll(newTags);
+            deleteOrphanTags(removedTags);
+            return doc;
         }
         doc.setUpdatedAt(LocalDateTime.now());
         return documentRepository.save(doc);
@@ -367,6 +381,18 @@ public class DocumentService {
     public Path getFilePath(Document doc) {
         String filename = Paths.get(doc.getFileUrl()).getFileName().toString();
         return uploadDir.resolve(filename);
+    }
+
+    /** Xóa những tag trong danh sách không còn được gắn với bất kỳ document active nào */
+    private void deleteOrphanTags(Set<Tag> candidates) {
+        if (candidates == null || candidates.isEmpty()) return;
+        Set<Long> candidateIds = candidates.stream()
+            .map(Tag::getId)
+            .collect(Collectors.toSet());
+        List<Tag> orphans = tagRepository.findOrphanTagsAmongIds(candidateIds);
+        if (!orphans.isEmpty()) {
+            tagRepository.deleteAll(orphans);
+        }
     }
 
     private Set<Tag> resolveTags(String rawTags) {
