@@ -25,8 +25,12 @@ public class DatabaseConfig {
         config.setJdbcUrl(jdbcUrl);
         config.setUsername(username);
         config.setPassword(password);
+<<<<<<< HEAD
         // Đã đổi từ SQLServerDriver sang PostgreSQL driver
         config.setDriverClassName("org.postgresql.Driver");
+=======
+        config.setDriverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(2);
         config.setPoolName("AIStudyHubPool");

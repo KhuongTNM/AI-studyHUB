@@ -16,7 +16,11 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
+<<<<<<< HEAD
 @Table(schema = "docs", name = "documents")
+=======
+@Table(name = "documents")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class Document {
 
     @Id
@@ -46,12 +50,20 @@ public class Document {
     @Column(name = "subject", nullable = false, length = 100)
     private String subject;
 
+<<<<<<< HEAD
     @Column(name = "description", columnDefinition = "TEXT")
+=======
+    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
     private String description;
 
     @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
+<<<<<<< HEAD
             schema = "docs", name = "document_tags",
+=======
+            name = "document_tags",
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
             joinColumns = @JoinColumn(name = "document_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
     private Set<Tag> tags = new HashSet<>();
@@ -67,7 +79,11 @@ public class Document {
     @Column(name = "share_status", nullable = false, length = 10)
     private String shareStatus = "none";
 
+<<<<<<< HEAD
     @Column(name = "share_note", columnDefinition = "TEXT")
+=======
+    @Column(name = "share_note", columnDefinition = "NVARCHAR(MAX)")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
     private String shareNote;
 
     @Column(name = "download_count", nullable = false)

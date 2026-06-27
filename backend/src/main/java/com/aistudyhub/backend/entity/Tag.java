@@ -8,7 +8,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
+<<<<<<< HEAD
 @Table(schema = "docs", name = "tags")
+=======
+@Table(name = "tags")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class Tag {
 
     @Id

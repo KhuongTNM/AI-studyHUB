@@ -10,7 +10,11 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
+<<<<<<< HEAD
 @Table(schema = "core", name = "password_reset_tokens")
+=======
+@Table(name = "password_reset_tokens")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class PasswordResetToken {
 
     @Id

@@ -15,7 +15,11 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
+<<<<<<< HEAD
 @Table(schema = "core", name = "activity_logs")
+=======
+@Table(name = "activity_logs")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class ActivityLog {
 
     public enum Action {
@@ -49,7 +53,11 @@ public class ActivityLog {
     @Column(name = "target_id")
     private UUID targetId;
 
+<<<<<<< HEAD
     @Column(name = "description", columnDefinition = "TEXT")
+=======
+    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
     private String description;
 
     @Column(name = "created_at", nullable = false)

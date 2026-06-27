@@ -6,7 +6,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
+<<<<<<< HEAD
 @Table(schema = "group_chat", name = "group_members")
+=======
+@Table(name = "group_members")
+>>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 @Getter
 @Setter
 @NoArgsConstructor
