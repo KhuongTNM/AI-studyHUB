@@ -15,6 +15,11 @@ import java.nio.file.Paths;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.web.multipart.MultipartFile;
+import java.net.MalformedURLException;
+
 @Slf4j
 @Service
 public class StorageService {
@@ -56,6 +61,50 @@ public class StorageService {
             Files.deleteIfExists(filePath);
         } catch (Exception e) {
             log.warn("Failed to delete physical file: {}", fileUrl, e);
+        }
+    }
+
+    // Load File As Resource
+    public Resource loadAsResource(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy đường dẫn tệp.");
+        }
+        try {
+            Path uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
+            String filename = Paths.get(fileUrl).getFileName().toString();
+            Path filePath = uploadDir.resolve(filename);
+            Resource resource = new UrlResource(filePath.toUri());
+
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "Tệp không tồn tại hoặc không thể đọc được.");
+            }
+            return resource;
+        } catch (MalformedURLException e) {
+            log.warn("Failed to resolve physical file: {}", fileUrl, e);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể truy xuất tệp.");
+        }
+    }
+
+    // Store Group Image
+    public String storeGroupImage(UUID groupId, MultipartFile file) {
+        try {
+            Path uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
+            Files.createDirectories(uploadDir);
+
+            String originalName = file.getOriginalFilename();
+            String extension = "";
+            if (originalName != null && originalName.contains(".")) {
+                extension = originalName.substring(originalName.lastIndexOf('.'));
+            }
+
+            String storedFilename = UUID.randomUUID() + extension;
+            Path destination = uploadDir.resolve(storedFilename);
+            Files.copy(file.getInputStream(), destination);
+
+            return storedFilename;
+        } catch (Exception e) {
+            log.warn("Failed to store group image for group {}", groupId, e);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể lưu tệp ảnh.");
         }
     }
 }

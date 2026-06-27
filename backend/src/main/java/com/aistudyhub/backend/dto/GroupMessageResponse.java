@@ -25,7 +25,7 @@ public class GroupMessageResponse {
     private String documentName;
     private String documentSubject;
     private String documentVisibility;
-    private Boolean documentDownloadable;
+    private boolean documentDownloadable;
     private String imageUrl;
     private String imageName;
     private LocalDateTime createdAt;
