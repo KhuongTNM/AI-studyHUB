@@ -13,11 +13,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-<<<<<<< HEAD
 @Table(schema = "core", name = "users")
-=======
-@Table(name = "users")
->>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
 public class User {
 
     public enum Role {
