@@ -56,7 +56,7 @@ public class ActivityLog {
 <<<<<<< HEAD
     @Column(name = "description", columnDefinition = "TEXT")
 =======
-    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+
 >>>>>>> cedad45d504a3d9629903eb97f921e8b7b986e07
     private String description;
 
