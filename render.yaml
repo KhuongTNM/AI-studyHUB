@@ -1,5 +1,6 @@
 # render.yaml — chỉ deploy Backend (Spring Boot)
 # Đặt file này ở ROOT của repo (cùng cấp với thư mục backend/)
+# ⚠️  Khi dùng file này (Blueprint), KHÔNG set Root Directory trong Render UI
 
 services:
   - type: web
@@ -7,52 +8,31 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter                   # free plan không hỗ trợ Disk (xem note bên dưới)
-    healthCheckPath: /actuator/health
+    plan: starter
     envVars:
-      # ── Database (Supabase) ──────────────────────────────────────
       - key: DB_URL
         sync: false
-
       - key: DB_USERNAME
         sync: false
-
       - key: DB_PASSWORD
         sync: false
-
-      # ── JWT ──────────────────────────────────────────────────────
       - key: JWT_SECRET
         generateValue: true
-
       - key: JWT_EXPIRATION_MS
         value: "86400000"
-
-      # ── CORS — điền URL frontend (Vercel/Netlify/...) ────────────
       - key: CORS_ORIGINS
         sync: false
-
-      # ── Upload ───────────────────────────────────────────────────
       - key: UPLOAD_DIR
         value: /app/uploads
-
-      # ── Email (Resend) ───────────────────────────────────────────
       - key: RESEND_API_KEY
         sync: false
-
       - key: RESEND_FROM_EMAIL
         sync: false
-
-      # ── App URL (frontend của bạn, dùng cho email reset password) ─
       - key: APP_FRONTEND_URL
         sync: false
-
-      # ── Google OAuth ─────────────────────────────────────────────
       - key: GOOGLE_CLIENT_ID
         sync: false
 
-    # ── Persistent Disk cho file uploads ────────────────────────────
-    # ⚠️  Chỉ dùng được từ plan "Starter" ($7/tháng) trở lên
-    # Nếu dùng free plan: xóa block disk này
     disk:
       name: aistudyhub-uploads
       mountPath: /app/uploads
