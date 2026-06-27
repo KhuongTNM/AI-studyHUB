@@ -2,7 +2,7 @@
 
 StudyHub is an AI-supported study document management system. The project is split into two main sides:
 
-- **Backend:** Java Spring Boot API, SQL Server database, authentication, business logic.
+- **Backend:** Java Spring Boot API, PostgreSQL database, authentication, business logic.
 - **Frontend:** Next.js + TypeScript user interface, API client, pages, components, and state hooks.
 
 Repository: [https://github.com/KhuongTNM/AI-studyHUB](https://github.com/KhuongTNM/AI-studyHUB)
@@ -17,8 +17,8 @@ Install these before running the project:
 | [Apache Maven](https://maven.apache.org/download.cgi) | 3.9+ | Build/chạy backend (`mvn`) |
 | [Node.js](https://nodejs.org/) | 18+ (LTS) | Frontend Next.js |
 | npm | đi kèm Node.js | Cài dependency frontend |
-| [SQL Server](https://www.microsoft.com/sql-server) | 2019+ hoặc Express | Database `AIStudyHub` |
-| SSMS hoặc Azure Data Studio | mới nhất | Chạy script schema |
+| [PostgreSQL](https://www.postgresql.org/download/) | 15+ | Database `AIStudyHub` |
+| [pgAdmin 4](https://www.pgadmin.org/) hoặc psql CLI | mới nhất | Chạy script schema |
 
 Kiểm tra nhanh trong terminal:
 
@@ -27,6 +27,7 @@ java -version
 mvn -version
 node -v
 npm -v
+psql --version
 ```
 
 If `mvn` is not recognized, install Maven and add the Maven `bin` folder to Windows `PATH`.
@@ -65,19 +66,19 @@ Important backend file:
 backend/src/main/resources/application.properties
 ```
 
-Open this file to set SQL Server username/password before running the backend:
+Open this file to set PostgreSQL connection info before running the backend:
 
 ```properties
-app.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=AIStudyHub;encrypt=true;trustServerCertificate=true
-app.datasource.username=sa
-app.datasource.password=YOUR_SQL_SERVER_PASSWORD
+app.datasource.url=jdbc:postgresql://localhost:5432/AIStudyHub
+app.datasource.username=postgres
+app.datasource.password=YOUR_POSTGRESQL_PASSWORD
 ```
 
-Example for local class setup:
+Example for local setup:
 
 ```properties
-app.datasource.username=sa
-app.datasource.password=12345678
+app.datasource.username=postgres
+app.datasource.password=12345
 ```
 
 ### Frontend Side
@@ -123,17 +124,27 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 Before running the backend, create the database schema.
 
-1. Open SQL Server Management Studio or Azure Data Studio.
-2. Connect to your local SQL Server.
-3. Run this file:
+### Option A — pgAdmin 4
+
+1. Open pgAdmin 4 and connect to your local PostgreSQL server.
+2. Right-click **Databases** → **Create** → **Database**, đặt tên `AIStudyHub`.
+3. Right-click database `AIStudyHub` → **Query Tool**.
+4. Mở và chạy file:
 
 ```text
-database/ai_study_hub_schema_mssql.sql
+database/ai_study_hub_schema_postgresql.sql
 ```
 
-This creates the `AIStudyHub` database and required tables.
+### Option B — psql CLI
 
-After running the SQL script, make sure `application.properties` has the same SQL Server username/password.
+```bash
+psql -U postgres -c "CREATE DATABASE \"AIStudyHub\";"
+psql -U postgres -d AIStudyHub -f database/ai_study_hub_schema_postgresql.sql
+```
+
+Script tạo toàn bộ schema và bảng cần thiết cho hệ thống.
+
+After running the SQL script, make sure `application.properties` has the matching PostgreSQL username and password.
 
 ## How To Run The Project
 
@@ -172,8 +183,14 @@ http://localhost:3000
 
 ## Run Order Checklist
 
-1. Start SQL Server.
-2. Run `database/ai_study_hub_schema_mssql.sql`.
+1. Start PostgreSQL (đảm bảo service PostgreSQL đang chạy).
+2. Tạo database và chạy schema script:
+
+```bash
+psql -U postgres -c "CREATE DATABASE \"AIStudyHub\";"
+psql -U postgres -d AIStudyHub -f database/ai_study_hub_schema_postgresql.sql
+```
+
 3. Set database username/password in:
 
 ```text
@@ -206,6 +223,6 @@ http://localhost:3000
 - Backend must be running before frontend API features can work.
 - Frontend runs on port `3000`.
 - Backend runs on port `8080`.
-- SQL Server must be running before backend starts.
+- PostgreSQL must be running before backend starts.
 - Do not put business logic inside controllers. Use `service/`.
 - Frontend must call backend APIs. It must not connect directly to the database.
