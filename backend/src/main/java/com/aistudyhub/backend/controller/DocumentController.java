@@ -100,6 +100,21 @@ public class DocumentController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> deletePermanent(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id) {
+        documentService.deleteDocumentPermanentAPI(id, principal.getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/trash/empty")
+    public ResponseEntity<Void> emptyTrash(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        documentService.emptyTrash(principal.getId());
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}/visibility")
     public ResponseEntity<DocumentResponse> updateVisibility(
             @AuthenticationPrincipal AuthUserPrincipal principal,

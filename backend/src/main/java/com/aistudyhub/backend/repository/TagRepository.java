@@ -12,6 +12,9 @@ public interface TagRepository extends JpaRepository<Tag, Long> {
 
     Optional<Tag> findByName(String name);
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(value = "DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM document_tags)", nativeQuery = true)
+    void deleteOrphanTags();
     /**
      * Tìm tag mồ côi trong danh sách ID ứng viên:
      * tag không còn được gắn với bất kỳ document nào chưa bị soft-delete.
