@@ -1,0 +1,39 @@
+# render.yaml — chỉ deploy Backend (Spring Boot)
+# Đặt file này ở ROOT của repo (cùng cấp với thư mục backend/)
+# ⚠️  Khi dùng file này (Blueprint), KHÔNG set Root Directory trong Render UI
+
+services:
+  - type: web
+    name: aistudyhub-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION_MS
+        value: "86400000"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: UPLOAD_DIR
+        value: /app/uploads
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: APP_FRONTEND_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+    disk:
+      name: aistudyhub-uploads
+      mountPath: /app/uploads
+      sizeGB: 5
