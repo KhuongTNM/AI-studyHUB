@@ -57,9 +57,10 @@
             <version>0.12.6</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- PostgreSQL JDBC Driver (thay thế mssql-jdbc) -->
         <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>

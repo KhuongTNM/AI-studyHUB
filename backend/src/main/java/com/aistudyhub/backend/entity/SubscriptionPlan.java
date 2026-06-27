@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "subscription_plans")
+@Table(schema = "payment", name = "subscription_plans")
 public class SubscriptionPlan {
 
     public static final String FREE_PLAN_NAME = "free";

@@ -15,7 +15,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "activity_logs")
+@Table(schema = "core", name = "activity_logs")
 public class ActivityLog {
 
     public enum Action {
@@ -49,7 +49,7 @@ public class ActivityLog {
     @Column(name = "target_id")
     private UUID targetId;
 
-    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "created_at", nullable = false)

@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "flashcards")
+@Table(schema = "ai", name = "flashcards")
 public class Flashcard {
 
     @Id
@@ -21,10 +21,10 @@ public class Flashcard {
     @Column(name = "document_id")
     private UUID documentId;
 
-    @Column(name = "question", nullable = false, columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "question", nullable = false, columnDefinition = "TEXT")
     private String question;
 
-    @Column(name = "answer", nullable = false, columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "answer", nullable = false, columnDefinition = "TEXT")
     private String answer;
 
     @Convert(converter = FlashcardStatusConverter.class)
