@@ -1,0 +1,26 @@
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+# Backend
+backend/target/
+backend/.mvn/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Environment
+.env
+*.env.local
+
+# Uploads
+backend/uploads/

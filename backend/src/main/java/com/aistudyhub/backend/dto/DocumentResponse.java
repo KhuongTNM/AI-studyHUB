@@ -1,0 +1,68 @@
+package com.aistudyhub.backend.dto;
+
+import com.aistudyhub.backend.entity.Document;
+import com.aistudyhub.backend.entity.Tag;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+public class DocumentResponse {
+
+    private UUID id;
+    private UUID userId;
+    private UUID folderId;
+    private String originalName;
+    private String title;
+    private String fileUrl;
+    private long fileSizeBytes;
+    private String fileType;
+    private String subject;
+    private String description;
+    private List<String> tags;
+    private String status;
+    private String visibility;
+    private int downloadCount;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    public static DocumentResponse from(Document doc) {
+        DocumentResponse r = new DocumentResponse();
+        r.id = doc.getId();
+        r.userId = doc.getUserId();
+        r.folderId = doc.getFolderId();
+        r.originalName = doc.getOriginalName();
+        r.title = doc.getTitle();
+        r.fileUrl = doc.getFileUrl();
+        r.fileSizeBytes = doc.getFileSizeBytes();
+        r.fileType = doc.getFileType();
+        r.subject = doc.getSubject();
+        r.description = doc.getDescription();
+        r.tags = doc.getTags().stream()
+                .map(Tag::getName)
+                .collect(Collectors.toList());
+        r.status = doc.getStatus().name().toLowerCase();
+        r.visibility = doc.getVisibility().name().toLowerCase();
+        r.downloadCount = doc.getDownloadCount();
+        r.createdAt = doc.getCreatedAt();
+        r.updatedAt = doc.getUpdatedAt();
+        return r;
+    }
+
+    public UUID getId() { return id; }
+    public UUID getUserId() { return userId; }
+    public UUID getFolderId() { return folderId; }
+    public String getOriginalName() { return originalName; }
+    public String getTitle() { return title; }
+    public String getFileUrl() { return fileUrl; }
+    public long getFileSizeBytes() { return fileSizeBytes; }
+    public String getFileType() { return fileType; }
+    public String getSubject() { return subject; }
+    public String getDescription() { return description; }
+    public List<String> getTags() { return tags; }
+    public String getStatus() { return status; }
+    public String getVisibility() { return visibility; }
+    public int getDownloadCount() { return downloadCount; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+}
