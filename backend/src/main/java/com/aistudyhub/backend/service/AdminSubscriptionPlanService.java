@@ -46,10 +46,9 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
         }
 
-        String baseSlug = generateSlug(request.getDisplayName());
-        String finalSlug = baseSlug;
-        if (subscriptionPlanRepository.existsByName(finalSlug)) {
-            finalSlug = baseSlug + "_" + System.currentTimeMillis();
+        String finalSlug = generateSlug(request.getDisplayName());
+        if (finalSlug.length() > 50) {
+            finalSlug = finalSlug.substring(0, 50);
         }
 
         SubscriptionPlan plan = new SubscriptionPlan();

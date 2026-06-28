@@ -15,7 +15,7 @@ CREATE SCHEMA IF NOT EXISTS group_chat;
 
 CREATE TABLE payment.subscription_plans (
   id                    SERIAL         PRIMARY KEY,
-  name                  VARCHAR(20)    UNIQUE NOT NULL CHECK (name IN ('free', 'plan_2_4', 'plan_5_plus')),
+  name                  VARCHAR(50)    UNIQUE NOT NULL,
   display_name          VARCHAR(50)    NOT NULL,
   price                 DECIMAL(10,2)  NOT NULL DEFAULT 0,
   max_room_members      SMALLINT       NOT NULL DEFAULT 0,
