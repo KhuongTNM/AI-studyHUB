@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.lang.Nullable;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
@@ -56,4 +57,17 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
                                        @Nullable @Param("keyword") String keyword,
                                        @Nullable @Param("subject") String subject,
                                        @Nullable @Param("tag") String tag);
+
+       @Modifying
+       @Transactional
+       @Query(value = """
+              UPDATE docs.documents
+              SET    embedding_status = :status,
+                     updated_at       = NOW()
+              WHERE  id = :documentId
+              """, nativeQuery = true)
+       void updateEmbeddingStatus(
+              @Param("documentId") UUID documentId,
+              @Param("status") String status
+       );
 }
