@@ -77,12 +77,24 @@ public class DocumentScanProcessor {
      */
     private void triggerPythonIngestion(UUID documentId) {
         try {
-            String url = aiServiceUrl + "/ingest";
-            Map<String, String> body = Map.of("document_id", documentId.toString());
-            ResponseEntity<String> response = restTemplate.postForEntity(url, body, String.class);
-            LOGGER.info("Python ingestion triggered for {}, status={}", documentId, response.getStatusCode());
+            // Query document để lấy đủ thông tin
+            documentRepository.findById(documentId).ifPresent(doc -> {
+                String url = aiServiceUrl + "/ingest";
+                Map<String, String> body = Map.of(
+                    "document_id", documentId.toString(),
+                    "file_url",    doc.getFileUrl(),
+                    "user_id",     doc.getUserId().toString(),
+                    "file_type",   doc.getFileType()
+                );
+                try {
+                    ResponseEntity<String> response = restTemplate.postForEntity(url, body, String.class);
+                    LOGGER.info("Python ingestion triggered for {}, status={}", documentId, response.getStatusCode());
+                } catch (Exception e) {
+                    LOGGER.error("Failed to call Python AI Service for {}: {}", documentId, e.getMessage());
+                }
+            });
         } catch (Exception e) {
-            LOGGER.error("Failed to call Python AI Service for document {}: {}", documentId, e.getMessage());
+            LOGGER.error("Failed to trigger ingestion for document {}: {}", documentId, e.getMessage());
         }
     }
 }
