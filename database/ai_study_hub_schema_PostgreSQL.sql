@@ -9,6 +9,9 @@ CREATE SCHEMA IF NOT EXISTS docs;
 CREATE SCHEMA IF NOT EXISTS ai;
 CREATE SCHEMA IF NOT EXISTS group_chat;
 
+-- Extension pgvector (cần cho ai.document_chunks)
+CREATE EXTENSION IF NOT EXISTS vector SCHEMA public;
+
 -- ============================================================
 -- Schema: payment
 -- ============================================================
@@ -96,6 +99,7 @@ CREATE TABLE docs.documents (
   description     TEXT,
   tags            VARCHAR(500),
   status          VARCHAR(20)  NOT NULL CHECK (status IN ('uploading', 'scanning', 'ready', 'failed', 'deleted')) DEFAULT 'uploading',
+  embedding_status VARCHAR(20) NOT NULL CHECK (embedding_status IN ('none', 'processing', 'done', 'failed')) DEFAULT 'none',
   visibility      VARCHAR(10)  NOT NULL CHECK (visibility IN ('private', 'public')) DEFAULT 'private',
   share_status    VARCHAR(10)  NOT NULL CHECK (share_status IN ('none', 'pending', 'approved', 'rejected')) DEFAULT 'none',
   share_note      TEXT,
@@ -147,6 +151,18 @@ CREATE TABLE ai.flashcards (
   is_ai_generated BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE ai.document_chunks (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id UUID        NOT NULL,
+  user_id     UUID        NOT NULL,
+  chunk_index INT         NOT NULL,
+  content     TEXT        NOT NULL,
+  token_count INT,
+  embedding   vector(1536),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (document_id, chunk_index)
 );
 
 -- ============================================================
@@ -229,6 +245,9 @@ CREATE INDEX idx_cm_session         ON docs.chat_messages (session_id, created_a
 CREATE INDEX idx_fc_user_id     ON ai.flashcards (user_id);
 CREATE INDEX idx_fc_document_id ON ai.flashcards (document_id);
 CREATE INDEX idx_fc_status      ON ai.flashcards (user_id, status);
+CREATE INDEX idx_dc_document_id ON ai.document_chunks (document_id);
+CREATE INDEX idx_dc_user_id     ON ai.document_chunks (user_id);
+CREATE INDEX idx_dc_embedding   ON ai.document_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- group_chat
 CREATE INDEX idx_groups_code      ON group_chat.groups (group_code);
@@ -291,6 +310,12 @@ ALTER TABLE ai.flashcards ADD FOREIGN KEY (user_id)
 
 ALTER TABLE ai.flashcards ADD FOREIGN KEY (document_id)
   REFERENCES docs.documents (id) ON DELETE NO ACTION DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE ai.document_chunks ADD FOREIGN KEY (document_id)
+  REFERENCES docs.documents (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE ai.document_chunks ADD FOREIGN KEY (user_id)
+  REFERENCES core.users (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
 
 -- group_chat → core + docs
 ALTER TABLE group_chat.groups ADD FOREIGN KEY (owner_id)
