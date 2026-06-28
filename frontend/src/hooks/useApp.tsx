@@ -78,6 +78,10 @@ export interface AppState {
   deleteDocument: (id: string) => void
   /** Khôi phục từ Trash và gọi POST /api/documents/{id}/restore (BR-023) */
   restoreDocument: (id: string) => void
+  /** FR-24: Xóa vĩnh viễn 1 file đang ở thùng rác — DELETE /api/documents/{id}/permanent */
+  permanentDeleteDocument: (id: string) => Promise<{ success: boolean; error?: string }>
+  /** FR-24: Dọn sạch toàn bộ thùng rác — DELETE /api/documents/trash/empty */
+  emptyTrash: () => Promise<{ success: boolean; error?: string }>
   /** Đổi visibility và gọi PUT /api/documents/{id}/visibility (BR-018) */
   changeDocumentVisibility: (id: string, isPublic: boolean) => Promise<{ success: boolean; error?: string }>
   /** Tải xuống file và tăng downloadCount qua POST /api/documents/{id}/download (BR-021) */
@@ -281,6 +285,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         uploadDocument: docs.uploadDocument,
         deleteDocument: docs.deleteDocument,
         restoreDocument: docs.restoreDocument,
+        permanentDeleteDocument: docs.permanentDeleteDocument,
+        emptyTrash: docs.emptyTrash,
         changeDocumentVisibility: docs.changeDocumentVisibility,
         downloadDocument: docs.downloadDocument,
         addCategory: docs.addCategory,
