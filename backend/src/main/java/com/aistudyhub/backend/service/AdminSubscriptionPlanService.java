@@ -42,18 +42,24 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse createPlan(com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest request) {
-        if (subscriptionPlanRepository.existsByDisplayName(request.getDisplayName())) {
+        String formattedDisplayName = formatDisplayName(request.getDisplayName());
+
+        if (subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
             throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
         }
 
-        String finalSlug = generateSlug(request.getDisplayName());
+        String finalSlug = generateSlug(formattedDisplayName);
         if (finalSlug.length() > 50) {
             finalSlug = finalSlug.substring(0, 50);
         }
 
+        if (subscriptionPlanRepository.existsByName(finalSlug)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Mã gói (slug) được tạo ra đã tồn tại.");
+        }
+
         SubscriptionPlan plan = new SubscriptionPlan();
         plan.setName(finalSlug);
-        plan.setDisplayName(request.getDisplayName());
+        plan.setDisplayName(formattedDisplayName);
         plan.setPrice(request.getPrice());
         plan.setMaxRoomMembers(request.getMaxRoomMembers());
         plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
@@ -70,11 +76,13 @@ public class AdminSubscriptionPlanService {
         SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
-        if (!plan.getDisplayName().equals(request.getDisplayName()) && subscriptionPlanRepository.existsByDisplayName(request.getDisplayName())) {
+        String formattedDisplayName = formatDisplayName(request.getDisplayName());
+
+        if (!plan.getDisplayName().equalsIgnoreCase(formattedDisplayName) && subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
             throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
         }
 
-        plan.setDisplayName(request.getDisplayName());
+        plan.setDisplayName(formattedDisplayName);
         plan.setMaxRoomMembers(request.getMaxRoomMembers());
         plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
         plan.setCreateGroupLimit(request.getCreateGroupLimit());
@@ -143,5 +151,23 @@ public class AdminSubscriptionPlanService {
                 .trim()
                 .replaceAll("\\s+", "_");
         return slug;
+    }
+
+    private String formatDisplayName(String input) {
+        if (input == null || input.isBlank()) return input;
+        String[] words = input.trim().split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (word.isEmpty()) continue;
+            sb.append(Character.toUpperCase(word.charAt(0)));
+            if (word.length() > 1) {
+                sb.append(word.substring(1).toLowerCase());
+            }
+            if (i < words.length - 1) {
+                sb.append(" ");
+            }
+        }
+        return sb.toString();
     }
 }
