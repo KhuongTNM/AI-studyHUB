@@ -36,6 +36,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Query("SELECT d FROM Document d JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL AND t.name = :tagName ORDER BY d.createdAt DESC")
     List<Document> findByUserIdAndTagName(@Param("userId") UUID userId, @Param("tagName") String tagName);
 
+    /** FR-24/folder-delete: Tìm tất cả doc đang active trong danh sách folder IDs để soft-delete */
+    List<Document> findByFolderIdInAndDeletedAtIsNull(Collection<UUID> folderIds);
+
     @Modifying
     @Query("UPDATE Document d SET d.folderId = NULL WHERE d.folderId IN :folderIds")
     void clearFolderIdByFolderIds(Collection<UUID> folderIds);

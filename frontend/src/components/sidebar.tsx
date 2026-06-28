@@ -109,7 +109,6 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     ? Math.round((currentUser.storageUsed / currentUser.storageLimit) * 100)
     : 0
 
-  const trashedCount = documents.filter(d => d.status === "deleted").length
   const isAdminAccount = currentUser?.role === "admin" || currentUser?.role === "sub-admin"
 
   return (
@@ -191,11 +190,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
               >
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span>{item.label[language]}</span>
-                {item.page === "trash" && trashedCount > 0 && (
-                  <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive/20 text-xs text-destructive font-medium">
-                    {trashedCount}
-                  </span>
-                )}
+
               </button>
             ))}
         </div>

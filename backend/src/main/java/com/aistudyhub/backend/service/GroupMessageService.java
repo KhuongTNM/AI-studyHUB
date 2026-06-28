@@ -102,7 +102,7 @@ public class GroupMessageService {
         if (!groupRepository.existsById(groupId)) {
             throw new BusinessException(ErrorCode.GROUP_NOT_FOUND);
         }
-        boolean isMember = groupMemberRepository.existsByGroupIdAndUserId(groupId, userId);
+        boolean isMember = groupMemberRepository.existsByIdGroupIdAndIdUserId(groupId, userId);
         if (!isMember) {
             throw new BusinessException(ErrorCode.GROUP_ACCESS_DENIED);
         }
