@@ -309,3 +309,24 @@ export async function updateDocumentFolderApi(
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
+
+/** DELETE /api/documents/{id}/permanent — xóa vĩnh viễn 1 file đang ở thùng rác (FR-24)
+ *  - Lỗi 400 nếu file chưa bị soft-delete
+ *  - Lỗi 403 nếu không phải chủ sở hữu
+ */
+export async function permanentDeleteDocumentApi(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${id}/permanent`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+}
+
+/** DELETE /api/documents/trash/empty — xóa vĩnh viễn toàn bộ file trong thùng rác (FR-24) */
+export async function emptyTrashApi(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/trash/empty`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+}

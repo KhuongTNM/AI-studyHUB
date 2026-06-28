@@ -10,6 +10,8 @@ import {
   restoreDocumentApi,
   downloadDocumentApi,
   updateDocumentFolderApi,
+  permanentDeleteDocumentApi,
+  emptyTrashApi,
 } from "@/services/api/documents"
 import {
   fetchFolderTreeApi,
@@ -200,14 +202,20 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
   }, [])
 
   // ── Khôi phục từ Trash (BR-023) ─────────────────────────────────────────
+  // Doc bị xóa không có trong global documents (API không trả về) → phải ADD vào, không dùng .map()
   const restoreDocument = useCallback((id: string) => {
-    setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "ready" } : d))
     restoreDocumentApi(id)
       .then(updated => {
-        setDocuments(prev => prev.map(d => d.id === id ? updated : d))
+        setDocuments(prev => {
+          const exists = prev.some(d => d.id === id)
+          // Nếu đã có (edge case) → update; nếu chưa có (từ trash) → thêm lên đầu
+          return exists
+            ? prev.map(d => d.id === id ? updated : d)
+            : [updated, ...prev]
+        })
       })
       .catch(() => {
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "deleted" } : d))
+        // trash-page.tsx tự rollback trashDocs nếu lỗi
       })
   }, [])
 
@@ -244,6 +252,46 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       )
     })
   }, [])
+
+  // ── FR-24: Xóa vĩnh viễn 1 file khỏi thùng rác ─────────────────────────
+  const permanentDeleteDocument = useCallback(
+    async (id: string): Promise<{ success: boolean; error?: string }> => {
+      // Optimistic: xóa khỏi state ngay
+      setDocuments(prev => prev.filter(d => d.id !== id))
+      try {
+        await permanentDeleteDocumentApi(id)
+        return { success: true }
+      } catch (error) {
+        // Rollback: tải lại danh sách trash từ server
+        fetchDocumentsApi().then(docs => setDocuments(docs)).catch(() => {})
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể xóa vĩnh viễn tài liệu.",
+        }
+      }
+    },
+    [],
+  )
+
+  // ── FR-24: Dọn sạch toàn bộ thùng rác ──────────────────────────────────
+  const emptyTrash = useCallback(
+    async (): Promise<{ success: boolean; error?: string }> => {
+      // Optimistic: xóa hết file status=deleted khỏi state
+      setDocuments(prev => prev.filter(d => d.status !== "deleted"))
+      try {
+        await emptyTrashApi()
+        return { success: true }
+      } catch (error) {
+        // Rollback: tải lại từ server
+        fetchDocumentsApi().then(docs => setDocuments(docs)).catch(() => {})
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể dọn sạch thùng rác.",
+        }
+      }
+    },
+    [],
+  )
 
   // ── Categories (local-only; không có API endpoint) ───────────────────────
   const addCategory = useCallback((name: string, color: string) => {
@@ -334,14 +382,15 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       }
       const idsToDelete = collectIds(id, folders)
       const prevFolders = folders
+      const prevDocuments = documentsRef.current
 
-      // Optimistic: xóa khỏi state ngay
+      // Optimistic: xóa folder khỏi state ngay
       setFolders(prev => prev.filter(f => !idsToDelete.includes(f.id)))
-      // BR-085 optimistic: docs trong folder bị xóa → về root
+      // Optimistic: docs trong folder → chuyển sang status "deleted" (đưa vào thùng rác)
       setDocuments(prev =>
         prev.map(d =>
           d.folderId != null && idsToDelete.includes(d.folderId)
-            ? { ...d, folderId: null }
+            ? { ...d, status: "deleted" as const, folderId: null }
             : d,
         ),
       )
@@ -350,7 +399,9 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
         await deleteFolderApi(id)
         return { success: true }
       } catch (error) {
+        // Rollback cả folders lẫn documents
         setFolders(prevFolders)
+        setDocuments(prevDocuments)
         return {
           success: false,
           error: error instanceof Error ? error.message : "Không thể xóa thư mục.",
@@ -425,6 +476,8 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
     uploadDocument,
     deleteDocument,
     restoreDocument,
+    permanentDeleteDocument,
+    emptyTrash,
     changeDocumentVisibility,
     downloadDocument,
     addCategory,

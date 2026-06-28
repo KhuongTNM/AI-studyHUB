@@ -4,6 +4,8 @@ import com.aistudyhub.backend.dto.FolderCreateRequest;
 import com.aistudyhub.backend.dto.FolderNodeResponse;
 import com.aistudyhub.backend.dto.FolderRenameRequest;
 import com.aistudyhub.backend.dto.FolderUpdateRequest;
+import com.aistudyhub.backend.entity.Document;
+import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.Folder;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.ApiException;
@@ -182,8 +184,29 @@ public class FolderServiceImpl implements FolderService {
         List<UUID> subtreeIds = new ArrayList<>();
         collectSubtreeIds(folder, subtreeIds);
 
-        // BR-085: Ngắt liên kết Document trước khi xóa Folder
-        documentRepository.clearFolderIdByFolderIds(subtreeIds);
+        // Soft-delete toàn bộ document đang active trong cây con → đưa vào thùng rác
+        LocalDateTime now = LocalDateTime.now();
+        List<Document> docsToDelete = documentRepository.findByFolderIdInAndDeletedAtIsNull(subtreeIds);
+
+        if (!docsToDelete.isEmpty()) {
+            long totalBytes = 0L;
+            for (Document doc : docsToDelete) {
+                doc.setStatus(DocumentStatus.DELETED);
+                doc.setDeletedAt(now);
+                doc.setUpdatedAt(now);
+                doc.setFolderId(null);   // Ngắt FK trước khi xóa folder, tránh constraint violation
+                totalBytes += doc.getFileSizeBytes();
+            }
+            documentRepository.saveAll(docsToDelete);
+
+            // Trừ storageUsedBytes của user
+            final long bytesToSubtract = totalBytes;
+            userRepository.findById(userId).ifPresent(u -> {
+                u.setStorageUsedBytes(Math.max(0, u.getStorageUsedBytes() - bytesToSubtract));
+                u.setUpdatedAt(now);
+                userRepository.save(u);
+            });
+        }
 
         folderRepository.delete(folder);
     }
