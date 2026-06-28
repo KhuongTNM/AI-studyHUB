@@ -48,13 +48,20 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
         }
 
-        String finalSlug = generateSlug(formattedDisplayName);
-        if (finalSlug.length() > 50) {
-            finalSlug = finalSlug.substring(0, 50);
+        String baseSlug = generateSlug(formattedDisplayName);
+        if (baseSlug.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên gói không hợp lệ (không chứa ký tự chữ/số).");
+        }
+        
+        if (baseSlug.length() > 45) {
+            baseSlug = baseSlug.substring(0, 45);
         }
 
-        if (subscriptionPlanRepository.existsByName(finalSlug)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Mã gói (slug) được tạo ra đã tồn tại.");
+        String finalSlug = baseSlug;
+        int count = 1;
+        while (subscriptionPlanRepository.existsByName(finalSlug)) {
+            finalSlug = baseSlug + "_" + count;
+            count++;
         }
 
         SubscriptionPlan plan = new SubscriptionPlan();
