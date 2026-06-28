@@ -53,14 +53,20 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tên gói không hợp lệ (không chứa ký tự chữ/số).");
         }
         
-        if (baseSlug.length() > 45) {
-            baseSlug = baseSlug.substring(0, 45);
+        if (baseSlug.length() > 20) {
+            baseSlug = baseSlug.substring(0, 20);
         }
 
         String finalSlug = baseSlug;
         int count = 1;
         while (subscriptionPlanRepository.existsByName(finalSlug)) {
-            finalSlug = baseSlug + "_" + count;
+            String suffix = "_" + count;
+            int remainingLength = 20 - suffix.length();
+            if (baseSlug.length() > remainingLength) {
+                finalSlug = baseSlug.substring(0, remainingLength) + suffix;
+            } else {
+                finalSlug = baseSlug + suffix;
+            }
             count++;
         }
 
