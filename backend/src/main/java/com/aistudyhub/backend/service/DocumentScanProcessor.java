@@ -3,13 +3,15 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 @Component
 public class DocumentScanProcessor {
@@ -17,33 +19,38 @@ public class DocumentScanProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DocumentScanProcessor.class);
 
     private final DocumentRepository documentRepository;
+    private final RestTemplate aiServiceRestTemplate;
 
-    public DocumentScanProcessor(DocumentRepository documentRepository) {
+    @Value("${ai.service.url:http://localhost:8000}")
+    private String aiServiceUrl;
+
+    public DocumentScanProcessor(DocumentRepository documentRepository, RestTemplate aiServiceRestTemplate) {
         this.documentRepository = documentRepository;
+        this.aiServiceRestTemplate = aiServiceRestTemplate;
     }
 
     @Async
     @Transactional
     public void simulateScan(UUID documentId) {
-        try {
-            Thread.sleep(500);
-            documentRepository.findById(documentId).ifPresent(doc -> {
-                doc.setStatus(DocumentStatus.SCANNING);
-                doc.setUpdatedAt(LocalDateTime.now());
-                documentRepository.save(doc);
-            });
+        documentRepository.findById(documentId).ifPresent(doc -> {
+            doc.setStatus(DocumentStatus.READY);
+            doc.setUpdatedAt(LocalDateTime.now());
+            documentRepository.save(doc);
 
-            Thread.sleep(2000);
-
-            documentRepository.findById(documentId).ifPresent(doc -> {
-                boolean success = ThreadLocalRandom.current().nextDouble() < 0.8;
-                doc.setStatus(success ? DocumentStatus.READY : DocumentStatus.FAILED);
-                doc.setUpdatedAt(LocalDateTime.now());
-                documentRepository.save(doc);
-            });
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOGGER.error("Scan simulation interrupted for document {}", documentId);
-        }
+            try {
+                Map<String, String> payload = Map.of(
+                    "document_id", doc.getId().toString(),
+                    "file_url", doc.getFileUrl(),
+                    "user_id", doc.getUserId().toString(),
+                    "file_type", doc.getFileType()
+                );
+                
+                String ingestUrl = aiServiceUrl + "/ingest";
+                aiServiceRestTemplate.postForEntity(ingestUrl, payload, Void.class);
+                LOGGER.info("Successfully triggered ingest for document {}", documentId);
+            } catch (Exception e) {
+                LOGGER.error("Failed to trigger ingest for document {}: {}", documentId, e.getMessage());
+            }
+        });
     }
 }

@@ -70,6 +70,9 @@ public class Document {
     @Column(name = "share_note", columnDefinition = "TEXT")
     private String shareNote;
 
+    @Column(name = "embedding_status", nullable = false, length = 20)
+    private String embeddingStatus = "none";
+
     @Column(name = "download_count", nullable = false)
     private int downloadCount;
 
@@ -112,6 +115,8 @@ public class Document {
     public void setShareStatus(String shareStatus) { this.shareStatus = shareStatus; }
     public String getShareNote() { return shareNote; }
     public void setShareNote(String shareNote) { this.shareNote = shareNote; }
+    public String getEmbeddingStatus() { return embeddingStatus; }
+    public void setEmbeddingStatus(String embeddingStatus) { this.embeddingStatus = embeddingStatus; }
     public int getDownloadCount() { return downloadCount; }
     public void setDownloadCount(int downloadCount) { this.downloadCount = downloadCount; }
     public LocalDateTime getCreatedAt() { return createdAt; }
