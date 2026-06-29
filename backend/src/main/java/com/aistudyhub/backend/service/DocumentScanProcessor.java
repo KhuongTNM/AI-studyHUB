@@ -13,6 +13,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+/**
+ * Sau khi scan READY → gọi Python AI Service để bắt đầu pipeline
+ * extract → chunk → embed → lưu vector DB.
+ */
 @Component
 public class DocumentScanProcessor {
 
