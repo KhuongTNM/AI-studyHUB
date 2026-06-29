@@ -60,6 +60,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
+                        // PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
+                        .requestMatchers("/api/payos/webhook").permitAll()
+                        // Route VietQR cũ — giữ song song để test, sẽ xoá sau khi PayOS chạy ổn định
                         .requestMatchers("/bank/api/transaction-sync").permitAll()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
