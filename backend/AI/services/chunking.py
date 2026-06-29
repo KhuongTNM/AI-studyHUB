@@ -4,6 +4,16 @@ from typing import List, Dict
 
 MAX_CHUNK_CHARS = int(os.getenv("MAX_CHUNK_CHARS", "800"))
 MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "80"))
+OVERLAP_CHARS = int(os.getenv("OVERLAP_CHARS", "100"))
+
+def get_overlap_text(text: str) -> str:
+    if len(text) <= OVERLAP_CHARS:
+        return text
+    tail = text[-OVERLAP_CHARS:]
+    match = re.search(r'(?<=[.?!;:,])\s+', tail)
+    if match:
+        return tail[match.end():].strip()
+    return tail.strip()
 
 def chunk_text(text: str) -> List[Dict[str, str]]:
     if not text:
@@ -20,7 +30,6 @@ def chunk_text(text: str) -> List[Dict[str, str]]:
         if len(para) <= MAX_CHUNK_CHARS:
             raw_chunks.append(para)
         else:
-            # Fallback to single newline split
             lines = re.split(r'\n+', para)
             for line in lines:
                 line = line.strip()
@@ -29,7 +38,6 @@ def chunk_text(text: str) -> List[Dict[str, str]]:
                 if len(line) <= MAX_CHUNK_CHARS:
                     raw_chunks.append(line)
                 else:
-                    # Split into sentences
                     sentences = re.split(r'(?<=[.?!;:,])(?=\s+|$)', line)
                     current_sentence_chunk = ""
                     for sentence in sentences:
@@ -56,6 +64,9 @@ def chunk_text(text: str) -> List[Dict[str, str]]:
             if len(chunk) < MIN_CHUNK_CHARS and len(merged_chunks[-1]) + len(chunk) + 1 <= MAX_CHUNK_CHARS:
                 merged_chunks[-1] += " " + chunk
             else:
+                overlap = get_overlap_text(merged_chunks[-1])
+                if overlap and len(overlap) + len(chunk) + 1 <= MAX_CHUNK_CHARS:
+                    chunk = overlap + " " + chunk
                 merged_chunks.append(chunk)
                 
     result = []

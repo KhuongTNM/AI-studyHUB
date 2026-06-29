@@ -22,13 +22,33 @@ public class VectorSearchController {
 
     @PostMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN','SUB_ADMIN','USER')")
-    public ResponseEntity<Object> search(@RequestBody Map<String, Object> searchRequest) {
+    public void search(@RequestBody Map<String, Object> searchRequest, jakarta.servlet.http.HttpServletResponse response) {
         String searchUrl = aiServiceUrl + "/search";
+        response.setContentType("text/event-stream");
+        response.setCharacterEncoding("UTF-8");
+        
         try {
-            ResponseEntity<Object> response = aiServiceRestTemplate.postForEntity(searchUrl, searchRequest, Object.class);
-            return ResponseEntity.status(response.getStatusCode()).body(response.getBody());
+            org.springframework.web.client.RequestCallback requestCallback = request -> {
+                request.getHeaders().setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                mapper.writeValue(request.getBody(), searchRequest);
+            };
+            
+            org.springframework.web.client.ResponseExtractor<Void> responseExtractor = res -> {
+                java.io.InputStream is = res.getBody();
+                java.io.OutputStream os = response.getOutputStream();
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    os.write(buffer, 0, bytesRead);
+                    os.flush();
+                }
+                return null;
+            };
+            
+            aiServiceRestTemplate.execute(searchUrl, org.springframework.http.HttpMethod.POST, requestCallback, responseExtractor);
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of("message", "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."));
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
     }
 }
