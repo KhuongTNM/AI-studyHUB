@@ -1,89 +1,53 @@
-"""
-Trích xuất text thuần từ file PDF / DOCX / PPTX.
-
-Thư viện:
-    PDF  → pdfplumber
-    DOCX → python-docx
-    PPTX → python-pptx
-"""
-
-import re
-from pathlib import Path
-
+import logging
 import pdfplumber
-from docx import Document
-from pptx import Presentation
+import docx
+import pptx
 
+logger = logging.getLogger(__name__)
 
-def extract(file_path: str, file_type: str) -> str:
-    """
-    Trích xuất toàn bộ text từ file.
+def extract_text_from_pdf(file_path: str) -> str:
+    try:
+        text_parts = []
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    text_parts.append(extracted)
+        return "\n".join(text_parts)
+    except Exception as e:
+        logger.error(f"Error extracting text from PDF {file_path}: {e}")
+        return ""
 
-    Args:
-        file_path: đường dẫn tuyệt đối tới file
-        file_type: "pdf" | "docx" | "pptx"
+def extract_text_from_docx(file_path: str) -> str:
+    try:
+        doc = docx.Document(file_path)
+        text_parts = [para.text for para in doc.paragraphs if para.text.strip()]
+        return "\n".join(text_parts)
+    except Exception as e:
+        logger.error(f"Error extracting text from DOCX {file_path}: {e}")
+        return ""
 
-    Returns:
-        Chuỗi text đã normalize, các đoạn phân tách bằng "\\n\\n"
-    """
-    ft = file_type.lower()
-    if ft == "pdf":
-        raw = _extract_pdf(file_path)
-    elif ft == "docx":
-        raw = _extract_docx(file_path)
-    elif ft == "pptx":
-        raw = _extract_pptx(file_path)
+def extract_text_from_pptx(file_path: str) -> str:
+    try:
+        prs = pptx.Presentation(file_path)
+        text_parts = []
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    text_parts.append(shape.text)
+        return "\n".join(text_parts)
+    except Exception as e:
+        logger.error(f"Error extracting text from PPTX {file_path}: {e}")
+        return ""
+
+def extract_text(file_path: str, file_type: str) -> str:
+    file_type = file_type.lower().strip('.')
+    if file_type == 'pdf':
+        return extract_text_from_pdf(file_path)
+    elif file_type in ['doc', 'docx']:
+        return extract_text_from_docx(file_path)
+    elif file_type in ['ppt', 'pptx']:
+        return extract_text_from_pptx(file_path)
     else:
-        raise ValueError(f"Unsupported file type: {file_type}")
-
-    return _normalize(raw)
-
-
-# ──────────────────────────────────────────────────────────────────────
-# PDF
-# ──────────────────────────────────────────────────────────────────────
-
-def _extract_pdf(path: str) -> str:
-    parts = []
-    with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                parts.append(text)
-    return "\n\n".join(parts)
-
-
-# ──────────────────────────────────────────────────────────────────────
-# DOCX
-# ──────────────────────────────────────────────────────────────────────
-
-def _extract_docx(path: str) -> str:
-    doc = Document(path)
-    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-    return "\n\n".join(paragraphs)
-
-
-# ──────────────────────────────────────────────────────────────────────
-# PPTX
-# ──────────────────────────────────────────────────────────────────────
-
-def _extract_pptx(path: str) -> str:
-    prs = Presentation(path)
-    parts = []
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if hasattr(shape, "text") and shape.text.strip():
-                parts.append(shape.text.strip())
-    return "\n\n".join(parts)
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Normalize
-# ──────────────────────────────────────────────────────────────────────
-
-def _normalize(text: str) -> str:
-    """Chuẩn hóa whitespace: gộp nhiều dòng trống → \\n\\n, trim."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = re.sub(r"\n{3,}", "\n\n", text)   # 3+ newlines → 2
-    text = re.sub(r"[ \t]+", " ", text)       # nhiều space → 1
-    return text.strip()
+        logger.error(f"Unsupported file type: {file_type}")
+        return ""

@@ -1,50 +1,36 @@
-"""
-Phần Generation của RAG:
-    Lấy danh sách chunks liên quan → ghép làm context → gửi vào LLM → trả lời.
-"""
-
 import os
+import json
 from openai import OpenAI
+from typing import List, Dict, Any
 
-_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
-_SYSTEM_PROMPT = """Bạn là trợ lý học tập thông minh của AI Study Hub.
-Dựa vào các đoạn tài liệu được cung cấp trong [CONTEXT], hãy trả lời câu hỏi của người dùng một cách chính xác và ngắn gọn.
-Nếu thông tin không có trong context, hãy nói rõ là bạn không tìm thấy thông tin đó trong tài liệu."""
-
-
-def answer(query: str, context_chunks: list[dict]) -> str:
-    """
-    Sinh câu trả lời từ query + danh sách chunks liên quan.
-
-    Args:
-        query:          câu hỏi của user
-        context_chunks: list dict từ vector_store.search()
-                        mỗi dict có key "content"
-
-    Returns:
-        Chuỗi câu trả lời từ LLM.
-    """
-    # Ghép các chunks thành 1 context block
-    context_text = "\n\n---\n\n".join(
-        f"[Đoạn {i + 1}]:\n{c['content']}"
-        for i, c in enumerate(context_chunks)
+async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, Any]]):
+    context_text = "\n\n".join([f"[{i+1}] {chunk['content']}" for i, chunk in enumerate(retrieved_chunks)])
+    
+    system_prompt = (
+        "Bạn là trợ lý AI. Chỉ trả lời dựa trên thông tin trong các đoạn văn bản dưới đây. "
+        "Nếu không có thông tin, nói \"Tôi không tìm thấy thông tin phù hợp trong tài liệu của bạn.\"\n"
+        "--- Ngữ cảnh ---\n"
+        f"{context_text}"
     )
-
-    messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"[CONTEXT]\n{context_text}\n\n[CÂU HỎI]\n{query}",
-        },
-    ]
-
-    response = _client.chat.completions.create(
-        model=_LLM_MODEL,
-        messages=messages,
-        temperature=0.2,      # thấp để câu trả lời bám sát context
-        max_tokens=1024,
+    
+    user_prompt = f"--- Câu hỏi ---\n{query}"
+    
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.3,
+        stream=True
     )
-
-    return response.choices[0].message.content
+    
+    for chunk in response:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+            
+    sources_metadata = json.dumps({"sources": retrieved_chunks})
+    yield f"\n\n[SOURCES]\n{sources_metadata}\n\n"

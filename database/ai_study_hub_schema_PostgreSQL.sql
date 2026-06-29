@@ -353,3 +353,9 @@ VALUES
   ('free',        'Gói Miễn Phí',  0,     0,  536870912,  0,  5),
   ('plan_2_4',    'Gói 2-4 Người', 49000, 4,  1073741824, 20, 30),
   ('plan_5_plus', 'Gói 5+ Người',  99000, 99, 5368709120, 50, 60);
+
+-- ============================================================
+-- Advanced RAG: Hybrid Search (FTS)
+-- ============================================================
+ALTER TABLE ai.document_chunks ADD COLUMN IF NOT EXISTS fts tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED;
+CREATE INDEX IF NOT EXISTS idx_dc_fts ON ai.document_chunks USING GIN (fts);
