@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: AIStudyHub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai_network
+
+  python-ai:
+    build:
+      context: ./backend/AI
+    container_name: python-ai
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:12345@postgres:5432/AIStudyHub
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      UPLOAD_DIR: /app/uploads
+      LLM_MODEL: gpt-4o-mini
+      EMBED_MODEL: text-embedding-3-small
+      MAX_CHUNK_CHARS: 800
+      MIN_CHUNK_CHARS: 80
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - postgres
+    networks:
+      - ai_network
+
+  java-backend:
+    build:
+      context: ./backend
+    container_name: java-backend
+    ports:
+      - "8080:8080"
+    environment:
+      AI_SERVICE_URL: http://python-ai:8000
+      DB_URL: jdbc:postgresql://postgres:5432/AIStudyHub
+      DB_USERNAME: postgres
+      DB_PASSWORD: 12345
+    depends_on:
+      - postgres
+      - python-ai
+    networks:
+      - ai_network
+
+volumes:
+  postgres_data:
+
+networks:
+  ai_network:

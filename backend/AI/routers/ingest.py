@@ -1,77 +1,89 @@
-"""
-POST /ingest
-    Java backend gọi endpoint này sau khi Document status = READY.
-    Python tự lo toàn bộ: extract → chunk → embed → lưu pgvector.
-"""
-
 import os
 import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-
-from services import text_extractor, chunking, embedding, vector_store
+from services.text_extractor import extract_text
+from services.chunking import chunk_text
+from services.embedding import process_chunks
+from services.vector_store import insert_chunks, delete_chunks, get_connection, release_connection
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
-
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "../uploads")
 
 class IngestRequest(BaseModel):
     document_id: str
-    # file_url và user_id sẽ được Python tự query từ DB
-    # (hoặc Java truyền thêm vào nếu muốn tránh thêm DB query)
-    file_url:  str
-    user_id:   str
-    file_type: str   # "pdf" | "docx" | "pptx"
+    file_url: str
+    user_id: str
+    file_type: str
 
+def update_document_status(document_id: str, status: str):
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE docs.documents SET embedding_status = %s WHERE id = %s",
+                (status, document_id)
+            )
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error updating status for document {document_id}: {e}")
+    finally:
+        release_connection(conn)
+
+def worker(document_id: str, file_url: str, user_id: str, file_type: str):
+    try:
+        logger.info(f"Starting background ingest for document {document_id}")
+        
+        # 1. Delete pre-existing chunks for idempotency
+        delete_chunks(document_id)
+        
+        # 2. Resolve file path
+        filename = os.path.basename(file_url)
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+            
+        # 3. Extract, chunk, embed, insert
+        text = extract_text(file_path, file_type)
+        if not text:
+            raise ValueError("No text extracted from file.")
+            
+        chunks = chunk_text(text)
+        if not chunks:
+            raise ValueError("No chunks generated from text.")
+            
+        processed_chunks = process_chunks(chunks)
+        insert_chunks(document_id, user_id, processed_chunks)
+        
+        # 4. Update status to done
+        update_document_status(document_id, 'done')
+        logger.info(f"Successfully processed document {document_id}")
+        
+    except Exception as e:
+        logger.error(f"Ingest worker failed for document {document_id}: {e}", exc_info=True)
+        update_document_status(document_id, 'failed')
 
 @router.post("/ingest", status_code=202)
-async def ingest(req: IngestRequest, background_tasks: BackgroundTasks):
-    """
-    Nhận request từ Java → xử lý async ở background.
-    Trả về 202 Accepted ngay để không block Java.
-    """
-    background_tasks.add_task(_run_ingestion, req)
-    return {"message": "Ingestion started", "document_id": req.document_id}
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Pipeline
-# ──────────────────────────────────────────────────────────────────────
-
-def _run_ingestion(req: IngestRequest) -> None:
-    doc_id = req.document_id
-    logger.info("[Ingest] Start document_id=%s", doc_id)
-
+def ingest_document(request: IngestRequest, background_tasks: BackgroundTasks):
     try:
-        vector_store.update_embedding_status(doc_id, "processing")
-
-        # 1. Resolve đường dẫn file
-        file_name = req.file_url.replace("uploads/", "", 1)
-        file_path = os.path.join(UPLOAD_DIR, file_name)
-
-        # 2. Extract text
-        full_text = text_extractor.extract(file_path, req.file_type)
-        if not full_text.strip():
-            logger.warning("[Ingest] No text extracted: %s", doc_id)
-            vector_store.update_embedding_status(doc_id, "done")
-            return
-        logger.info("[Ingest] Extracted %d chars", len(full_text))
-
-        # 3. Chunk theo đoạn → câu
-        chunks = chunking.chunk(full_text)
-        logger.info("[Ingest] %d chunks created", len(chunks))
-
-        # 4. Embed tất cả chunks trong 1 batch call
-        vectors = embedding.embed_many(chunks)
-
-        # 5. Lưu vào ai.document_chunks
-        vector_store.save_chunks(doc_id, req.user_id, chunks, vectors)
-
-        vector_store.update_embedding_status(doc_id, "done")
-        logger.info("[Ingest] Done document_id=%s", doc_id)
-
+        # Synchronously update status to processing
+        update_document_status(request.document_id, 'processing')
+        
+        # Trigger standard synchronous worker
+        background_tasks.add_task(
+            worker, 
+            request.document_id, 
+            request.file_url, 
+            request.user_id, 
+            request.file_type
+        )
+        return {"message": "Accepted"}
     except Exception as e:
-        logger.error("[Ingest] Failed document_id=%s: %s", doc_id, str(e), exc_info=True)
-        vector_store.update_embedding_status(doc_id, "failed")
+        logger.error(f"Error in /ingest endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
