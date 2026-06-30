@@ -4,6 +4,7 @@ export type {
   Category,
   ChatMessage,
   ChatSession,
+  ChatSource,
   DocStatus,
   Document,
   Flashcard,
