@@ -110,11 +110,22 @@ export interface Document {
   reviewedAt?: Date
 }
 
+export interface ChatSource {
+  content: string
+  documentId?: string
+  documentName?: string
+  score?: number
+  [key: string]: unknown
+}
+
 export interface ChatMessage {
   id: string
   role: "user" | "assistant"
   content: string
   timestamp: Date
+  sources?: ChatSource[]
+  isStreaming?: boolean
+  error?: boolean
 }
 
 export interface ChatSession {

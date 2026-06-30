@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Sparkles } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { useApp, getAIMockResponse, ChatSession, ChatMessage } from "@/lib/store"
+import { useApp, ChatSession, ChatMessage, ChatSource } from "@/lib/store"
+import { askRagStream } from "@/services/api/chat"
 
 import { ChatToolbar } from "./chat/chat-toolbar"
 import { ChatMessageItem } from "./chat/chat-message"
@@ -25,6 +25,7 @@ export function EnhancedChatInterface() {
   const [showDocPicker, setShowDocPicker] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const activeSession = chatSessions.find(s => s.id === activeChatId) ?? null
   const messages = activeSession?.messages ?? []
@@ -34,6 +35,11 @@ export function EnhancedChatInterface() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
+
+  useEffect(() => {
+    // Hủy request stream đang chạy nếu component unmount
+    return () => abortControllerRef.current?.abort()
+  }, [])
 
   const handleSend = async (content: string) => {
     if (!content.trim() || isLoading) return
@@ -47,39 +53,78 @@ export function EnhancedChatInterface() {
       timestamp: new Date(),
     }
 
+    const aiMsgId = `msg-${Date.now()}-ai`
+    const aiMsgPlaceholder: ChatMessage = {
+      id: aiMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      isStreaming: true,
+    }
+
     let sessionId = activeChatId
+    let currentMessages: ChatMessage[]
 
     if (!sessionId) {
       const newSession: ChatSession = {
         id: `chat-${Date.now()}`,
         title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
-        messages: [userMsg],
+        messages: [userMsg, aiMsgPlaceholder],
         documentId: selectedDocId ?? undefined,
         createdAt: new Date(),
       }
       addChatSession(newSession)
       setActiveChatId(newSession.id)
       sessionId = newSession.id
+      currentMessages = newSession.messages
     } else {
-      updateChatSession(sessionId, { messages: [...messages, userMsg] })
+      currentMessages = [...messages, userMsg, aiMsgPlaceholder]
+      updateChatSession(sessionId, { messages: currentMessages })
     }
 
+    const finalSessionId = sessionId
     setInput("")
     setIsLoading(true)
 
-    await new Promise(r => setTimeout(r, 1200 + Math.random() * 800))
-
-    const aiMsg: ChatMessage = {
-      id: `msg-${Date.now()}-ai`,
-      role: "assistant",
-      content: getAIMockResponse(content, selectedDoc?.name),
-      timestamp: new Date(),
+    const updateAiMessage = (updates: Partial<ChatMessage>) => {
+      currentMessages = currentMessages.map(m => (m.id === aiMsgId ? { ...m, ...updates } : m))
+      updateChatSession(finalSessionId!, { messages: currentMessages })
     }
 
-    const currentSession = chatSessions.find(s => s.id === sessionId)
-    const updatedMessages = [...(currentSession?.messages ?? [userMsg]), aiMsg]
-    updateChatSession(sessionId!, { messages: updatedMessages })
-    setIsLoading(false)
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    await askRagStream(
+      {
+        query: content.trim(),
+        userId: currentUser.id,
+        documentId: selectedDocId,
+      },
+      {
+        onToken: (_delta, fullText) => {
+          updateAiMessage({ content: fullText, isStreaming: true })
+        },
+        onSources: (sources: ChatSource[]) => {
+          updateAiMessage({ sources })
+        },
+        onDone: () => {
+          updateAiMessage({ isStreaming: false })
+          setIsLoading(false)
+        },
+        onError: () => {
+          const existing = currentMessages.find(m => m.id === aiMsgId)
+          updateAiMessage({
+            content: existing?.content
+              ? existing.content
+              : "Xin lỗi, đã có lỗi xảy ra khi kết nối với AI. Vui lòng thử lại.",
+            isStreaming: false,
+            error: true,
+          })
+          setIsLoading(false)
+        },
+      },
+      controller.signal
+    )
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -152,21 +197,6 @@ export function EnhancedChatInterface() {
                     onCopy={handleCopy}
                   />
                 ))}
-
-                {isLoading && (
-                  <div className="flex gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70">
-                      <Sparkles className="h-4 w-4 animate-pulse text-primary-foreground" />
-                    </div>
-                    <div className="rounded-2xl bg-muted px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.3s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.15s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div ref={messagesEndRef} />
               </div>
             )}
