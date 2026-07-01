@@ -24,3 +24,14 @@ Thumbs.db
 
 # Uploads
 backend/uploads/
+
+# Python virtual environment - không push lên
+backend/AI/.venv/
+
+# Python cache
+backend/AI/__pycache__/
+backend/AI/**/__pycache__/
+backend/AI/**/*.pyc
+
+# Thư mục upload file của user
+backend/AI/uploads/
