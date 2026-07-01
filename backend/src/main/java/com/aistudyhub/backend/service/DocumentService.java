@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -98,7 +97,11 @@ public class DocumentService {
         }
 
         String storedName = UUID.randomUUID() + "_" + originalName;
-        Path targetPath = uploadDir.resolve(storedName);
+
+        // Upload lên Supabase Storage TRƯỚC khi tạo bản ghi DB.
+        // Nếu lỗi thì chưa đụng gì tới DB, không cần rollback thủ công.
+        String fileUrl = storageService.uploadToSupabase(file, storedName);
+
         LocalDateTime now = LocalDateTime.now();
 
         Document doc = new Document();
@@ -106,7 +109,7 @@ public class DocumentService {
         doc.setUserId(userId);
         doc.setOriginalName(originalName);
         doc.setTitle(title != null && !title.isBlank() ? title : originalName);
-        doc.setFileUrl("uploads/" + storedName);
+        doc.setFileUrl(fileUrl);
         doc.setFileSizeBytes(file.getSize());
         doc.setFileType(ext);
         doc.setSubject(subject != null ? subject.trim().toLowerCase() : null);
@@ -117,22 +120,10 @@ public class DocumentService {
         doc.setCreatedAt(now);
         doc.setUpdatedAt(now);
 
-        // Inline storage update inside this transaction to avoid nested @Transactional
-        // + PESSIMISTIC_WRITE deadlock on MSSQL
         user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
         Document saved = documentRepository.save(doc);
-
-        try {
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            documentRepository.deleteById(saved.getId());
-            user.setStorageUsedBytes(Math.max(0, user.getStorageUsedBytes() - file.getSize()));
-            user.setUpdatedAt(LocalDateTime.now());
-            userRepository.save(user);
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + e.getMessage());
-        }
 
         scanProcessor.simulateScan(saved.getId());
         return saved;
