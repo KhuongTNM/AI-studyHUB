@@ -154,6 +154,11 @@ OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL=gpt-4o-mini
 EMBED_MODEL=text-embedding-3-small
 UPLOAD_DIR=./uploads
+
+# Semantic Chunking Feature Flags
+SEMANTIC_CHUNKING_ENABLED=false
+SEMANTIC_BREAKPOINT_PERCENTILE=90
+SEMANTIC_BUFFER_SIZE=1
 ```
 
 > Có thể dùng Gemini API (miễn phí, lấy key tại https://aistudio.google.com/apikey) thay cho OpenAI nếu chưa có quota — xem cấu hình `base_url` trong `services/embedding.py` và `services/llm_service.py`.

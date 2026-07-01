@@ -5,7 +5,7 @@ import requests
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from services.text_extractor import extract_text
-from services.chunking import chunk_text
+from services.chunking import recursive_chunk_text, semantic_chunk_text
 from services.embedding import process_chunks
 from services.vector_store import insert_chunks, delete_chunks, get_connection, release_connection
 
@@ -71,7 +71,15 @@ def worker(document_id: str, file_url: str, user_id: str, file_type: str):
         if not text:
             raise ValueError("No text extracted from file.")
 
-        chunks = chunk_text(text)
+        # Route chunking based on feature flag
+        semantic_enabled = os.getenv("SEMANTIC_CHUNKING_ENABLED", "false").lower() == "true"
+        if semantic_enabled:
+            # Note: Embedding sentences for breakpoints and re-embedding full chunks later
+            # is acceptable for this iteration.
+            chunks = semantic_chunk_text(text)
+        else:
+            chunks = recursive_chunk_text(text)
+
         if not chunks:
             raise ValueError("No chunks generated from text.")
 
