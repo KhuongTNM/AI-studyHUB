@@ -174,6 +174,14 @@ public class DocumentController {
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
         Document doc = documentService.incrementDownloadCount(id, principal.getId());
+        String fileUrl = doc.getFileUrl();
+
+        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, fileUrl)
+                    .build();
+        }
+
         Path filePath = documentService.getFilePath(doc);
         if (!Files.exists(filePath)) {
             return ResponseEntity.notFound().build();
