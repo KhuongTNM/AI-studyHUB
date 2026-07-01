@@ -73,6 +73,7 @@ export interface AppState {
     subject: string,
     visibility?: "private" | "public",
     folderId?: string | null,
+    tags?: string,
   ) => Promise<{ success: boolean; error?: string }>
   /** Soft-delete tài liệu và gọi DELETE /api/documents/{id} (BR-022) */
   deleteDocument: (id: string) => void
@@ -197,7 +198,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
 
   // ── 3. Documents (cần currentUser để load và upload) ────────────────────
-  const docs = useDocumentState({ currentUser: auth.currentUser })
+  const docs = useDocumentState({
+    currentUser: auth.currentUser,
+    setCurrentUser: auth.setCurrentUser,
+  })
 
   // ── 4. Flashcards (cần documents để tạo mock fallback) ─────────────────
   const flashcards = useFlashcardState({ documents: docs.documents })
