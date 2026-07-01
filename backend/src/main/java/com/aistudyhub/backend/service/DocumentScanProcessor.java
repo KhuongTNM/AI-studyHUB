@@ -54,6 +54,10 @@ public class DocumentScanProcessor {
                 LOGGER.info("Successfully triggered ingest for document {}", documentId);
             } catch (Exception e) {
                 LOGGER.error("Failed to trigger ingest for document {}: {}", documentId, e.getMessage());
+                doc.setStatus(DocumentStatus.FAILED);
+                doc.setEmbeddingStatus("failed");
+                doc.setUpdatedAt(LocalDateTime.now());
+                documentRepository.save(doc);
             }
         });
     }
