@@ -10,19 +10,11 @@ RUN mvn clean package -DskipTests -B
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Cài Python + build deps cho psycopg2
-RUN apk add --no-cache \
-    python3 py3-pip py3-virtualenv \
-    gcc musl-dev libpq-dev python3-dev
-
 RUN mkdir -p /app/uploads
 
 COPY --from=build /app/target/backend-0.1.0.jar app.jar
 
-COPY AI ./AI
-RUN python3 -m venv AI/.venv \
-    && AI/.venv/bin/pip install --no-cache-dir -r AI/requirements.txt
+# Render tự cấp biến $PORT — application.properties đã đọc: server.port=${PORT:8080}
+EXPOSE 8080
 
-EXPOSE 8080 8000
-
-CMD ["sh", "-c", "cd AI && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 & java -jar /app/app.jar"]
+CMD ["java", "-jar", "app.jar"]
