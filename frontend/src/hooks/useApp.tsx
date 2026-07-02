@@ -21,11 +21,11 @@
  *  useGroupChatState    → group chats
  */
 
-import React, { createContext, useCallback, useContext, type ReactNode } from "react"
+import React, { createContext, useCallback, useContext, useState, type ReactNode } from "react"
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
 import type {
   Language, PackagePrice, PackageTier, User,
-  Category, ChatSession, Document, Folder, Flashcard, ActivityLog, GroupChat,
+  Category, ChatSession, ChatMessage, Document, Folder, Flashcard, ActivityLog, GroupChat,
 } from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
@@ -121,6 +121,20 @@ export interface AppState {
   addChatSession: (session: ChatSession) => void
   updateChatSession: (id: string, updates: Partial<ChatSession>) => void
   setActiveChatId: (id: string | null) => void
+  /** POST /api/v1/chat/sessions — tạo session mới trên backend, gắn kèm documentId */
+  createChatSession: (documentId?: string | null) => Promise<ChatSession>
+  /** POST /api/v1/chat/sessions/{sessionId}/messages — lưu 1 tin nhắn vào backend */
+  persistChatMessage: (sessionId: string, role: "user" | "assistant", content: string) => Promise<ChatMessage>
+  /** DELETE /api/v1/chat/sessions/{sessionId} */
+  deleteChatSession: (id: string) => Promise<void>
+  /**
+   * Tài liệu đang chờ được chọn sẵn khi mở trang Chat (đến từ nút "Chat AI" trên 1 tài liệu cụ thể).
+   * Trang Chat đọc giá trị này khi mount rồi tự clear để không ảnh hưởng các lần vào chat sau.
+   */
+  pendingChatDocumentId: string | null
+  setPendingChatDocumentId: (id: string | null) => void
+  /** Mở trang Chat với 1 tài liệu cụ thể đã được chọn sẵn (nút "Chat AI" trên từng file) */
+  openChatWithDocument: (documentId: string) => void
 
   // ── Group chats ───────────────────────────────────────────────────────────
   groups: GroupChat[]
@@ -178,7 +192,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── 1. Leaf hooks với không có deps ────────────────────────────────────
   const logs = useActivityLogs()
   const ui = useUIState()
-  const chat = useChatState()
+  const [pendingChatDocumentId, setPendingChatDocumentId] = useState<string | null>(null)
 
   const routeAfterAuthentication = useCallback((user: User) => {
     if (user.role === "admin" || user.role === "sub-admin") {
@@ -198,6 +212,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── 3. Documents (cần currentUser để load và upload) ────────────────────
   const docs = useDocumentState({ currentUser: auth.currentUser })
+
+  // ── 3b. Chat (cần currentUser để load lịch sử chat từ backend) ─────────
+  const chat = useChatState({ currentUser: auth.currentUser })
+
+  const openChatWithDocument = useCallback(
+    (documentId: string) => {
+      setPendingChatDocumentId(documentId)
+      chat.setActiveChatId(null)
+      ui.setCurrentPage("chat")
+    },
+    [chat, ui]
+  )
 
   // ── 4. Flashcards (cần documents để tạo mock fallback) ─────────────────
   const flashcards = useFlashcardState({ documents: docs.documents })
@@ -304,6 +330,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addChatSession: chat.addChatSession,
         updateChatSession: chat.updateChatSession,
         setActiveChatId: chat.setActiveChatId,
+        createChatSession: chat.createChatSession,
+        persistChatMessage: chat.persistChatMessage,
+        deleteChatSession: chat.deleteChatSession,
+        pendingChatDocumentId,
+        setPendingChatDocumentId,
+        openChatWithDocument,
 
         // Group chats
         groups: groupChat.groups,

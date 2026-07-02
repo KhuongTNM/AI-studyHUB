@@ -1,7 +1,128 @@
 import { getAccessToken } from "@/lib/auth-storage"
-import type { ChatSource } from "@/states/types"
+import type { ChatSource, ChatMessage, ChatSession } from "@/states/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+
+// ─── Backend DTO (docs.chat_sessions / docs.chat_messages) ────────────────────
+
+interface ApiChatSession {
+  id: string
+  userId: string
+  documentId?: string | null
+  title?: string | null
+  createdAt: string
+}
+
+interface ApiChatMessage {
+  id: string
+  sessionId: string
+  role: "user" | "assistant"
+  content: string
+  createdAt: string
+}
+
+interface ErrorBody {
+  message?: string
+}
+
+async function parseError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as ErrorBody
+    if (body.message) return body.message
+  } catch {
+    // ignore
+  }
+  return `Yêu cầu thất bại (HTTP ${response.status})`
+}
+
+function authHeaders(): HeadersInit {
+  const token = getAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function mapApiSession(api: ApiChatSession): ChatSession {
+  return {
+    id: api.id,
+    title: api.title?.trim() || "Cuộc trò chuyện mới",
+    messages: [],
+    documentId: api.documentId ?? undefined,
+    createdAt: new Date(api.createdAt),
+  }
+}
+
+function mapApiMessage(api: ApiChatMessage): ChatMessage {
+  return {
+    id: api.id,
+    role: api.role,
+    content: api.content,
+    timestamp: new Date(api.createdAt),
+  }
+}
+
+// ─── Chat session/message API calls ────────────────────────────────────────────
+
+/** GET /api/v1/chat/sessions — danh sách session của user hiện tại, mới nhất trước */
+export async function fetchChatSessionsApi(): Promise<ChatSession[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/sessions`, {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const sessions = (await response.json()) as ApiChatSession[]
+  return sessions.map(mapApiSession)
+}
+
+/** GET /api/v1/chat/sessions/{sessionId}/messages — toàn bộ tin nhắn theo thứ tự thời gian */
+export async function fetchChatMessagesApi(sessionId: string): Promise<ChatMessage[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/sessions/${sessionId}/messages`, {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const messages = (await response.json()) as ApiChatMessage[]
+  return messages.map(mapApiMessage)
+}
+
+/** POST /api/v1/chat/sessions — tạo session mới, gắn kèm documentId (nếu có) */
+export async function createChatSessionApi(documentId?: string | null): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ documentId: documentId ?? null }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const session = (await response.json()) as ApiChatSession
+  return mapApiSession(session)
+}
+
+/** POST /api/v1/chat/sessions/{sessionId}/messages — lưu 1 tin nhắn vào session */
+export async function saveChatMessageApi(
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string
+): Promise<ChatMessage> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/sessions/${sessionId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ role, content }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const message = (await response.json()) as ApiChatMessage
+  return mapApiMessage(message)
+}
+
+/** DELETE /api/v1/chat/sessions/{sessionId} */
+export async function deleteChatSessionApi(sessionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+}
 
 interface AskParams {
   query: string

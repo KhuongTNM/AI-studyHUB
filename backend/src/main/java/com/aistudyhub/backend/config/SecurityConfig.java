@@ -60,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
+                        .requestMatchers("/api/v1/chat/**").authenticated()
                         .requestMatchers("/bank/api/transaction-sync").permitAll()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

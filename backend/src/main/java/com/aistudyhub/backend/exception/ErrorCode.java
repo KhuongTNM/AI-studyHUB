@@ -29,7 +29,9 @@ public enum ErrorCode {
     DOCUMENT_DELETED(HttpStatus.GONE, "DOCUMENT_DELETED"),
 
     INVALID_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "INVALID_IMAGE_TYPE"),
-    IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "IMAGE_TOO_LARGE");
+    IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "IMAGE_TOO_LARGE"),
+
+    CHAT_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_SESSION_NOT_FOUND");
 
     private final HttpStatus status;
     private final String message;
