@@ -2,36 +2,37 @@ package com.aistudyhub.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "chat_messages", schema = "docs")
+@Table(schema = "docs", name = "chat_messages")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class ChatMessage {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
-    private ChatRole role;
+    @Column(name = "session_id", nullable = false)
+    private UUID sessionId;
+
+    /** 'user' hoặc 'assistant' — khớp CHECK constraint ở docs.chat_messages.role */
+    @Column(name = "role", length = 10, nullable = false)
+    private String role;
 
     @Column(name = "content", columnDefinition = "TEXT", nullable = false)
     private String content;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id", nullable = false)
-    private ChatSession chatSession;
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
 }
