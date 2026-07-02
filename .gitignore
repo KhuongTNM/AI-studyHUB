@@ -18,6 +18,11 @@ backend/.mvn/
 Thumbs.db
 .DS_Store
 
+# Runtime logs
+*.log
+*.err.log
+*.pid
+
 # Environment
 .env
 *.env.local
