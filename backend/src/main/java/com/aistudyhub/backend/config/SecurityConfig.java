@@ -60,6 +60,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
+
+                        // FIX CHUẨN: PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
+                        .requestMatchers("/api/payos/webhook").permitAll()
+
                         .requestMatchers("/api/v1/chat/**").authenticated()
                         .requestMatchers("/bank/api/transaction-sync").permitAll()
                         .anyRequest().permitAll())
