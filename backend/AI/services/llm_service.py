@@ -1,50 +1,49 @@
-"""
-Phần Generation của RAG:
-    Lấy danh sách chunks liên quan → ghép làm context → gửi vào LLM → trả lời.
-"""
-
 import os
+import json
+from decimal import Decimal
 from openai import OpenAI
-
-_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-
-_SYSTEM_PROMPT = """Bạn là trợ lý học tập thông minh của AI Study Hub.
-Dựa vào các đoạn tài liệu được cung cấp trong [CONTEXT], hãy trả lời câu hỏi của người dùng một cách chính xác và ngắn gọn.
-Nếu thông tin không có trong context, hãy nói rõ là bạn không tìm thấy thông tin đó trong tài liệu."""
+from typing import List, Dict, Any
 
 
-def answer(query: str, context_chunks: list[dict]) -> str:
-    """
-    Sinh câu trả lời từ query + danh sách chunks liên quan.
+def _json_default(obj):
+    """Xử lý các kiểu dữ liệu Postgres trả về (Decimal, ...) mà json.dumps mặc định không serialize được."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
-    Args:
-        query:          câu hỏi của user
-        context_chunks: list dict từ vector_store.search()
-                        mỗi dict có key "content"
+# --- Đã đổi sang dùng Gemini qua lớp tương thích OpenAI ---
+# OPENAI_API_KEY trong .env giờ sẽ là API key của Gemini (lấy tại https://aistudio.google.com/apikey)
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
-    Returns:
-        Chuỗi câu trả lời từ LLM.
-    """
-    # Ghép các chunks thành 1 context block
-    context_text = "\n\n---\n\n".join(
-        f"[Đoạn {i + 1}]:\n{c['content']}"
-        for i, c in enumerate(context_chunks)
+async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, Any]]):
+    context_text = "\n\n".join([f"[{i+1}] {chunk['content']}" for i, chunk in enumerate(retrieved_chunks)])
+
+    system_prompt = (
+        "Bạn là trợ lý AI. Chỉ trả lời dựa trên thông tin trong các đoạn văn bản dưới đây. "
+        "Nếu không có thông tin, nói \"Tôi không tìm thấy thông tin phù hợp trong tài liệu của bạn.\"\n"
+        "--- Ngữ cảnh ---\n"
+        f"{context_text}"
     )
 
-    messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"[CONTEXT]\n{context_text}\n\n[CÂU HỎI]\n{query}",
-        },
-    ]
+    user_prompt = f"--- Câu hỏi ---\n{query}"
 
-    response = _client.chat.completions.create(
-        model=_LLM_MODEL,
-        messages=messages,
-        temperature=0.2,      # thấp để câu trả lời bám sát context
-        max_tokens=1024,
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.3,
+        stream=True
     )
 
-    return response.choices[0].message.content
+    for chunk in response:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+    sources_metadata = json.dumps({"sources": retrieved_chunks}, default=_json_default)
+    yield f"\n\n[SOURCES]\n{sources_metadata}\n\n"

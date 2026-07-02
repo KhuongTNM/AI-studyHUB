@@ -34,7 +34,7 @@ export function DocumentManager() {
     uploadDocument, downloadDocument, changeDocumentVisibility,
     currentUser, setCurrentPage, generateFlashcardsFromDocument, language,
     folders, createFolder, renameFolder, deleteFolder,
-    moveFolder, moveDocumentToFolder,
+    moveFolder, moveDocumentToFolder, openChatWithDocument,
   } = useApp()
 
   // ── Navigation state ────────────────────────────────────────────────────
@@ -651,7 +651,7 @@ const handleSelectSubject = useCallback((subject: string) => {
                     onDelete={deleteDocument}
                     onDownload={handleDownload}
                     onToggleVisibility={handleToggleVisibility}
-                    onChat={() => setCurrentPage("chat")}
+                    onChat={() => openChatWithDocument(doc.id)}
                     onGenerateFlashcards={document => {
                       generateFlashcardsFromDocument(document.id)
                       setCurrentPage("flashcards")
@@ -687,7 +687,7 @@ const handleSelectSubject = useCallback((subject: string) => {
           onEditFile={setEditDoc}
           onDownloadFile={doc => handleDownload(doc.id)}
           onDeleteFile={doc => deleteDocument(doc.id)}
-          onChatFile={() => setCurrentPage("chat")}
+          onChatFile={doc => openChatWithDocument(doc.id)}
           onFlashcardsFile={doc => {
             generateFlashcardsFromDocument(doc.id)
             setCurrentPage("flashcards")

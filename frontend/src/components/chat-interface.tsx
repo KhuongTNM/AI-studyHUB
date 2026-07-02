@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Sparkles } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { useApp, getAIMockResponse, ChatSession, ChatMessage } from "@/lib/store"
+import { useApp, ChatSession, ChatMessage, ChatSource } from "@/lib/store"
+import { askRagStream } from "@/services/api/chat"
 
 import { ChatToolbar } from "./chat/chat-toolbar"
 import { ChatMessageItem } from "./chat/chat-message"
@@ -15,6 +15,8 @@ export function EnhancedChatInterface() {
   const {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
+    createChatSession, persistChatMessage,
+    pendingChatDocumentId, setPendingChatDocumentId,
     openAuthModal,
     language,
   } = useApp()
@@ -25,6 +27,7 @@ export function EnhancedChatInterface() {
   const [showDocPicker, setShowDocPicker] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const activeSession = chatSessions.find(s => s.id === activeChatId) ?? null
   const messages = activeSession?.messages ?? []
@@ -34,6 +37,25 @@ export function EnhancedChatInterface() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
+
+  useEffect(() => {
+    // Hủy request stream đang chạy nếu component unmount
+    return () => abortControllerRef.current?.abort()
+  }, [])
+
+  // ── Đồng bộ tài liệu đang chọn với session / nút "Chat AI" trên từng file ──
+  // Ưu tiên: 1) tài liệu vừa chọn từ nút "Chat AI" của 1 file cụ thể
+  //          2) tài liệu gắn với session đang mở (khi bấm vào lịch sử chat)
+  //          3) không có tài liệu nào (chat chung)
+  useEffect(() => {
+    if (pendingChatDocumentId) {
+      setSelectedDocId(pendingChatDocumentId)
+      setPendingChatDocumentId(null)
+      return
+    }
+    setSelectedDocId(activeSession?.documentId ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId])
 
   const handleSend = async (content: string) => {
     if (!content.trim() || isLoading) return
@@ -47,39 +69,102 @@ export function EnhancedChatInterface() {
       timestamp: new Date(),
     }
 
-    let sessionId = activeChatId
-
-    if (!sessionId) {
-      const newSession: ChatSession = {
-        id: `chat-${Date.now()}`,
-        title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
-        messages: [userMsg],
-        documentId: selectedDocId ?? undefined,
-        createdAt: new Date(),
-      }
-      addChatSession(newSession)
-      setActiveChatId(newSession.id)
-      sessionId = newSession.id
-    } else {
-      updateChatSession(sessionId, { messages: [...messages, userMsg] })
+    const aiMsgId = `msg-${Date.now()}-ai`
+    const aiMsgPlaceholder: ChatMessage = {
+      id: aiMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      isStreaming: true,
     }
 
+    let sessionId = activeChatId
+    let currentMessages: ChatMessage[]
+
+    if (!sessionId) {
+      // Tạo session thật trên backend (docs.chat_sessions), gắn kèm documentId
+      // đang chọn để phục hồi đúng tài liệu khi mở lại session này sau này (A5).
+      let newSession: ChatSession
+      try {
+        newSession = await createChatSession(selectedDocId)
+      } catch {
+        // Backend lỗi -> vẫn tạo session tạm ở client để không chặn trải nghiệm chat,
+        // nhưng lịch sử sẽ không được lưu lại sau khi refresh.
+        newSession = {
+          id: `chat-${Date.now()}`,
+          title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
+          messages: [],
+          documentId: selectedDocId ?? undefined,
+          createdAt: new Date(),
+        }
+        addChatSession(newSession)
+      }
+      updateChatSession(newSession.id, {
+        title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
+        messages: [userMsg, aiMsgPlaceholder],
+      })
+      setActiveChatId(newSession.id)
+      sessionId = newSession.id
+      currentMessages = [userMsg, aiMsgPlaceholder]
+    } else {
+      currentMessages = [...messages, userMsg, aiMsgPlaceholder]
+      updateChatSession(sessionId, { messages: currentMessages })
+    }
+
+    const finalSessionId = sessionId
     setInput("")
     setIsLoading(true)
 
-    await new Promise(r => setTimeout(r, 1200 + Math.random() * 800))
+    // Lưu tin nhắn của user vào backend (không chặn UI, chạy nền)
+    void persistChatMessage(finalSessionId, "user", userMsg.content).catch(() => {
+      // Nếu lưu thất bại, tin nhắn vẫn hiển thị trên UI trong phiên hiện tại
+    })
 
-    const aiMsg: ChatMessage = {
-      id: `msg-${Date.now()}-ai`,
-      role: "assistant",
-      content: getAIMockResponse(content, selectedDoc?.name),
-      timestamp: new Date(),
+    const updateAiMessage = (updates: Partial<ChatMessage>) => {
+      currentMessages = currentMessages.map(m => (m.id === aiMsgId ? { ...m, ...updates } : m))
+      updateChatSession(finalSessionId!, { messages: currentMessages })
     }
 
-    const currentSession = chatSessions.find(s => s.id === sessionId)
-    const updatedMessages = [...(currentSession?.messages ?? [userMsg]), aiMsg]
-    updateChatSession(sessionId!, { messages: updatedMessages })
-    setIsLoading(false)
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    await askRagStream(
+      {
+        query: content.trim(),
+        userId: currentUser.id,
+        documentId: selectedDocId,
+      },
+      {
+        onToken: (_delta, fullText) => {
+          updateAiMessage({ content: fullText, isStreaming: true })
+        },
+        onSources: (sources: ChatSource[]) => {
+          updateAiMessage({ sources })
+        },
+        onDone: () => {
+          updateAiMessage({ isStreaming: false })
+          setIsLoading(false)
+          const finalAiMsg = currentMessages.find(m => m.id === aiMsgId)
+          if (finalAiMsg?.content) {
+            void persistChatMessage(finalSessionId, "assistant", finalAiMsg.content).catch(() => {
+              // Nếu lưu thất bại, câu trả lời vẫn hiển thị trên UI trong phiên hiện tại
+            })
+          }
+        },
+        onError: () => {
+          const existing = currentMessages.find(m => m.id === aiMsgId)
+          updateAiMessage({
+            content: existing?.content
+              ? existing.content
+              : "Xin lỗi, đã có lỗi xảy ra khi kết nối với AI. Vui lòng thử lại.",
+            isStreaming: false,
+            error: true,
+          })
+          setIsLoading(false)
+        },
+      },
+      controller.signal
+    )
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -152,21 +237,6 @@ export function EnhancedChatInterface() {
                     onCopy={handleCopy}
                   />
                 ))}
-
-                {isLoading && (
-                  <div className="flex gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70">
-                      <Sparkles className="h-4 w-4 animate-pulse text-primary-foreground" />
-                    </div>
-                    <div className="rounded-2xl bg-muted px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.3s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.15s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div ref={messagesEndRef} />
               </div>
             )}

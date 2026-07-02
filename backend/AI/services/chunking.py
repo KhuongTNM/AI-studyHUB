@@ -1,100 +1,209 @@
-"""
-Chia text thành các chunk theo chiến lược 2 cấp:
-    1. Cắt theo đoạn văn  (\\n\\n)
-    2. Trong đoạn dài → cắt theo câu, luôn cắt SAU dấu [. , ? ! ; :]
-       → không bao giờ để 2 chunk nối chuỗi thông tin với nhau.
-"""
-
 import re
+import os
+import numpy as np
+from typing import List, Dict
 
-MAX_CHUNK_CHARS = 800   # ~200 token
-MIN_CHUNK_CHARS = 80    # chunk nhỏ hơn sẽ gộp vào chunk trước
+MAX_CHUNK_CHARS = int(os.getenv("MAX_CHUNK_CHARS", "800"))
+MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "80"))
+OVERLAP_CHARS = int(os.getenv("OVERLAP_CHARS", "100"))
+SEMANTIC_BUFFER_SIZE = int(os.getenv("SEMANTIC_BUFFER_SIZE", "1"))
+SEMANTIC_BREAKPOINT_PERCENTILE = float(os.getenv("SEMANTIC_BREAKPOINT_PERCENTILE", "90"))
 
-# Tách câu: split SAU dấu câu, giữ dấu lại ở câu trước
-_SENTENCE_SPLIT = re.compile(r"(?<=[.?!;:,])(?=\s+|$)")
+def get_overlap_text(text: str) -> str:
+    if len(text) <= OVERLAP_CHARS:
+        return text
+    tail = text[-OVERLAP_CHARS:]
+    match = re.search(r'(?<=[.?!;:,])\s+', tail)
+    if match:
+        return tail[match.end():].strip()
+    return tail.strip()
 
-
-def chunk(full_text: str) -> list[str]:
-    """
-    Trả về danh sách các chunk từ full_text.
-    """
-    if not full_text or not full_text.strip():
+def recursive_chunk_strings(text: str) -> List[str]:
+    if not text:
         return []
-
-    paragraphs = re.split(r"\n\n+", full_text)
-    result: list[str] = []
-
+        
+    paragraphs = re.split(r'\n\n+', text)
+    raw_chunks = []
+    
     for para in paragraphs:
         para = para.strip()
         if not para:
             continue
-
+            
         if len(para) <= MAX_CHUNK_CHARS:
-            _merge_or_add(result, para)
+            raw_chunks.append(para)
         else:
-            for sc in _chunk_by_sentence(para):
-                _merge_or_add(result, sc)
-
-    return [c.strip() for c in result if c.strip()]
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Tách theo câu
-# ──────────────────────────────────────────────────────────────────────
-
-def _chunk_by_sentence(paragraph: str) -> list[str]:
-    sentences = [s.strip() for s in _SENTENCE_SPLIT.split(paragraph) if s.strip()]
-    chunks: list[str] = []
-    buffer = ""
-
-    for sentence in sentences:
-        if len(sentence) > MAX_CHUNK_CHARS:
-            # Câu đơn lẻ đã quá dài → hard split
-            if buffer:
-                chunks.append(buffer.strip())
-                buffer = ""
-            chunks.extend(_hard_split(sentence))
-            continue
-
-        pending = len(sentence) if not buffer else len(buffer) + 1 + len(sentence)
-
-        if pending <= MAX_CHUNK_CHARS:
-            buffer = sentence if not buffer else f"{buffer} {sentence}"
+            lines = re.split(r'\n+', para)
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                if len(line) <= MAX_CHUNK_CHARS:
+                    raw_chunks.append(line)
+                else:
+                    sentences = re.split(r'(?<=[.?!;:,])(?=\s+|$)', line)
+                    current_sentence_chunk = ""
+                    for sentence in sentences:
+                        sentence = sentence.strip()
+                        if not sentence:
+                            continue
+                        if len(current_sentence_chunk) + len(sentence) + 1 <= MAX_CHUNK_CHARS:
+                            if current_sentence_chunk:
+                                current_sentence_chunk += " " + sentence
+                            else:
+                                current_sentence_chunk = sentence
+                        else:
+                            if current_sentence_chunk:
+                                raw_chunks.append(current_sentence_chunk)
+                            current_sentence_chunk = sentence
+                    if current_sentence_chunk:
+                        raw_chunks.append(current_sentence_chunk)
+                        
+    merged_chunks = []
+    for chunk in raw_chunks:
+        if not merged_chunks:
+            merged_chunks.append(chunk)
         else:
-            # Hết chỗ → đóng chunk NGAY tại đây, câu hiện tại sang chunk mới
-            if buffer:
-                chunks.append(buffer.strip())
-            buffer = sentence
+            if len(chunk) < MIN_CHUNK_CHARS and len(merged_chunks[-1]) + len(chunk) + 1 <= MAX_CHUNK_CHARS:
+                merged_chunks[-1] += " " + chunk
+            else:
+                overlap = get_overlap_text(merged_chunks[-1])
+                if overlap and len(overlap) + len(chunk) + 1 <= MAX_CHUNK_CHARS:
+                    chunk = overlap + " " + chunk
+                merged_chunks.append(chunk)
+                
+    return merged_chunks
 
-    if buffer:
-        chunks.append(buffer.strip())
+def recursive_chunk_text(text: str) -> List[Dict[str, str]]:
+    merged_chunks = recursive_chunk_strings(text)
+    result = []
+    for i, chunk in enumerate(merged_chunks):
+        result.append({
+            "chunk_index": i,
+            "content": chunk
+        })
+    return result
 
-    return chunks
+def compute_cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+    a = np.array(vec_a)
+    b = np.array(vec_b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return np.dot(a, b) / (norm_a * norm_b)
 
+def semantic_chunk_text(text: str) -> List[Dict[str, str]]:
+    if not text:
+        return []
+        
+    raw_sentences = re.split(r'(?<=[.?!;:…])(?=\s+|$)', text)
+    sentences = [s.strip() for s in raw_sentences if s.strip()]
+    
+    if not sentences:
+        return []
+    if len(sentences) == 1:
+        return recursive_chunk_text(text)
+        
+    combined_sentences = []
+    for i in range(len(sentences)):
+        start_idx = max(0, i - SEMANTIC_BUFFER_SIZE)
+        end_idx = min(len(sentences), i + SEMANTIC_BUFFER_SIZE + 1)
+        combined = " ".join(sentences[start_idx:end_idx])
+        combined_sentences.append(combined)
+        
+    from services.embedding import generate_embeddings_batch
+    embeddings = generate_embeddings_batch(combined_sentences)
+    
+    distances = []
+    for i in range(len(embeddings) - 1):
+        similarity = compute_cosine_similarity(embeddings[i], embeddings[i+1])
+        distance = 1.0 - similarity
+        distances.append(distance)
+        
+    threshold = np.percentile(distances, SEMANTIC_BREAKPOINT_PERCENTILE) if distances else 0.0
+    avg_similarity = 1.0 - np.mean(distances) if distances else 0.0
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Semantic Chunking: Threshold (P{SEMANTIC_BREAKPOINT_PERCENTILE}) = {threshold:.4f}, Average sentence similarity = {avg_similarity:.4f}")
+        
+        
+    breakpoints = []
+    for i, dist in enumerate(distances):
+        if dist > threshold:
+            breakpoints.append(i)
+            
+    raw_chunks = []
+    chunk_distances = []
+    start_idx = 0
+    for bp in breakpoints:
+        chunk = " ".join(sentences[start_idx:bp + 1])
+        raw_chunks.append(chunk)
+        chunk_distances.append(distances[bp])
+        start_idx = bp + 1
+    
+    if start_idx < len(sentences):
+        chunk = " ".join(sentences[start_idx:])
+        raw_chunks.append(chunk)
+        
+    if not raw_chunks:
+        return []
+        
+    i = 0
+    while i < len(raw_chunks):
+        if len(raw_chunks[i]) < MIN_CHUNK_CHARS and len(raw_chunks) > 1:
+            if i == 0:
+                raw_chunks[0] = raw_chunks[0] + " " + raw_chunks[1]
+                raw_chunks.pop(1)
+                chunk_distances.pop(0)
+                continue
+            elif i == len(raw_chunks) - 1:
+                raw_chunks[i-1] = raw_chunks[i-1] + " " + raw_chunks[i]
+                raw_chunks.pop(i)
+                chunk_distances.pop(i-1)
+                i -= 1
+                continue
+            else:
+                dist_prev = chunk_distances[i-1]
+                dist_next = chunk_distances[i]
+                if dist_prev <= dist_next:
+                    raw_chunks[i-1] = raw_chunks[i-1] + " " + raw_chunks[i]
+                    raw_chunks.pop(i)
+                    chunk_distances.pop(i-1)
+                    i -= 1
+                    continue
+                else:
+                    raw_chunks[i] = raw_chunks[i] + " " + raw_chunks[i+1]
+                    raw_chunks.pop(i+1)
+                    chunk_distances.pop(i)
+                    continue
+        i += 1
 
-def _hard_split(text: str) -> list[str]:
-    """Cắt cứng tại khoảng trắng gần nhất, không cắt giữa từ."""
-    parts = []
-    start = 0
-    while start < len(text):
-        end = min(start + MAX_CHUNK_CHARS, len(text))
-        if end < len(text):
-            space = text.rfind(" ", start, end)
-            if space > start:
-                end = space
-        parts.append(text[start:end].strip())
-        start = end + 1
-    return parts
+    overlapped_chunks = []
+    for i in range(len(raw_chunks)):
+        if i == 0:
+            overlapped_chunks.append(raw_chunks[i])
+        else:
+            overlap = get_overlap_text(overlapped_chunks[-1])
+            chunk = raw_chunks[i]
+            if overlap:
+                chunk = overlap + " " + chunk
+            overlapped_chunks.append(chunk)
 
+    final_chunks = []
+    for chunk in overlapped_chunks:
+        if len(chunk) > MAX_CHUNK_CHARS:
+            split_chunks = recursive_chunk_strings(chunk)
+            final_chunks.extend(split_chunks)
+        else:
+            final_chunks.append(chunk)
 
-# ──────────────────────────────────────────────────────────────────────
-# Gộp chunk nhỏ
-# ──────────────────────────────────────────────────────────────────────
-
-def _merge_or_add(chunks: list[str], text: str) -> None:
-    if chunks and len(text) < MIN_CHUNK_CHARS:
-        last = chunks[-1]
-        if len(last) + 1 + len(text) <= MAX_CHUNK_CHARS:
-            chunks[-1] = f"{last} {text}"
-            return
-    chunks.append(text)
+    result = []
+    for i, chunk in enumerate(final_chunks):
+        result.append({
+            "chunk_index": i,
+            "content": chunk
+        })
+        
+    return result
