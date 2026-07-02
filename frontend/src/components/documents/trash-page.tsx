@@ -5,6 +5,7 @@ import { Trash2, RefreshCw, AlertTriangle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
+import type { Document } from "@/lib/store"
 import {
   fetchTrashDocumentsApi,
   permanentDeleteDocumentApi,
