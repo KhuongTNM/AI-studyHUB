@@ -52,6 +52,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     menu: "Menu",
     chatHistory: "Lịch sử chat",
     startChat: "Bắt đầu cuộc trò chuyện",
+    seeMore: "Xem thêm",
+    seeLess: "Thu gọn",
     tools: "Công cụ AI",
     summarize: "Tóm tắt tài liệu",
     flashcards: "Tạo Flashcard",
@@ -66,6 +68,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     menu: "Menu",
     chatHistory: "Chat history",
     startChat: "Start a conversation",
+    seeMore: "See more",
+    seeLess: "See less",
     tools: "AI tools",
     summarize: "Summarize document",
     flashcards: "Create flashcards",
@@ -82,6 +86,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     nav: true,
   })
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>(getInitialAdminSection)
+  const [showAllHistory, setShowAllHistory] = useState(false)
+  const HISTORY_PAGE_SIZE = 10
 
   useEffect(() => {
     const syncAdminSection = () => setActiveAdminSection(getInitialAdminSection())
@@ -213,24 +219,34 @@ export function Sidebar({ onNewChat }: SidebarProps) {
             {expandedSections.history && (
               <div className="ml-2 space-y-1">
                 {chatSessions.length > 0 ? (
-                  chatSessions.slice(0, 8).map(session => (
-                    <button
-                      key={session.id}
-                      onClick={() => {
-                        setActiveChatId(session.id)
-                        setCurrentPage("chat")
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm",
-                        activeChatId === session.id
-                          ? "bg-sidebar-accent text-sidebar-foreground"
-                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      )}
-                    >
-                      <MessageCircle className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{session.title}</span>
-                    </button>
-                  ))
+                  <>
+                    {(showAllHistory ? chatSessions : chatSessions.slice(0, HISTORY_PAGE_SIZE)).map(session => (
+                      <button
+                        key={session.id}
+                        onClick={() => {
+                          setActiveChatId(session.id)
+                          setCurrentPage("chat")
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm",
+                          activeChatId === session.id
+                            ? "bg-sidebar-accent text-sidebar-foreground"
+                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        )}
+                      >
+                        <MessageCircle className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{session.title}</span>
+                      </button>
+                    ))}
+                    {chatSessions.length > HISTORY_PAGE_SIZE && (
+                      <button
+                        onClick={() => setShowAllHistory(prev => !prev)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-primary hover:bg-sidebar-accent"
+                      >
+                        {showAllHistory ? text.seeLess : `${text.seeMore} (${chatSessions.length - HISTORY_PAGE_SIZE})`}
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <button
                     onClick={() => handleNav("chat")}

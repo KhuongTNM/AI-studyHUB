@@ -15,6 +15,8 @@ export function EnhancedChatInterface() {
   const {
     currentUser, documents, chatSessions, activeChatId,
     addChatSession, updateChatSession, setActiveChatId,
+    createChatSession, persistChatMessage,
+    pendingChatDocumentId, setPendingChatDocumentId,
     openAuthModal,
     language,
   } = useApp()
@@ -41,6 +43,20 @@ export function EnhancedChatInterface() {
     return () => abortControllerRef.current?.abort()
   }, [])
 
+  // ── Đồng bộ tài liệu đang chọn với session / nút "Chat AI" trên từng file ──
+  // Ưu tiên: 1) tài liệu vừa chọn từ nút "Chat AI" của 1 file cụ thể
+  //          2) tài liệu gắn với session đang mở (khi bấm vào lịch sử chat)
+  //          3) không có tài liệu nào (chat chung)
+  useEffect(() => {
+    if (pendingChatDocumentId) {
+      setSelectedDocId(pendingChatDocumentId)
+      setPendingChatDocumentId(null)
+      return
+    }
+    setSelectedDocId(activeSession?.documentId ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId])
+
   const handleSend = async (content: string) => {
     if (!content.trim() || isLoading) return
     if (!currentUser) { openAuthModal("login"); return }
@@ -66,17 +82,30 @@ export function EnhancedChatInterface() {
     let currentMessages: ChatMessage[]
 
     if (!sessionId) {
-      const newSession: ChatSession = {
-        id: `chat-${Date.now()}`,
+      // Tạo session thật trên backend (docs.chat_sessions), gắn kèm documentId
+      // đang chọn để phục hồi đúng tài liệu khi mở lại session này sau này (A5).
+      let newSession: ChatSession
+      try {
+        newSession = await createChatSession(selectedDocId)
+      } catch {
+        // Backend lỗi -> vẫn tạo session tạm ở client để không chặn trải nghiệm chat,
+        // nhưng lịch sử sẽ không được lưu lại sau khi refresh.
+        newSession = {
+          id: `chat-${Date.now()}`,
+          title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
+          messages: [],
+          documentId: selectedDocId ?? undefined,
+          createdAt: new Date(),
+        }
+        addChatSession(newSession)
+      }
+      updateChatSession(newSession.id, {
         title: content.slice(0, 40) + (content.length > 40 ? "..." : ""),
         messages: [userMsg, aiMsgPlaceholder],
-        documentId: selectedDocId ?? undefined,
-        createdAt: new Date(),
-      }
-      addChatSession(newSession)
+      })
       setActiveChatId(newSession.id)
       sessionId = newSession.id
-      currentMessages = newSession.messages
+      currentMessages = [userMsg, aiMsgPlaceholder]
     } else {
       currentMessages = [...messages, userMsg, aiMsgPlaceholder]
       updateChatSession(sessionId, { messages: currentMessages })
@@ -85,6 +114,11 @@ export function EnhancedChatInterface() {
     const finalSessionId = sessionId
     setInput("")
     setIsLoading(true)
+
+    // Lưu tin nhắn của user vào backend (không chặn UI, chạy nền)
+    void persistChatMessage(finalSessionId, "user", userMsg.content).catch(() => {
+      // Nếu lưu thất bại, tin nhắn vẫn hiển thị trên UI trong phiên hiện tại
+    })
 
     const updateAiMessage = (updates: Partial<ChatMessage>) => {
       currentMessages = currentMessages.map(m => (m.id === aiMsgId ? { ...m, ...updates } : m))
@@ -110,6 +144,12 @@ export function EnhancedChatInterface() {
         onDone: () => {
           updateAiMessage({ isStreaming: false })
           setIsLoading(false)
+          const finalAiMsg = currentMessages.find(m => m.id === aiMsgId)
+          if (finalAiMsg?.content) {
+            void persistChatMessage(finalSessionId, "assistant", finalAiMsg.content).catch(() => {
+              // Nếu lưu thất bại, câu trả lời vẫn hiển thị trên UI trong phiên hiện tại
+            })
+          }
         },
         onError: () => {
           const existing = currentMessages.find(m => m.id === aiMsgId)

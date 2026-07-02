@@ -1,11 +1,43 @@
 "use client"
 
-import { useCallback, useState } from "react"
-import type { ChatSession } from "@/states/types"
+import { useCallback, useEffect, useState } from "react"
+import type { ChatMessage, ChatSession, User } from "@/states/types"
+import {
+  fetchChatSessionsApi,
+  fetchChatMessagesApi,
+  createChatSessionApi,
+  saveChatMessageApi,
+  deleteChatSessionApi,
+} from "@/services/api/chat"
 
-export function useChatState() {
+interface ChatStateDeps {
+  currentUser: User | null
+}
+
+export function useChatState({ currentUser }: ChatStateDeps) {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [loadedMessageSessionIds, setLoadedMessageSessionIds] = useState<Set<string>>(new Set())
+
+  // ── Load danh sách session từ backend khi user đăng nhập ─────────────────
+  // (giúp lịch sử chat không bị mất khi refresh trang — FR: BR-chat-history)
+  useEffect(() => {
+    if (!currentUser) {
+      setChatSessions([])
+      setActiveChatId(null)
+      setLoadedMessageSessionIds(new Set())
+      return
+    }
+    let cancelled = false
+    fetchChatSessionsApi()
+      .then(sessions => {
+        if (!cancelled) setChatSessions(sessions)
+      })
+      .catch(() => {
+        // Backend chưa sẵn sàng / lỗi mạng -> giữ nguyên state hiện có
+      })
+    return () => { cancelled = true }
+  }, [currentUser])
 
   const addChatSession = useCallback((session: ChatSession) => {
     setChatSessions(prev => [session, ...prev])
@@ -15,11 +47,68 @@ export function useChatState() {
     setChatSessions(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)))
   }, [])
 
+  const removeChatSession = useCallback((id: string) => {
+    setChatSessions(prev => prev.filter(s => s.id !== id))
+    setActiveChatId(current => (current === id ? null : current))
+  }, [])
+
+  /** Tạo session mới trên backend (docs.chat_sessions), gắn kèm documentId nếu có */
+  const createChatSession = useCallback(async (documentId?: string | null): Promise<ChatSession> => {
+    const session = await createChatSessionApi(documentId ?? null)
+    setChatSessions(prev => [session, ...prev])
+    setLoadedMessageSessionIds(prev => new Set(prev).add(session.id))
+    return session
+  }, [])
+
+  /** Lưu 1 message vào session hiện có trên backend (docs.chat_messages) */
+  const persistChatMessage = useCallback(
+    async (sessionId: string, role: "user" | "assistant", content: string): Promise<ChatMessage> => {
+      return saveChatMessageApi(sessionId, role, content)
+    },
+    []
+  )
+
+  /**
+   * Lazy-load message của 1 session khi user mở nó lần đầu (từ sidebar / lịch sử chat)
+   * — tránh gọi API load hết message của mọi session ngay khi vào trang.
+   */
+  const ensureSessionMessagesLoaded = useCallback(
+    async (sessionId: string) => {
+      if (loadedMessageSessionIds.has(sessionId)) return
+      try {
+        const messages = await fetchChatMessagesApi(sessionId)
+        setChatSessions(prev =>
+          prev.map(s => (s.id === sessionId ? { ...s, messages } : s))
+        )
+        setLoadedMessageSessionIds(prev => new Set(prev).add(sessionId))
+      } catch {
+        // Nếu lỗi, để nguyên messages rỗng, người dùng có thể thử lại
+      }
+    },
+    [loadedMessageSessionIds]
+  )
+
+  const selectChatSession = useCallback(
+    (id: string | null) => {
+      setActiveChatId(id)
+      if (id) void ensureSessionMessagesLoaded(id)
+    },
+    [ensureSessionMessagesLoaded]
+  )
+
+  const deleteChatSession = useCallback(async (id: string) => {
+    await deleteChatSessionApi(id)
+    removeChatSession(id)
+  }, [removeChatSession])
+
   return {
     chatSessions,
     activeChatId,
-    setActiveChatId,
+    setActiveChatId: selectChatSession,
     addChatSession,
     updateChatSession,
+    createChatSession,
+    persistChatMessage,
+    deleteChatSession,
   }
 }
