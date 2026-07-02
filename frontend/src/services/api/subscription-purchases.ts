@@ -2,19 +2,19 @@
 import { mapApiUserToStoreUser, type ApiUser } from "@/services/api/auth"
 import type { PackageTier, User } from "@/lib/store"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-studyhub.onrender.com"
 
 export interface SubscriptionPurchase {
   orderId: string
-  status: "PENDING" | "PAID"
+  status: "PENDING" | "PAID" | "CANCELLED" | "EXPIRED"
   planName: string
   displayName: string
   amount: number
   content: string
-  bankCode: string
-  bankAccount: string
-  accountName: string
-  qrImageUrl: string
+  bankCode: string | null
+  bankAccount: string | null
+  accountName: string | null
+  qrImageUrl: string | null
   qrCode?: string | null
   qrLink?: string | null
   user?: User | null
@@ -41,7 +41,7 @@ async function parseError(response: Response): Promise<string> {
   } catch {
     // ignore parse errors
   }
-  return "KhÃ´ng thá»ƒ táº¡o thanh toÃ¡n VietQR. Vui lÃ²ng thá»­ láº¡i."
+  return "Khong the tao thanh toan PayOS. Vui long thu lai."
 }
 
 function authHeaders(): HeadersInit {
@@ -70,29 +70,11 @@ export async function createSubscriptionPurchaseApi(tier: PackageTier): Promise<
   return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
 }
 
-export async function completeSubscriptionPurchaseForDevApi(orderId: string): Promise<SubscriptionPurchase> {
-  const response = await fetch(`${API_BASE_URL}/api/subscription-purchases/${orderId}/dev-complete`, {
-    method: "POST",
+export async function getSubscriptionPurchaseApi(orderId: string): Promise<SubscriptionPurchase | null> {
+  const response = await fetch(`${API_BASE_URL}/api/subscription-purchases/${encodeURIComponent(orderId)}`, {
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
-  return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
-}
-
-/**
- * GET /api/subscription-purchases/{orderId} — lấy thông tin đơn mua theo orderId.
- * Dùng để poll trạng thái thanh toán sau khi tạo QR.
- * Trả về null nếu không tìm thấy (404).
- */
-export async function getSubscriptionPurchaseApi(
-  orderId: string,
-): Promise<SubscriptionPurchase | null> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/subscription-purchases/${encodeURIComponent(orderId)}`,
-    { headers: authHeaders() },
-  )
   if (response.status === 404) return null
   if (!response.ok) throw new Error(await parseError(response))
   return mapPurchase((await response.json()) as ApiSubscriptionPurchase)
 }
-
