@@ -20,13 +20,16 @@ import {
   deleteFolderApi,
   moveFolderApi,
 } from "@/services/api/folders"
+import { fetchStorageUsageApi } from "@/services/api/storage"
 import type { Category, Document, Folder, User } from "@/states/types"
+import type { Dispatch, SetStateAction } from "react"
 
 interface DocumentStateDeps {
   currentUser: User | null
+  setCurrentUser: Dispatch<SetStateAction<User | null>>
 }
 
-export function useDocumentState({ currentUser }: DocumentStateDeps) {
+export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateDeps) {
   const [documents, setDocuments] = useState<Document[]>([])
   // Ref để uploadDocument luôn đọc documents mới nhất (tránh stale closure)
   const documentsRef = useRef<Document[]>(documents)
@@ -77,6 +80,24 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
   const updateDocument = useCallback((id: string, updates: Partial<Document>) => {
     setDocuments(prev => prev.map(d => (d.id === id ? { ...d, ...updates } : d)))
   }, [])
+
+  const refreshStorageUsage = useCallback(async () => {
+    if (!currentUser) return
+    try {
+      const storage = await fetchStorageUsageApi()
+      setCurrentUser(prev =>
+        prev
+          ? {
+              ...prev,
+              storageUsed: storage.used,
+              storageLimit: storage.limit,
+            }
+          : prev,
+      )
+    } catch {
+      // Storage refresh is supporting UI state; keep the successful document action.
+    }
+  }, [currentUser, setCurrentUser])
 
   // ── Upload tài liệu thật lên backend (BR-013 đến BR-018) ────────────────
   const uploadDocument = useCallback(
@@ -162,6 +183,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
             // Không throw — folderId vẫn đúng trong memory session này.
           })
         }
+        void refreshStorageUsage()
 
         let attempts = 0
         const poll = setInterval(async () => {
@@ -190,16 +212,23 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
         }
       }
     },
-    [currentUser],
+    [currentUser, refreshStorageUsage],
   )
 
   // ── Soft-delete → chuyển vào Trash (BR-022) ─────────────────────────────
   const deleteDocument = useCallback((id: string) => {
+    const previousDoc = documentsRef.current.find(d => d.id === id)
     setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "deleted" } : d))
-    deleteDocumentApi(id).catch(() => {
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "ready" } : d))
-    })
-  }, [])
+    deleteDocumentApi(id)
+      .then(() => refreshStorageUsage())
+      .catch(() => {
+        if (previousDoc) {
+          setDocuments(prev => prev.map(d => d.id === id ? previousDoc : d))
+        } else {
+          setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: "ready" } : d))
+        }
+      })
+  }, [refreshStorageUsage])
 
   // ── Khôi phục từ Trash (BR-023) ─────────────────────────────────────────
   // Doc bị xóa không có trong global documents (API không trả về) → phải ADD vào, không dùng .map()
@@ -213,11 +242,12 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
             ? prev.map(d => d.id === id ? updated : d)
             : [updated, ...prev]
         })
+        void refreshStorageUsage()
       })
       .catch(() => {
         // trash-page.tsx tự rollback trashDocs nếu lỗi
       })
-  }, [])
+  }, [refreshStorageUsage])
 
   // ── Đổi visibility public/private (BR-018, BR-019) ──────────────────────
   const changeDocumentVisibility = useCallback(
@@ -260,6 +290,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       setDocuments(prev => prev.filter(d => d.id !== id))
       try {
         await permanentDeleteDocumentApi(id)
+        await refreshStorageUsage()
         return { success: true }
       } catch (error) {
         // Rollback: tải lại danh sách trash từ server
@@ -270,7 +301,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
         }
       }
     },
-    [],
+    [refreshStorageUsage],
   )
 
   // ── FR-24: Dọn sạch toàn bộ thùng rác ──────────────────────────────────
@@ -280,6 +311,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
       setDocuments(prev => prev.filter(d => d.status !== "deleted"))
       try {
         await emptyTrashApi()
+        await refreshStorageUsage()
         return { success: true }
       } catch (error) {
         // Rollback: tải lại từ server
@@ -290,7 +322,7 @@ export function useDocumentState({ currentUser }: DocumentStateDeps) {
         }
       }
     },
-    [],
+    [refreshStorageUsage],
   )
 
   // ── Categories (local-only; không có API endpoint) ───────────────────────
