@@ -1,31 +1,17 @@
 package com.aistudyhub.backend.service;
 
-import com.aistudyhub.backend.dto.CreateSubscriptionPurchaseRequest;
-import com.aistudyhub.backend.dto.SubscriptionPurchaseResponse;
-import com.aistudyhub.backend.dto.UserResponse;
-import com.aistudyhub.backend.dto.VietQrTransactionSyncRequest;
-import com.aistudyhub.backend.dto.VietQrTransactionSyncResponse;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.SubscriptionPurchase;
 import com.aistudyhub.backend.entity.User;
-import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.SubscriptionPurchaseRepository;
 import com.aistudyhub.backend.repository.UserRepository;
+import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.dto.CreateSubscriptionPurchaseRequest;
+import com.aistudyhub.backend.dto.SubscriptionPurchaseResponse;
+import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -33,35 +19,33 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// ── PayOS SDK 1.0.3 — verified via `javap -p payos-java-1.0.3.jar` ──────────
-//   PayOS.createPaymentLink(PaymentData)    → CheckoutResponseData
-//   PayOS.verifyPaymentWebhookData(Webhook) → WebhookData  (NO String overload)
-//   PaymentData.builder().items(List<ItemData>)             (NOT .item() singular)
-// ─────────────────────────────────────────────────────────────────────────────
+// IMPORT KHỚP 100% THEO ĐOẠN SOURCE MẪU CHÍNH THỨC CỦA PAYOS
 import vn.payos.PayOS;
-import vn.payos.type.CheckoutResponseData;
-import vn.payos.type.ItemData;
-import vn.payos.type.PaymentData;
-import vn.payos.type.Webhook;
-import vn.payos.type.WebhookData;
+import vn.payos.model.v2.paymentRequests.CreatePaymentLinkRequest;
+import vn.payos.model.v2.paymentRequests.CreatePaymentLinkResponse;
+import vn.payos.model.webhooks.WebhookData;
 
-@Slf4j
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class SubscriptionPurchaseService {
 
-    private static final int    SUBSCRIPTION_DAYS = 30;
-    private static final int    EXPIRY_MINUTES    = 15;
-    private static final String ALPHANUMERIC      = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    private static final SecureRandom RANDOM      = new SecureRandom();
-
-    // ObjectMapper is thread-safe — dùng chung để deserialize webhook body
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final int SUBSCRIPTION_DAYS = 30;
+    private static final int EXPIRY_MINUTES = 15;
+    private static final String ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final SubscriptionPurchaseRepository purchaseRepository;
-    private final SubscriptionPlanRepository     subscriptionPlanRepository;
-    private final UserRepository                 userRepository;
-    private final PayOS                          payOS;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final UserRepository userRepository;
+    private final PayOS payOS;
 
     @Value("${payos.return-url}")
     private String returnUrl;
@@ -69,10 +53,9 @@ public class SubscriptionPurchaseService {
     @Value("${payos.cancel-url}")
     private String cancelUrl;
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ───────────────────────────────────────────────
     // POST /api/subscription-purchases
-    // ─────────────────────────────────────────────────────────────────────────
-    @Transactional
+    // ───────────────────────────────────────────────
     public SubscriptionPurchaseResponse createPurchase(CreateSubscriptionPurchaseRequest request) {
         User user = getCurrentUser();
         if (user.getRole() != User.Role.user) {
@@ -89,37 +72,34 @@ public class SubscriptionPurchaseService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Giá gói chưa được cấu hình.");
         }
 
-        String orderId    = generateUniqueOrderId();
-        long   orderCode  = System.currentTimeMillis();
-        String description = orderId; // PayOS giới hạn 25 ký tự; "ASHxxxxxxxxxx" = 13 ký tự OK
-        int    amountInt  = plan.getPrice().setScale(0, RoundingMode.HALF_UP).intValue();
+        String orderId = generateUniqueOrderId();
+        long orderCode = System.currentTimeMillis() / 1000;
+        String description = orderId;
+        long amountLong = plan.getPrice().setScale(0, RoundingMode.HALF_UP).longValue();
 
-        // SDK 1.0.3: createPaymentLink(PaymentData) → CheckoutResponseData
-        CheckoutResponseData result;
+        CreatePaymentLinkResponse result;
         try {
-            ItemData item = ItemData.builder()
-                    .name(plan.getDisplayName())
-                    .quantity(1)
-                    .price(amountInt)
-                    .build();
-
-            // SDK 1.0.3: field là items (List), KHÔNG có .item() singular
-            PaymentData paymentData = PaymentData.builder()
+            CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     .orderCode(orderCode)
-                    .amount(amountInt)
+                    .amount(amountLong)
                     .description(description)
-                    .items(List.of(item))
                     .cancelUrl(cancelUrl)
                     .returnUrl(returnUrl)
                     .build();
 
-            result = payOS.createPaymentLink(paymentData);
+            result = payOS.paymentRequests().create(paymentRequest);
+
         } catch (Exception e) {
-            log.error("Không thể tạo link thanh toán PayOS cho orderCode={}", orderCode, e);
-            throw new ApiException(HttpStatus.BAD_GATEWAY,
-                    "Không thể tạo link thanh toán PayOS: " + e.getMessage());
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Không thể tạo link thanh toán PayOS: " + e.getMessage());
         }
 
+        SubscriptionPurchase purchase = savePurchaseToDb(user, plan, result, orderCode, orderId);
+
+        return toResponse(purchase);
+    }
+
+    @Transactional
+    protected SubscriptionPurchase savePurchaseToDb(User user, SubscriptionPlan plan, CreatePaymentLinkResponse result, long orderCode, String orderId) {
         SubscriptionPurchase purchase = new SubscriptionPurchase();
         purchase.setOrderCode(orderCode);
         purchase.setOrderId(orderId);
@@ -130,84 +110,48 @@ public class SubscriptionPurchaseService {
         purchase.setAmount(plan.getPrice().setScale(0, RoundingMode.HALF_UP));
         purchase.setStorageLimitBytes(storageLimitBytesFor(plan.getName()));
         purchase.setStatus(SubscriptionPurchase.Status.PENDING);
+
         purchase.setPaymentLinkId(result.getPaymentLinkId());
         purchase.setQrCode(result.getQrCode());
         purchase.setCheckoutUrl(result.getCheckoutUrl());
         purchase.setBankCode(result.getBin());
         purchase.setBankAccount(result.getAccountNumber());
         purchase.setAccountName(result.getAccountName());
+
         purchase.setCreatedAt(LocalDateTime.now());
         purchase.setExpiresAt(LocalDateTime.now().plusMinutes(EXPIRY_MINUTES));
-
-        purchaseRepository.save(purchase);
-        return toResponse(purchase);
+        return purchaseRepository.save(purchase);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // GET /api/subscription-purchases/{orderId}
-    // ─────────────────────────────────────────────────────────────────────────
     @Transactional(readOnly = true)
     public Optional<SubscriptionPurchaseResponse> getPurchase(String orderId) {
         return purchaseRepository.findByOrderId(orderId).map(this::toResponse);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // POST /api/payos/webhook — overload String
-    //
-    // SDK 1.0.3 chỉ có verifyPaymentWebhookData(Webhook), KHÔNG có String overload.
-    // Overload String này nhận raw JSON body từ controller/test, deserialize thành
-    // Webhook object rồi delegate xuống overload Webhook bên dưới.
-    //
-    // Controller dùng:
-    //   @PostMapping("/webhook")
-    //   public ResponseEntity<Void> webhook(@RequestBody String body) {
-    //       service.handleWebhook(body);
-    //       return ResponseEntity.ok().build();
-    //   }
-    // ─────────────────────────────────────────────────────────────────────────
+    // ───────────────────────────────────────────────
+    // POST /api/payos/webhook (Luồng tự động chuẩn của PayOS)
+    // ───────────────────────────────────────────────
     @Transactional
-    public void handleWebhook(String webhookBody) {
+    public void handleWebhook(Object webhookBody) {
         try {
-            Webhook webhook = OBJECT_MAPPER.readValue(webhookBody, Webhook.class);
-            handleWebhook(webhook);
-        } catch (Exception e) {
-            // Không throw ra ngoài — PayOS cần HTTP 200 để không retry mãi
-            log.error("Lỗi khi parse/xử lý PayOS webhook body", e);
-        }
-    }
+            WebhookData webhookData = payOS.webhooks().verify(webhookBody);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // POST /api/payos/webhook — overload Webhook (core logic, dùng nội bộ & test)
-    // ─────────────────────────────────────────────────────────────────────────
-    @Transactional
-    public void handleWebhook(Webhook webhook) {
-        try {
-            // SDK 1.0.3: verifyPaymentWebhookData(Webhook) → WebhookData (top-level class)
-            WebhookData webhookData = payOS.verifyPaymentWebhookData(webhook);
-
-            long   orderCode = webhookData.getOrderCode();
-            String code      = webhookData.getCode(); // "00" = thanh toán thành công
+            long orderCode = webhookData.getOrderCode();
+            String code = webhookData.getCode();
 
             if (!"00".equals(code)) {
-                log.info("PayOS webhook orderCode={} code={} -> bỏ qua (thất bại/huỷ)",
-                        orderCode, code);
                 return;
             }
 
             SubscriptionPurchase purchase = purchaseRepository.findByOrderCode(orderCode)
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn."));
 
-            // Idempotent guard — webhook có thể được gọi nhiều lần
             if (purchase.getStatus() == SubscriptionPurchase.Status.PAID) {
-                log.info("PayOS webhook orderCode={} đã PAID trước đó -> bỏ qua", orderCode);
                 return;
             }
 
-            // WebhookData.getAmount() → Integer (confirmed via javap)
             BigDecimal webhookAmount = BigDecimal.valueOf(webhookData.getAmount());
             if (webhookAmount.compareTo(purchase.getAmount()) != 0) {
-                log.warn("PayOS webhook orderCode={} số tiền không khớp: webhook={} purchase={}",
-                        orderCode, webhookAmount, purchase.getAmount());
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Số tiền không khớp.");
             }
 
@@ -215,25 +159,29 @@ public class SubscriptionPurchaseService {
             purchase.setPaidAt(LocalDateTime.now());
             purchaseRepository.save(purchase);
 
-            applySubscriptionToUser(purchase);
+            User user = userRepository.findById(purchase.getUserId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
-            log.info("PayOS webhook orderCode={} xử lý thành công, userId={}",
-                    orderCode, purchase.getUserId());
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime startDate = (user.getSubscriptionExpiresAt() != null
+                    && user.getSubscriptionExpiresAt().isAfter(now))
+                    ? user.getSubscriptionExpiresAt() : now;
+
+            user.setSubscriptionPlanId(purchase.getPlanId());
+            user.setSubscriptionExpiresAt(startDate.plusDays(SUBSCRIPTION_DAYS));
+            user.setStorageLimitBytes(purchase.getStorageLimitBytes());
+            user.setUpdatedAt(now);
+            userRepository.save(user);
 
         } catch (Exception e) {
-            // Không throw ra ngoài — PayOS cần HTTP 200 để không retry mãi
-            log.error("Lỗi khi xử lý PayOS webhook", e);
+            // Im lặng để báo nhận thành công HTTP 200
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // DEV ONLY: giả lập thanh toán thành công
-    // ─────────────────────────────────────────────────────────────────────────
     @Transactional
     public SubscriptionPurchaseResponse completePurchaseForDev(String orderId) {
         SubscriptionPurchase purchase = purchaseRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
-                        "Không tìm thấy đơn thanh toán."));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thanh toán."));
 
         if (purchase.getStatus() == SubscriptionPurchase.Status.PAID) {
             return toResponse(purchase);
@@ -243,110 +191,31 @@ public class SubscriptionPurchaseService {
         purchase.setPaidAt(LocalDateTime.now());
         purchaseRepository.save(purchase);
 
-        User savedUser = applySubscriptionToUser(purchase);
-        return toResponseWithUser(purchase, UserResponse.from(savedUser));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // POST /bank/api/transaction-sync  (VietQR callback)
-    // ─────────────────────────────────────────────────────────────────────────
-    @Transactional
-    public VietQrTransactionSyncResponse syncVietQrTransaction(VietQrTransactionSyncRequest request) {
-        try {
-            if (!"C".equals(request.getTransType())) {
-                return new VietQrTransactionSyncResponse(
-                        false, null, "Giao dich khong phai tien vao, bo qua.", request.getTransactionid());
-            }
-            String content = request.getContent();
-            if (content == null || content.isBlank()) {
-                return new VietQrTransactionSyncResponse(
-                        true, "CONTENT_EMPTY", "Noi dung chuyen khoan trong.", null);
-            }
-            String matchedOrderId = extractOrderId(content);
-            if (matchedOrderId == null) {
-                return new VietQrTransactionSyncResponse(
-                        true, "ORDER_NOT_FOUND_IN_CONTENT",
-                        "Khong tim thay ma don hang trong noi dung chuyen khoan.", null);
-            }
-            SubscriptionPurchase purchase = purchaseRepository.findByOrderId(matchedOrderId).orElse(null);
-            if (purchase == null) {
-                return new VietQrTransactionSyncResponse(
-                        true, "ORDER_NOT_FOUND", "Khong tim thay don hang: " + matchedOrderId, null);
-            }
-            if (purchase.getStatus() == SubscriptionPurchase.Status.PAID) {
-                return new VietQrTransactionSyncResponse(
-                        false, null, "Don hang da duoc thanh toan truoc do.", request.getTransactionid());
-            }
-            if (request.getAmount() == null || request.getAmount().compareTo(purchase.getAmount()) != 0) {
-                log.warn("VietQR callback orderId={} so tien khong khop: callback={} purchase={}",
-                        matchedOrderId, request.getAmount(), purchase.getAmount());
-                return new VietQrTransactionSyncResponse(
-                        true, "AMOUNT_MISMATCH", "So tien khong khop voi don hang.", null);
-            }
-            purchase.setStatus(SubscriptionPurchase.Status.PAID);
-            purchase.setPaidAt(LocalDateTime.now());
-            purchaseRepository.save(purchase);
-            applySubscriptionToUser(purchase);
-            log.info("VietQR callback orderId={} xu ly thanh cong, userId={}", matchedOrderId, purchase.getUserId());
-            return new VietQrTransactionSyncResponse(false, null, "Thanh toan thanh cong.", request.getTransactionid());
-        } catch (Exception e) {
-            log.error("Loi khi xu ly VietQR transaction sync", e);
-            return new VietQrTransactionSyncResponse(true, "INTERNAL_ERROR", "Loi he thong: " + e.getMessage(), null);
-        }
-    }
-
-    private String extractOrderId(String content) {
-        String upper = content.toUpperCase();
-        for (String token : upper.split("[\\s\\-_./,;:]+")) {
-            if (token.startsWith("ASH") && token.length() == 13 && token.matches("ASH[A-Z0-9]{10}")) {
-                return token;
-            }
-        }
-        int idx = upper.indexOf("ASH");
-        while (idx != -1) {
-            if (idx + 13 <= upper.length()) {
-                String candidate = upper.substring(idx, idx + 13);
-                if (candidate.matches("ASH[A-Z0-9]{10}")) {
-                    return candidate;
-                }
-            }
-            idx = upper.indexOf("ASH", idx + 1);
-        }
-        return null;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Private helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private User applySubscriptionToUser(SubscriptionPurchase purchase) {
         User user = userRepository.findById(purchase.getUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
-                        "Không tìm thấy người dùng."));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
-        LocalDateTime now           = LocalDateTime.now();
-        LocalDateTime currentExpiry = user.getSubscriptionExpiresAt();
-        // Nếu subscription chưa hết hạn → cộng thêm từ ngày hết hạn cũ
-        LocalDateTime startDate     = (currentExpiry != null && currentExpiry.isAfter(now))
-                ? currentExpiry : now;
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startDate = (user.getSubscriptionExpiresAt() != null
+                && user.getSubscriptionExpiresAt().isAfter(now))
+                ? user.getSubscriptionExpiresAt() : now;
 
         user.setSubscriptionPlanId(purchase.getPlanId());
         user.setSubscriptionExpiresAt(startDate.plusDays(SUBSCRIPTION_DAYS));
         user.setStorageLimitBytes(purchase.getStorageLimitBytes());
         user.setUpdatedAt(now);
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+
+        return toResponseWithUser(purchase, UserResponse.from(savedUser));
     }
 
     private SubscriptionPurchaseResponse toResponse(SubscriptionPurchase p) {
         return toResponseWithUser(p, null);
     }
 
-    private SubscriptionPurchaseResponse toResponseWithUser(SubscriptionPurchase p,
-                                                            UserResponse user) {
+    private SubscriptionPurchaseResponse toResponseWithUser(SubscriptionPurchase p, UserResponse user) {
         String qrImageUrl = null;
         if (p.getBankCode() != null && p.getBankAccount() != null) {
-            qrImageUrl = ("https://img.vietqr.io/image/%s-%s-compact2.png"
-                    + "?amount=%s&addInfo=%s&accountName=%s")
+            qrImageUrl = "https://img.vietqr.io/image/%s-%s-compact2.png?amount=%s&addInfo=%s&accountName=%s"
                     .formatted(
                             encode(p.getBankCode()),
                             encode(p.getBankAccount()),
@@ -361,13 +230,13 @@ public class SubscriptionPurchaseService {
                 p.getPlanName(),
                 p.getDisplayName(),
                 p.getAmount(),
-                p.getOrderId(),       // content = orderId (nội dung chuyển khoản)
+                p.getOrderId(),
                 p.getBankCode(),
                 p.getBankAccount(),
                 p.getAccountName(),
                 qrImageUrl,
-                p.getQrCode(),        // EMVCo string từ PayOS
-                p.getCheckoutUrl(),   // checkout link PayOS
+                p.getQrCode(),
+                p.getCheckoutUrl(),
                 user);
     }
 
@@ -385,22 +254,19 @@ public class SubscriptionPurchaseService {
 
     private long storageLimitBytesFor(String planName) {
         return switch (planName) {
-            case "plan_2_4"    -> 1024L * 1024L * 1024L;
+            case "plan_2_4"   -> 1024L * 1024L * 1024L;
             case "plan_5_plus" -> 5L * 1024L * 1024L * 1024L;
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Gói không hỗ trợ mua subscription.");
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hỗ trợ mua subscription.");
         };
     }
 
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null
-                || !(authentication.getPrincipal() instanceof AuthUserPrincipal principal)) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthUserPrincipal principal)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Vui lòng đăng nhập.");
         }
         return userRepository.findById(principal.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED,
-                        "Người dùng không tồn tại."));
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
     }
 
     private String encode(String value) {

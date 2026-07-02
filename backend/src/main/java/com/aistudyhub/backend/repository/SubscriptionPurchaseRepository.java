@@ -1,9 +1,12 @@
 package com.aistudyhub.backend.repository;
 
 import com.aistudyhub.backend.entity.SubscriptionPurchase;
-import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
+@Repository
 public interface SubscriptionPurchaseRepository extends JpaRepository<SubscriptionPurchase, Long> {
 
     Optional<SubscriptionPurchase> findByOrderId(String orderId);

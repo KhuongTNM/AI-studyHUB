@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // FIX: Trả về JSON thay vì Whitelabel HTML khi bị chặn ở filter level
+                // Trả về JSON thay vì Whitelabel HTML khi bị chặn ở filter level
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -50,7 +50,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
-                        // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
+                        // /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/users/**").authenticated()
@@ -60,10 +60,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
-                        // PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
+
+                        // FIX CHUẨN: PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
                         .requestMatchers("/api/payos/webhook").permitAll()
-                        // Route VietQR cũ — giữ song song để test, sẽ xoá sau khi PayOS chạy ổn định
-                        .requestMatchers("/bank/api/transaction-sync").permitAll()
+
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
