@@ -29,6 +29,29 @@ CREATE TABLE payment.subscription_plans (
   updated_at            TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE payment.subscription_purchases (
+  id                    BIGSERIAL      PRIMARY KEY,
+  order_code            BIGINT         UNIQUE NOT NULL,
+  order_id              VARCHAR(20)    UNIQUE NOT NULL,
+  user_id               UUID           NOT NULL,
+  plan_id               INT            NOT NULL,
+  plan_name             VARCHAR(20)    NOT NULL,
+  display_name          VARCHAR(100)   NOT NULL,
+  amount                DECIMAL(10,2)  NOT NULL,
+  storage_limit_bytes   BIGINT         NOT NULL,
+  status                VARCHAR(20)    NOT NULL DEFAULT 'PENDING'
+                                      CHECK (status IN ('PENDING', 'PAID', 'CANCELLED', 'EXPIRED')),
+  payment_link_id       VARCHAR(100),
+  qr_code               TEXT,
+  checkout_url          TEXT,
+  bank_code             VARCHAR(20),
+  bank_account          VARCHAR(50),
+  account_name          VARCHAR(100),
+  created_at            TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+  expires_at            TIMESTAMPTZ    NOT NULL,
+  paid_at               TIMESTAMPTZ
+);
+
 -- ============================================================
 -- Schema: core
 -- ============================================================
@@ -226,6 +249,13 @@ CREATE INDEX idx_prt_email        ON core.password_reset_tokens (email);
 CREATE INDEX idx_prt_token        ON core.password_reset_tokens (token);
 CREATE INDEX idx_prt_user_id      ON core.password_reset_tokens (user_id);
 
+-- payment
+CREATE INDEX idx_sub_purchases_user_id    ON payment.subscription_purchases (user_id);
+CREATE INDEX idx_sub_purchases_plan_id    ON payment.subscription_purchases (plan_id);
+CREATE INDEX idx_sub_purchases_status     ON payment.subscription_purchases (status);
+CREATE INDEX idx_sub_purchases_created_at ON payment.subscription_purchases (created_at);
+CREATE INDEX idx_sub_purchases_expires_at ON payment.subscription_purchases (expires_at);
+
 -- docs
 CREATE INDEX idx_folders_user_id    ON docs.folders (user_id);
 CREATE INDEX idx_folders_parent_id  ON docs.folders (parent_id);
@@ -264,6 +294,12 @@ CREATE INDEX idx_greports_group   ON group_chat.group_reports (group_id);
 -- core → payment
 ALTER TABLE core.users ADD FOREIGN KEY (subscription_plan_id)
   REFERENCES payment.subscription_plans (id) ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE payment.subscription_purchases ADD FOREIGN KEY (user_id)
+  REFERENCES core.users (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE payment.subscription_purchases ADD FOREIGN KEY (plan_id)
+  REFERENCES payment.subscription_plans (id) ON DELETE RESTRICT DEFERRABLE INITIALLY IMMEDIATE;
 
 -- core → core
 ALTER TABLE core.users ADD FOREIGN KEY (created_by_admin_id)
