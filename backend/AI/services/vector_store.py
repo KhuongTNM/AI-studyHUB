@@ -81,7 +81,7 @@ def search_similar_chunks(query_embedding: List[float], user_id: str, document_i
                 query = """
                     WITH vector_search AS (
                         SELECT id, document_id, chunk_index, content,
-                               ROW_NUMBER() OVER (ORDER BY embedding <=> %s::vector) as rank
+                               ROW_NUMBER() OVER (ORDER BY embedding <=> %s::ai.vector) as rank
                         FROM ai.document_chunks
                         WHERE user_id = %s::uuid AND (%s::uuid IS NULL OR document_id = %s::uuid)
                         LIMIT 20
@@ -110,10 +110,10 @@ def search_similar_chunks(query_embedding: List[float], user_id: str, document_i
                 ))
             else:
                 query = """
-                    SELECT id, document_id, chunk_index, content, (1 - (embedding <=> %s::vector)) AS score
+                    SELECT id, document_id, chunk_index, content, (1 - (embedding <=> %s::ai.vector)) AS score
                     FROM ai.document_chunks
                     WHERE user_id = %s::uuid AND (%s::uuid IS NULL OR document_id = %s::uuid)
-                    ORDER BY embedding <=> %s::vector
+                    ORDER BY embedding <=> %s::ai.vector
                     LIMIT %s
                 """
                 cur.execute(query, (query_embedding, user_id, document_id, document_id, query_embedding, top_k))
