@@ -1,0 +1,7 @@
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+target/
+AI/.venv/
+AI/__pycache__/
