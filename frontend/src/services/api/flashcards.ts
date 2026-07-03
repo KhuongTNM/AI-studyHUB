@@ -8,7 +8,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 interface ApiFlashcard {
   id: string
   userId: string
-  documentId: string
+  documentId: string | null
   question: string
   answer: string
   status: string        // "new" | "learning" | "mastered"
@@ -49,10 +49,11 @@ function mapStatus(status: string): FlashcardStatus {
 export function mapApiFlashcard(api: ApiFlashcard): Flashcard {
   return {
     id: api.id,
-    documentId: api.documentId,
+    documentId: api.documentId ?? undefined,
     question: api.question,
     answer: api.answer,
     status: mapStatus(api.status),
+    aiGenerated: api.aiGenerated,
     createdAt: new Date(api.createdAt),
   }
 }
@@ -105,6 +106,51 @@ export async function updateFlashcardStatusApi(
       ...authHeaders(),
     },
     body: JSON.stringify({ status }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiFlashcard((await response.json()) as ApiFlashcard)
+}
+
+/**
+ * POST /api/flashcards — Thêm flashcard thủ công (BR-037).
+ * documentId là optional — không bắt buộc gắn tài liệu.
+ */
+export async function createFlashcardApi(payload: {
+  question: string
+  answer: string
+  documentId?: string
+}): Promise<Flashcard> {
+  const response = await fetch(`${API_BASE_URL}/api/flashcards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapApiFlashcard((await response.json()) as ApiFlashcard)
+}
+
+/**
+ * DELETE /api/flashcards/{id} — Xoá 1 flashcard độc lập (BR-040).
+ */
+export async function deleteFlashcardApi(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+}
+
+/**
+ * PATCH /api/flashcards/{id} — Sửa câu hỏi/câu trả lời.
+ */
+export async function updateFlashcardApi(
+  id: string,
+  payload: { question: string; answer: string },
+): Promise<Flashcard> {
+  const response = await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiFlashcard((await response.json()) as ApiFlashcard)

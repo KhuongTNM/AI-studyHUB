@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Be_Vietnam_Pro, IBM_Plex_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AppProvider } from '@/lib/store'
+import { Toaster } from '@/components/ui/sonner'
 import '../styles/globals.css'
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -39,6 +40,7 @@ export default function RootLayout({
         <AppProvider>
           {children}
         </AppProvider>
+        <Toaster position="top-right" richColors />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

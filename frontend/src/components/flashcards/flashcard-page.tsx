@@ -1,9 +1,20 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { BookOpen, Copy, Plus, RotateCcw, Sparkles } from "lucide-react"
+import { BookOpen, Copy, Pencil, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { useApp, Flashcard } from "@/lib/store"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 export function FlashcardPage() {
@@ -11,6 +22,8 @@ export function FlashcardPage() {
     documents,
     flashcards,
     addFlashcards,
+    deleteFlashcard,
+    updateFlashcard,
     generateFlashcardsFromDocument,
     updateFlashcardStatus,
     loadFlashcardsForDocument,
@@ -24,6 +37,10 @@ export function FlashcardPage() {
   const [flipped, setFlipped] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const text = language === "vi" ? {
     title: "Flashcards học tập",
@@ -33,17 +50,38 @@ export function FlashcardPage() {
     cardCount: "Thẻ học",
     noCard: "Không có thẻ nào phù hợp. Hãy thêm thẻ mới hoặc chọn tài liệu khác.",
     addCard: "Thêm thẻ mới",
+    editCard: "Sửa thẻ",
     questionPlaceholder: "Nhập câu hỏi...",
     answerPlaceholder: "Nhập câu trả lời...",
     addButton: "Tạo thẻ",
+    saveButton: "Lưu thay đổi",
+    cancelEdit: "Huỷ sửa",
+    creating: "Đang tạo...",
+    saving: "Đang lưu...",
     resetButton: "Làm mới",
     viewAnswer: "Xem đáp án",
     hideAnswer: "Ẩn đáp án",
     copy: "Sao chép",
+    edit: "Sửa",
+    delete: "Xoá",
     statusLabel: "Trạng thái",
     statusNew: "Mới",
     statusLearning: "Đang học",
     statusMastered: "Đã thuộc",
+    deleteTitle: "Xoá flashcard này?",
+    deleteDesc: "Thẻ sẽ bị xoá vĩnh viễn khỏi bộ sưu tập. Các thẻ khác và tài liệu nguồn sẽ không bị ảnh hưởng.",
+    deleteCancel: "Huỷ",
+    deleteConfirm: "Xoá thẻ",
+    deleting: "Đang xoá...",
+    createSuccess: "Đã tạo flashcard mới.",
+    createError: "Không thể tạo flashcard.",
+    updateSuccess: "Đã cập nhật flashcard.",
+    updateError: "Không thể cập nhật flashcard.",
+    deleteSuccess: "Đã xoá flashcard.",
+    deleteError: "Không thể xoá flashcard.",
+    validationError: "Vui lòng nhập cả câu hỏi và câu trả lời.",
+    aiBadge: "AI",
+    manualBadge: "Tùy chỉnh",
   } : {
     title: "Study Flashcards",
     description: "Build and review quick learning cards to remember key concepts faster.",
@@ -52,17 +90,38 @@ export function FlashcardPage() {
     cardCount: "Flashcards",
     noCard: "No cards match this document. Add a new card or choose another document.",
     addCard: "Add new card",
+    editCard: "Edit card",
     questionPlaceholder: "Enter question...",
     answerPlaceholder: "Enter answer...",
     addButton: "Create card",
+    saveButton: "Save changes",
+    cancelEdit: "Cancel edit",
+    creating: "Creating...",
+    saving: "Saving...",
     resetButton: "Reset",
     viewAnswer: "Show answer",
     hideAnswer: "Hide answer",
     copy: "Copy",
+    edit: "Edit",
+    delete: "Delete",
     statusLabel: "Status",
     statusNew: "New",
     statusLearning: "Learning",
     statusMastered: "Mastered",
+    deleteTitle: "Delete this flashcard?",
+    deleteDesc: "The card will be permanently removed. Other cards and the source document won't be affected.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete card",
+    deleting: "Deleting...",
+    createSuccess: "Flashcard created.",
+    createError: "Could not create the flashcard.",
+    updateSuccess: "Flashcard updated.",
+    updateError: "Could not update the flashcard.",
+    deleteSuccess: "Flashcard deleted.",
+    deleteError: "Could not delete the flashcard.",
+    validationError: "Please enter both a question and an answer.",
+    aiBadge: "AI",
+    manualBadge: "Manual",
   }
 
   const availableDocs = [{ id: "all", name: text.allDocs }, ...documents.map(doc => ({ id: doc.id, name: doc.name }))]
@@ -94,26 +153,81 @@ export function FlashcardPage() {
     return documents.find(doc => doc.id === selectedDocId)?.name ?? text.allDocs
   }, [documents, selectedDocId, text.allDocs])
 
-  const handleAddCard = () => {
-    if (!question.trim() || !answer.trim()) return
-    const newCard: Flashcard = {
-      id: `flashcard-${Date.now()}`,
-      question: question.trim(),
-      answer: answer.trim(),
-      documentId: selectedDocId === "all" ? undefined : selectedDocId,
-      createdAt: new Date(),
-      status: "new",
-    }
-    addFlashcards([newCard])
+  const activeCard = filteredCards[activeIndex]
+
+  const resetForm = () => {
     setQuestion("")
     setAnswer("")
-    setFlipped(true)
-    setActiveIndex(0)
+    setEditingId(null)
+  }
+
+  const handleAddCard = async () => {
+    if (!question.trim() || !answer.trim()) {
+      toast.error(text.validationError)
+      return
+    }
+    setIsSaving(true)
+    try {
+      if (editingId) {
+        const result = await updateFlashcard(editingId, {
+          question: question.trim(),
+          answer: answer.trim(),
+        })
+        if (result.success) {
+          toast.success(text.updateSuccess)
+          resetForm()
+        } else {
+          toast.error(result.message ?? text.updateError)
+        }
+      } else {
+        const result = await addFlashcards([
+          {
+            question: question.trim(),
+            answer: answer.trim(),
+            documentId: selectedDocId === "all" ? undefined : selectedDocId,
+          },
+        ])
+        if (result.success) {
+          toast.success(text.createSuccess)
+          resetForm()
+          setFlipped(false)
+          setActiveIndex(0)
+        } else {
+          toast.error(result.message ?? text.createError)
+        }
+      }
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleReset = () => {
-    setQuestion("")
-    setAnswer("")
+    resetForm()
+  }
+
+  const handleStartEdit = (id: string) => {
+    const card = flashcards.find(c => c.id === id)
+    if (!card) return
+    setEditingId(id)
+    setQuestion(card.question)
+    setAnswer(card.answer)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return
+    setIsDeleting(true)
+    try {
+      const result = await deleteFlashcard(deleteTargetId)
+      if (result.success) {
+        toast.success(text.deleteSuccess)
+        if (editingId === deleteTargetId) resetForm()
+      } else {
+        toast.error(result.message ?? text.deleteError)
+      }
+    } finally {
+      setIsDeleting(false)
+      setDeleteTargetId(null)
+    }
   }
 
   const handleGenerateAI = async () => {
@@ -190,7 +304,7 @@ export function FlashcardPage() {
                 <div className="flex items-center justify-between text-xs uppercase tracking-[0.32em] text-muted-foreground">
                   <span>{language === "vi" ? "Thẻ" : "Card"} {activeIndex + 1}/{filteredCards.length}</span>
                   <span className="rounded-full border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase text-primary">
-                    {filteredCards[activeIndex].documentId ? (language === "vi" ? "AI" : "AI") : (language === "vi" ? "Tùy chỉnh" : "Manual")}
+                    {activeCard.aiGenerated ? text.aiBadge : text.manualBadge}
                   </span>
                 </div>
 
@@ -206,20 +320,20 @@ export function FlashcardPage() {
                   </div>
                   <div className="mt-5 min-h-[180px]">
                     {flipped ? (
-                      <p className="text-lg leading-8 text-foreground">{filteredCards[activeIndex].answer}</p>
+                      <p className="text-lg leading-8 text-foreground">{activeCard.answer}</p>
                     ) : (
-                      <p className="text-2xl font-semibold leading-snug text-foreground">{filteredCards[activeIndex].question}</p>
+                      <p className="text-2xl font-semibold leading-snug text-foreground">{activeCard.question}</p>
                     )}
                   </div>
                 </button>
 
                 <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span>{filteredCards[activeIndex].documentId ? documents.find(doc => doc.id === filteredCards[activeIndex].documentId)?.name : (language === "vi" ? "Tổng quát" : "General")}</span>
+                  <span>{activeCard.documentId ? documents.find(doc => doc.id === activeCard.documentId)?.name : (language === "vi" ? "Tổng quát" : "General")}</span>
                   <span>•</span>
-                  <span>{new Date(filteredCards[activeIndex].createdAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</span>
+                  <span>{new Date(activeCard.createdAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</span>
                   <span>•</span>
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-                    {statusText(filteredCards[activeIndex].status ?? "new", text)}
+                    {statusText(activeCard.status ?? "new", text)}
                   </span>
                 </div>
 
@@ -237,10 +351,28 @@ export function FlashcardPage() {
                     size="sm"
                     variant="outline"
                     className="gap-2"
-                    onClick={() => handleCopy(`${filteredCards[activeIndex].question}\n${filteredCards[activeIndex].answer}`)}
+                    onClick={() => handleCopy(`${activeCard.question}\n${activeCard.answer}`)}
                   >
                     <Copy className="h-4 w-4" />
                     {text.copy}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => handleStartEdit(activeCard.id)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {text.edit}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setDeleteTargetId(activeCard.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {text.delete}
                   </Button>
                   <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-background p-1">
                     <span className="px-2 text-xs font-medium text-muted-foreground">{text.statusLabel}</span>
@@ -248,10 +380,10 @@ export function FlashcardPage() {
                       <button
                         key={status}
                         type="button"
-                        onClick={() => updateFlashcardStatus(filteredCards[activeIndex].id, status)}
+                        onClick={() => updateFlashcardStatus(activeCard.id, status)}
                         className={cn(
                           "rounded-lg px-2 py-1 text-xs font-medium transition-colors",
-                          (filteredCards[activeIndex].status ?? "new") === status
+                          (activeCard.status ?? "new") === status
                             ? "bg-primary text-primary-foreground"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground",
                         )}
@@ -296,9 +428,20 @@ export function FlashcardPage() {
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">{text.addCard}</p>
+              <p className="text-sm font-semibold text-foreground">{editingId ? text.editCard : text.addCard}</p>
               <p className="text-xs text-muted-foreground">{language === "vi" ? "Tạo câu hỏi và đáp án để ôn luyện nhanh." : "Create a question and answer to review quickly."}</p>
             </div>
+            {editingId && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="ml-auto h-8 w-8"
+                onClick={resetForm}
+                title={text.cancelEdit}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -325,17 +468,39 @@ export function FlashcardPage() {
           </div>
 
           <div className="flex flex-wrap gap-3 pt-2">
-            <Button onClick={handleAddCard} className="gap-2">
-              <Plus className="h-4 w-4" />
-              {text.addButton}
+            <Button onClick={handleAddCard} disabled={isSaving} className="gap-2">
+              {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {isSaving ? (editingId ? text.saving : text.creating) : (editingId ? text.saveButton : text.addButton)}
             </Button>
             <Button variant="outline" onClick={handleReset} className="gap-2">
               <RotateCcw className="h-4 w-4" />
-              {text.resetButton}
+              {editingId ? text.cancelEdit : text.resetButton}
             </Button>
           </div>
         </aside>
       </div>
+
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={open => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{text.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{text.deleteDesc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>{text.deleteCancel}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              onClick={event => {
+                event.preventDefault()
+                void handleConfirmDelete()
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? text.deleting : text.deleteConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
