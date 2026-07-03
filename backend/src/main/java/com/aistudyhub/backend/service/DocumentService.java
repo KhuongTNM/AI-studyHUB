@@ -96,7 +96,7 @@ public class DocumentService {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");
         }
 
-        String storedName = UUID.randomUUID() + "_" + originalName;
+        String storedName = UUID.randomUUID() + "_" + sanitizeFileName(originalName);
 
         // Upload lên Supabase Storage TRƯỚC khi tạo bản ghi DB.
         // Nếu lỗi thì chưa đụng gì tới DB, không cần rollback thủ công.
@@ -418,6 +418,14 @@ public class DocumentService {
         if (dot < 0) return "";
         return filename.substring(dot + 1).toLowerCase();
     }
+
+    private String sanitizeFileName(String fileName) {
+    String normalized = java.text.Normalizer.normalize(fileName, java.text.Normalizer.Form.NFD)
+            .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+    normalized = normalized.replaceAll("[đĐ]", "d");
+    normalized = normalized.replaceAll("[^a-zA-Z0-9._-]", "_");
+    return normalized;
+}
 
     @Transactional
     public void deleteDocumentPermanentAPI(UUID id, UUID userId) {
