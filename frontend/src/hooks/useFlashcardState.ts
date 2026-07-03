@@ -9,13 +9,9 @@ import {
   deleteFlashcardApi,
   updateFlashcardApi,
 } from "@/services/api/flashcards"
-import type { Document, Flashcard } from "@/states/types"
+import type { Flashcard } from "@/states/types"
 
-interface FlashcardStateDeps {
-  documents: Document[]
-}
-
-export function useFlashcardState({ documents }: FlashcardStateDeps) {
+export function useFlashcardState() {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([])
   const [flashcardSelectedDocumentId, setFlashcardSelectedDocId] = useState<string | "all">("all")
 
@@ -137,69 +133,27 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
   }, [])
 
   /**
-   * Gọi AI backend tạo flashcard từ tài liệu (BR-036).
-   * Fallback sang mock nếu API không khả dụng.
+   * Gọi AI backend tạo flashcard thật từ nội dung tài liệu (BR-036).
+   * Không còn fallback âm thầm sang mock khi lỗi — mọi lỗi (tài liệu chưa
+   * embedding xong, AI service timeout/lỗi, không có quyền, v.v.) phải được
+   * trả về rõ ràng cho UI hiển thị, không được nuốt mất bằng dữ liệu giả.
    */
   const generateFlashcardsFromDocument = useCallback(
-    async (docId: string) => {
-      const doc = documents.find(d => d.id === docId)
-      if (!doc) return
-
-      // Thử gọi API thật trước
+    async (docId: string, count?: number): Promise<{ success: boolean; count: number; message?: string }> => {
       try {
-        const generated = await generateFlashcardsApi(docId)
-        if (generated.length > 0) {
-          setFlashcards(prev => [...generated, ...prev])
-          setFlashcardSelectedDocId(docId)
-          return
+        const generated = await generateFlashcardsApi(docId, count)
+        setFlashcards(prev => [...generated, ...prev])
+        setFlashcardSelectedDocId(docId)
+        return { success: true, count: generated.length }
+      } catch (error) {
+        return {
+          success: false,
+          count: 0,
+          message: error instanceof Error ? error.message : "Không thể tạo flashcard.",
         }
-      } catch {
-        // Backend không khả dụng → fallback mock bên dưới
       }
-
-      // ── Fallback mock (BR-036: tối thiểu 3 flashcard) ─────────────────────
-      const now = Date.now()
-      const topic = doc.subject || doc.name || "chủ đề"
-      const tags = doc.tags.length > 0 ? doc.tags.join(", ") : null
-
-      const mockCards: Flashcard[] = [
-        {
-          id: `fc-${now}-1`,
-          documentId: doc.id,
-          question: `Nội dung chính của tài liệu "${doc.name}" là gì?`,
-          answer: doc.description
-            ? doc.description
-            : `Tài liệu này tập trung vào ${topic}.`,
-          createdAt: new Date(),
-          status: "new",
-          aiGenerated: true,
-        },
-        {
-          id: `fc-${now}-2`,
-          documentId: doc.id,
-          question: `Những khái niệm quan trọng cần nhớ trong tài liệu này là gì?`,
-          answer: tags
-            ? `Các khái niệm chính bao gồm: ${tags}.`
-            : `Các khái niệm chính xoay quanh ${topic}.`,
-          createdAt: new Date(),
-          status: "new",
-          aiGenerated: true,
-        },
-        {
-          id: `fc-${now}-3`,
-          documentId: doc.id,
-          question: `Làm thế nào để áp dụng kiến thức này trong bài tập hoặc ôn tập?`,
-          answer: `Sử dụng ý chính từ tài liệu để trả lời ví dụ, tóm tắt nội dung và lặp lại thường xuyên.`,
-          createdAt: new Date(),
-          status: "new",
-          aiGenerated: true,
-        },
-      ]
-
-      setFlashcards(prev => [...mockCards, ...prev])
-      setFlashcardSelectedDocId(docId)
     },
-    [documents],
+    [],
   )
 
   /**

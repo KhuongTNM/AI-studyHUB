@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import type { EmbeddingStatus } from "@/states/types"
 
 export function FlashcardPage() {
   const {
@@ -37,6 +38,7 @@ export function FlashcardPage() {
   const [flipped, setFlipped] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generateCount, setGenerateCount] = useState<number>(5)
   const [isSaving, setIsSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -82,6 +84,13 @@ export function FlashcardPage() {
     validationError: "Vui lòng nhập cả câu hỏi và câu trả lời.",
     aiBadge: "AI",
     manualBadge: "Tùy chỉnh",
+    generateSuccess: (count: number) => `Đã tạo ${count} flashcard từ tài liệu.`,
+    generateError: "Không thể tạo flashcard.",
+    generateEmpty: "AI không tạo được thẻ nào từ tài liệu này. Vui lòng thử tài liệu khác.",
+    cardCountLabel: "Số lượng thẻ",
+    docEmbeddingProcessing: "Tài liệu đang được xử lý, vui lòng thử lại sau ít phút.",
+    docEmbeddingFailed: "Tài liệu xử lý AI thất bại, không thể sinh flashcard.",
+    docEmbeddingNone: "Tài liệu chưa sẵn sàng để sinh flashcard AI.",
   } : {
     title: "Study Flashcards",
     description: "Build and review quick learning cards to remember key concepts faster.",
@@ -122,6 +131,13 @@ export function FlashcardPage() {
     validationError: "Please enter both a question and an answer.",
     aiBadge: "AI",
     manualBadge: "Manual",
+    generateSuccess: (count: number) => `Generated ${count} flashcard${count === 1 ? "" : "s"} from the document.`,
+    generateError: "Could not generate flashcards.",
+    generateEmpty: "AI couldn't generate any cards from this document. Try another document.",
+    cardCountLabel: "Card count",
+    docEmbeddingProcessing: "The document is still being processed. Please try again in a few minutes.",
+    docEmbeddingFailed: "AI processing failed for this document, so flashcards can't be generated.",
+    docEmbeddingNone: "This document isn't ready for AI flashcard generation yet.",
   }
 
   const availableDocs = [{ id: "all", name: text.allDocs }, ...documents.map(doc => ({ id: doc.id, name: doc.name }))]
@@ -152,6 +168,13 @@ export function FlashcardPage() {
     if (selectedDocId === "all") return text.allDocs
     return documents.find(doc => doc.id === selectedDocId)?.name ?? text.allDocs
   }, [documents, selectedDocId, text.allDocs])
+
+  const selectedDoc = useMemo(
+    () => (selectedDocId === "all" ? undefined : documents.find(doc => doc.id === selectedDocId)),
+    [documents, selectedDocId],
+  )
+  // Tài liệu phải embedding xong ("done") mới đủ điều kiện sinh flashcard AI (khớp check ở FlashcardService.generateFlashcards phía BE).
+  const embeddingNotReady = selectedDocId !== "all" && selectedDoc?.embeddingStatus !== "done"
 
   const activeCard = filteredCards[activeIndex]
 
@@ -231,13 +254,24 @@ export function FlashcardPage() {
   }
 
   const handleGenerateAI = async () => {
-    if (selectedDocId === "all") return
+    if (selectedDocId === "all" || embeddingNotReady) return
     setIsGenerating(true)
-    await new Promise(resolve => setTimeout(resolve, 1300))
-    generateFlashcardsFromDocument(selectedDocId)
-    setIsGenerating(false)
-    setFlipped(false)
-    setActiveIndex(0)
+    try {
+      const result = await generateFlashcardsFromDocument(selectedDocId, generateCount)
+      if (result.success) {
+        if (result.count > 0) {
+          toast.success(text.generateSuccess(result.count))
+          setFlipped(false)
+          setActiveIndex(0)
+        } else {
+          toast.error(text.generateEmpty)
+        }
+      } else {
+        toast.error(result.message ?? text.generateError)
+      }
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleCopy = (textValue: string) => {
@@ -278,18 +312,32 @@ export function FlashcardPage() {
               {filteredCards.length} {text.cardCount} • {selectedDocName}
             </div>
           </div>
-          <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <Button
               onClick={handleGenerateAI}
-              disabled={selectedDocId === "all" || isGenerating}
+              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady}
+              title={embeddingNotReady ? embeddingHint(selectedDoc?.embeddingStatus, text) : undefined}
               className="gap-2"
             >
               <Sparkles className="h-4 w-4" />
               {isGenerating ? (language === "vi" ? "Đang tạo flashcard..." : "Generating flashcards...") : (language === "vi" ? "Tạo flashcard bằng AI" : "Generate AI flashcards")}
             </Button>
+            <select
+              value={generateCount}
+              onChange={e => setGenerateCount(Number(e.target.value))}
+              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady}
+              title={text.cardCountLabel}
+              className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+            >
+              {[3, 5, 8].map(n => (
+                <option key={n} value={n}>{n} {language === "vi" ? "thẻ" : "cards"}</option>
+              ))}
+            </select>
             <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
               {selectedDocId === "all"
                 ? language === "vi" ? "Chọn tài liệu để tạo flashcard" : "Select a document to generate"
+                : embeddingNotReady
+                ? embeddingHint(selectedDoc?.embeddingStatus, text)
                 : language === "vi" ? "AI sẽ đọc tài liệu và sinh flashcard" : "AI will read the document and generate cards"}
             </div>
           </div>
@@ -512,4 +560,13 @@ function statusText(
   if (status === "learning") return text.statusLearning
   if (status === "mastered") return text.statusMastered
   return text.statusNew
+}
+
+function embeddingHint(
+  embeddingStatus: EmbeddingStatus | undefined,
+  text: { docEmbeddingProcessing: string; docEmbeddingFailed: string; docEmbeddingNone: string },
+) {
+  if (embeddingStatus === "processing") return text.docEmbeddingProcessing
+  if (embeddingStatus === "failed") return text.docEmbeddingFailed
+  return text.docEmbeddingNone
 }

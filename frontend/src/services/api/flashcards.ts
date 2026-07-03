@@ -61,21 +61,37 @@ export function mapApiFlashcard(api: ApiFlashcard): Flashcard {
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 /**
- * POST /api/flashcards/generate — AI tạo flashcard từ tài liệu (BR-036).
- * Tối thiểu 3 flashcard được tạo từ tài liệu có trạng thái "ready".
+ * POST /api/flashcards/generate — AI tạo flashcard từ nội dung tài liệu thật (BR-036).
+ * Backend gọi sang AI service (RAG + LLM) nên có thể mất 5–20s tuỳ độ dài tài liệu;
+ * dùng AbortController để tránh treo UI vô thời hạn nếu AI service bị treo/timeout.
  */
-export async function generateFlashcardsApi(documentId: string): Promise<Flashcard[]> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ documentId }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
-  const cards = (await response.json()) as ApiFlashcard[]
-  return cards.map(mapApiFlashcard)
+const GENERATE_TIMEOUT_MS = 30_000
+
+export async function generateFlashcardsApi(documentId: string, count?: number): Promise<Flashcard[]> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/flashcards/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify(count ? { documentId, count } : { documentId }),
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(await parseError(response))
+    const cards = (await response.json()) as ApiFlashcard[]
+    return cards.map(mapApiFlashcard)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Quá thời gian chờ, vui lòng thử lại.")
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 /**
