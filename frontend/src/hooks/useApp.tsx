@@ -15,7 +15,7 @@
  *  useAuthState         → currentUser, login, register
  *  useDocumentState     → documents, categories  (needs currentUser)
  *  useChatState         → chatSessions, activeChatId
- *  useFlashcardState    → flashcards              (needs documents)
+ *  useFlashcardState    → flashcards
  *  useAdminState        → users list, admin actions
  *  useSubscriptionState → packagePrices, subscription actions
  *  useGroupChatState    → group chats
@@ -168,8 +168,11 @@ export interface AppState {
   ) => Promise<{ success: boolean; message?: string }>
   /** Cập nhật status qua PATCH /api/flashcards/{id}/status (BR-038) */
   updateFlashcardStatus: (id: string, status: Flashcard["status"]) => void
-  /** AI tạo flashcard qua POST /api/flashcards/generate, fallback mock (BR-036) */
-  generateFlashcardsFromDocument: (docId: string) => void
+  /** AI tạo flashcard qua POST /api/flashcards/generate (BR-036), không fallback mock khi lỗi */
+  generateFlashcardsFromDocument: (
+    docId: string,
+    count?: number,
+  ) => Promise<{ success: boolean; count: number; message?: string }>
   /** Load flashcard từ API theo document (BR-039) */
   loadFlashcardsForDocument: (docId: string) => Promise<void>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
@@ -238,8 +241,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [chat, ui]
   )
 
-  // ── 4. Flashcards (cần documents để tạo mock fallback) ─────────────────
-  const flashcards = useFlashcardState({ documents: docs.documents })
+  // ── 4. Flashcards ────────────────────────────────────────────────────────
+  const flashcards = useFlashcardState()
 
   // ── 5. Admin (cần currentUser + cross-domain setters) ──────────────────
   const admin = useAdminState({

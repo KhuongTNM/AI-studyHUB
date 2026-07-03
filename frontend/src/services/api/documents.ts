@@ -23,6 +23,7 @@ interface ApiDocument {
   downloadCount: number
   createdAt: string
   updatedAt: string
+  embeddingStatus?: string | null   // "none" | "processing" | "done" | "failed" (BR-036)
 }
 
 interface ErrorBody {
@@ -63,6 +64,15 @@ function mapStatus(status: string): DocStatus {
   }
 }
 
+function mapEmbeddingStatus(status: string | null | undefined): Document["embeddingStatus"] {
+  switch (status) {
+    case "processing": return "processing"
+    case "done":        return "done"
+    case "failed":       return "failed"
+    default:              return "none"
+  }
+}
+
 export function mapApiDocumentToDocument(api: ApiDocument): Document {
   return {
     id: api.id,
@@ -85,6 +95,7 @@ export function mapApiDocumentToDocument(api: ApiDocument): Document {
     downloadCount: api.downloadCount,
     isPublic: api.visibility === "public",
     shareStatus: "none",
+    embeddingStatus: mapEmbeddingStatus(api.embeddingStatus),
   }
 }
 

@@ -86,6 +86,8 @@ export interface Folder {
 
 export type DocStatus = "uploading" | "scanning" | "ready" | "failed" | "deleted"
 export type ShareStatus = "none" | "pending" | "approved" | "rejected"
+/** Trạng thái xử lý AI (chunk + embedding) của tài liệu, dùng để cho phép/chặn sinh flashcard AI (BR-036). */
+export type EmbeddingStatus = "none" | "processing" | "done" | "failed"
 
 export interface Document {
   id: string
@@ -108,6 +110,7 @@ export interface Document {
   shareNote?: string
   reviewedBy?: string
   reviewedAt?: Date
+  embeddingStatus: EmbeddingStatus
 }
 
 export interface ChatSource {

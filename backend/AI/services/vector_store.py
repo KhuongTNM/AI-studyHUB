@@ -134,3 +134,29 @@ def search_similar_chunks(query_embedding: List[float], user_id: str, document_i
         raise
     finally:
         release_connection(conn)
+
+def get_document_chunks(document_id: str, user_id: str) -> List[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT chunk_index, content
+                FROM ai.document_chunks
+                WHERE document_id = %s::uuid AND user_id = %s::uuid
+                ORDER BY chunk_index ASC
+            """
+            cur.execute(query, (document_id, user_id))
+            results = cur.fetchall()
+            return [
+                {
+                    "chunk_index": row[0],
+                    "content": row[1]
+                }
+                for row in results
+            ]
+    except Exception as e:
+        logger.error(f"Error fetching document chunks for {document_id}: {e}")
+        raise
+    finally:
+        release_connection(conn)

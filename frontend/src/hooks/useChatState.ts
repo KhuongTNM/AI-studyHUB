@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import type { ChatMessage, ChatSession, User } from "@/states/types"
 import {
   fetchChatSessionsApi,
@@ -17,7 +17,7 @@ interface ChatStateDeps {
 export function useChatState({ currentUser }: ChatStateDeps) {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
-  const [loadedMessageSessionIds, setLoadedMessageSessionIds] = useState<Set<string>>(new Set())
+  const loadedMessageSessionIdsRef = useRef<Set<string>>(new Set())
 
   // ── Load danh sách session từ backend khi user đăng nhập ─────────────────
   // (giúp lịch sử chat không bị mất khi refresh trang — FR: BR-chat-history)
@@ -25,7 +25,7 @@ export function useChatState({ currentUser }: ChatStateDeps) {
     if (!currentUser) {
       setChatSessions([])
       setActiveChatId(null)
-      setLoadedMessageSessionIds(new Set())
+      loadedMessageSessionIdsRef.current.clear()
       return
     }
     let cancelled = false
@@ -72,7 +72,7 @@ export function useChatState({ currentUser }: ChatStateDeps) {
   const createChatSession = useCallback(async (documentId?: string | null): Promise<ChatSession> => {
     const session = await createChatSessionApi(documentId ?? null)
     setChatSessions(prev => [session, ...prev])
-    setLoadedMessageSessionIds(prev => new Set(prev).add(session.id))
+    loadedMessageSessionIdsRef.current.add(session.id)
     return session
   }, [])
 
@@ -90,18 +90,18 @@ export function useChatState({ currentUser }: ChatStateDeps) {
    */
   const ensureSessionMessagesLoaded = useCallback(
     async (sessionId: string) => {
-      if (loadedMessageSessionIds.has(sessionId)) return
+      if (loadedMessageSessionIdsRef.current.has(sessionId)) return
       try {
         const messages = await fetchChatMessagesApi(sessionId)
         setChatSessions(prev =>
           prev.map(s => (s.id === sessionId ? { ...s, messages } : s))
         )
-        setLoadedMessageSessionIds(prev => new Set(prev).add(sessionId))
+        loadedMessageSessionIdsRef.current.add(sessionId)
       } catch {
         // Nếu lỗi, để nguyên messages rỗng, người dùng có thể thử lại
       }
     },
-    [loadedMessageSessionIds]
+    []
   )
 
   const selectChatSession = useCallback(

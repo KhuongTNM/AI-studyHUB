@@ -16,7 +16,7 @@ import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import ingest, search
+from routers import ingest, search, flashcards
 from services.vector_store import db_pool
 
 # Standard JSON-like structured logging config
@@ -54,6 +54,7 @@ app.add_middleware(
 
 app.include_router(ingest.router, tags=["Ingest"])
 app.include_router(search.router, tags=["Search"])
+app.include_router(flashcards.router, prefix="/api/v1/flashcards", tags=["Flashcards"])
 
 @app.get("/health")
 def health_check():
