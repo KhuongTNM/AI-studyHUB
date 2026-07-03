@@ -31,13 +31,29 @@ export function useChatState({ currentUser }: ChatStateDeps) {
     let cancelled = false
     fetchChatSessionsApi()
       .then(sessions => {
-        if (!cancelled) setChatSessions(sessions)
+        if (cancelled) return
+        // Chỉ đồng bộ metadata (title, documentId...) từ backend, GIỮ NGUYÊN
+        // messages cục bộ của các session đã có sẵn (đặc biệt là session đang
+        // chat / đang stream) — API danh sách session không trả kèm messages
+        // (luôn là []), nếu ghi đè trực tiếp sẽ làm mất tin nhắn đang hiển thị
+        // giữa chừng khi effect này chạy lại (vd: sau khi currentUser đổi
+        // reference do refreshStorageUsage, đổi ngôn ngữ, v.v.).
+        setChatSessions(prev => {
+          const prevById = new Map(prev.map(s => [s.id, s]))
+          return sessions.map(s => {
+            const existing = prevById.get(s.id)
+            return existing ? { ...s, messages: existing.messages } : s
+          })
+        })
       })
       .catch(() => {
         // Backend chưa sẵn sàng / lỗi mạng -> giữ nguyên state hiện có
       })
     return () => { cancelled = true }
-  }, [currentUser])
+    // Chỉ refetch khi ĐỔI USER thật sự (đăng nhập/đăng xuất/chuyển tài khoản),
+    // không refetch khi currentUser chỉ đổi reference nhưng vẫn cùng 1 user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id])
 
   const addChatSession = useCallback((session: ChatSession) => {
     setChatSessions(prev => [session, ...prev])
