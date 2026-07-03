@@ -54,7 +54,7 @@ app.add_middleware(
 
 app.include_router(ingest.router, tags=["Ingest"])
 app.include_router(search.router, tags=["Search"])
-app.include_router(flashcards.router, prefix="/api/v1", tags=["Flashcards"])
+app.include_router(flashcards.router, prefix="/api/v1/flashcards", tags=["Flashcards"])
 
 @app.get("/health")
 def health_check():

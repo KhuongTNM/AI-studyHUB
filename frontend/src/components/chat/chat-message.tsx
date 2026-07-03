@@ -17,7 +17,7 @@ export function ChatMessageItem({
   const formatTime = (date: Date) =>
     date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
 
-  const isEmptyStreaming = message.role === "assistant" && message.isStreaming && !message.content
+  const isEmptyStreaming = message.role === "assistant" && message.isStreaming && !message.content.trim()
 
   return (
     <div
