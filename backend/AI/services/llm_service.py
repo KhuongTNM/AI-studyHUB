@@ -57,7 +57,7 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
     )
     
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": text}
