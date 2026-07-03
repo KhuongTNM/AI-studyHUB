@@ -3,6 +3,7 @@ import json
 from decimal import Decimal
 from openai import OpenAI
 from typing import List, Dict, Any
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 def _json_default(obj):
@@ -47,3 +48,44 @@ async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, An
 
     sources_metadata = json.dumps({"sources": retrieved_chunks}, default=_json_default)
     yield f"\n\n[SOURCES]\n{sources_metadata}\n\n"
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
+    system_prompt = (
+        f"Generate exactly {count} high-quality educational flashcards based strictly on the text below. "
+        "Return a clean JSON object containing an array of flashcards with 'question' and 'answer' keys."
+    )
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"}
+    )
+    
+    content = response.choices[0].message.content
+    try:
+        parsed_data = json.loads(content)
+        flashcards_array = []
+        
+        # Extract the array from the JSON object
+        for key, value in parsed_data.items():
+            if isinstance(value, list):
+                flashcards_array = value
+                break
+                
+        if not flashcards_array and isinstance(parsed_data, list):
+            flashcards_array = parsed_data
+            
+        valid_flashcards = []
+        for item in flashcards_array:
+            if isinstance(item, dict) and "question" in item and "answer" in item:
+                if item["question"] and item["answer"]:
+                    valid_flashcards.append(item)
+                    
+        return valid_flashcards
+    except Exception as e:
+        raise Exception(f"Failed to parse JSON response: {e}")

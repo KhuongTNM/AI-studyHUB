@@ -23,6 +23,7 @@ public class DocumentResponse {
     private String status;
     private String visibility;
     private int downloadCount;
+    private String embeddingStatus;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -44,6 +45,7 @@ public class DocumentResponse {
         r.status = doc.getStatus().name().toLowerCase();
         r.visibility = doc.getVisibility().name().toLowerCase();
         r.downloadCount = doc.getDownloadCount();
+        r.embeddingStatus = doc.getEmbeddingStatus();
         r.createdAt = doc.getCreatedAt();
         r.updatedAt = doc.getUpdatedAt();
         return r;
@@ -63,6 +65,7 @@ public class DocumentResponse {
     public String getStatus() { return status; }
     public String getVisibility() { return visibility; }
     public int getDownloadCount() { return downloadCount; }
+    public String getEmbeddingStatus() { return embeddingStatus; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

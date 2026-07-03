@@ -162,6 +162,7 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
         downloadCount: 0,
         isPublic: visibility === "public",
         shareStatus: "none",
+        embeddingStatus: "none",
       }
       setDocuments(prev => [tempDoc, ...prev])
 
