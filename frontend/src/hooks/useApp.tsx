@@ -155,8 +155,17 @@ export interface AppState {
   // ── Flashcards ────────────────────────────────────────────────────────────
   flashcards: Flashcard[]
   flashcardSelectedDocumentId: string | "all"
-  addFlashcards: (cards: Flashcard[]) => void
-  deleteFlashcard: (id: string) => void
+  /** Tạo flashcard thủ công qua POST /api/flashcards (BR-037) */
+  addFlashcards: (
+    cards: { question: string; answer: string; documentId?: string }[],
+  ) => Promise<{ success: boolean; message?: string }>
+  /** Xoá flashcard qua DELETE /api/flashcards/{id} (BR-040) */
+  deleteFlashcard: (id: string) => Promise<{ success: boolean; message?: string }>
+  /** Sửa câu hỏi/đáp án qua PATCH /api/flashcards/{id} */
+  updateFlashcard: (
+    id: string,
+    updates: { question: string; answer: string },
+  ) => Promise<{ success: boolean; message?: string }>
   /** Cập nhật status qua PATCH /api/flashcards/{id}/status (BR-038) */
   updateFlashcardStatus: (id: string, status: Flashcard["status"]) => void
   /** AI tạo flashcard qua POST /api/flashcards/generate, fallback mock (BR-036) */
@@ -361,6 +370,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         flashcardSelectedDocumentId: flashcards.flashcardSelectedDocumentId,
         addFlashcards: flashcards.addFlashcards,
         deleteFlashcard: flashcards.deleteFlashcard,
+        updateFlashcard: flashcards.updateFlashcard,
         updateFlashcardStatus: flashcards.updateFlashcardStatus,
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
         loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
