@@ -5,6 +5,9 @@ import {
   generateFlashcardsApi,
   fetchFlashcardsApi,
   updateFlashcardStatusApi,
+  createFlashcardApi,
+  deleteFlashcardApi,
+  updateFlashcardApi,
 } from "@/services/api/flashcards"
 import type { Document, Flashcard } from "@/states/types"
 
@@ -16,15 +19,100 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([])
   const [flashcardSelectedDocumentId, setFlashcardSelectedDocId] = useState<string | "all">("all")
 
-  // ── Thêm flashcard vào state (tạo thủ công - BR-037) ────────────────────
-  const addFlashcards = useCallback((cards: Flashcard[]) => {
-    setFlashcards(prev => [...cards, ...prev])
-  }, [])
+  // ── Thêm flashcard thủ công qua API (BR-037) ─────────────────────────────
+  // Gọi API trước, chỉ thêm vào state khi thành công (tránh card "ảo" khi lỗi).
+  const addFlashcards = useCallback(
+    async (
+      cards: { question: string; answer: string; documentId?: string }[],
+    ): Promise<{ success: boolean; message?: string }> => {
+      try {
+        const created = await Promise.all(
+          cards.map(card =>
+            createFlashcardApi({
+              question: card.question,
+              answer: card.answer,
+              documentId: card.documentId,
+            }),
+          ),
+        )
+        setFlashcards(prev => [...created, ...prev])
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : "Không thể tạo flashcard.",
+        }
+      }
+    },
+    [],
+  )
 
-  // ── Xoá flashcard (cục bộ - không có endpoint delete) ───────────────────
-  const deleteFlashcard = useCallback((id: string) => {
-    setFlashcards(prev => prev.filter(card => card.id !== id))
-  }, [])
+  // ── Xoá flashcard qua API, optimistic + rollback (BR-040) ───────────────
+  const deleteFlashcard = useCallback(
+    async (id: string): Promise<{ success: boolean; message?: string }> => {
+      let removedCard: Flashcard | undefined
+      let removedIndex = -1
+      setFlashcards(prev => {
+        removedIndex = prev.findIndex(card => card.id === id)
+        removedCard = prev[removedIndex]
+        return prev.filter(card => card.id !== id)
+      })
+
+      try {
+        await deleteFlashcardApi(id)
+        return { success: true }
+      } catch (error) {
+        // Rollback: chèn lại card vào đúng vị trí cũ
+        if (removedCard) {
+          setFlashcards(prev => {
+            const next = [...prev]
+            next.splice(Math.max(0, removedIndex), 0, removedCard as Flashcard)
+            return next
+          })
+        }
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : "Không thể xoá flashcard.",
+        }
+      }
+    },
+    [],
+  )
+
+  // ── Sửa nội dung flashcard qua API, optimistic + rollback ────────────────
+  const updateFlashcard = useCallback(
+    async (
+      id: string,
+      updates: { question: string; answer: string },
+    ): Promise<{ success: boolean; message?: string }> => {
+      let previousCard: Flashcard | undefined
+      setFlashcards(prev =>
+        prev.map(card => {
+          if (card.id === id) {
+            previousCard = card
+            return { ...card, ...updates }
+          }
+          return card
+        }),
+      )
+
+      try {
+        const updated = await updateFlashcardApi(id, updates)
+        setFlashcards(prev => prev.map(card => (card.id === id ? updated : card)))
+        return { success: true }
+      } catch (error) {
+        if (previousCard) {
+          const restored = previousCard
+          setFlashcards(prev => prev.map(card => (card.id === id ? restored : card)))
+        }
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : "Không thể cập nhật flashcard.",
+        }
+      }
+    },
+    [],
+  )
 
   // ── Cập nhật trạng thái flashcard qua API (BR-038) ───────────────────────
   const updateFlashcardStatus = useCallback((id: string, status: Flashcard["status"]) => {
@@ -84,6 +172,7 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
             : `Tài liệu này tập trung vào ${topic}.`,
           createdAt: new Date(),
           status: "new",
+          aiGenerated: true,
         },
         {
           id: `fc-${now}-2`,
@@ -94,6 +183,7 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
             : `Các khái niệm chính xoay quanh ${topic}.`,
           createdAt: new Date(),
           status: "new",
+          aiGenerated: true,
         },
         {
           id: `fc-${now}-3`,
@@ -102,6 +192,7 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
           answer: `Sử dụng ý chính từ tài liệu để trả lời ví dụ, tóm tắt nội dung và lặp lại thường xuyên.`,
           createdAt: new Date(),
           status: "new",
+          aiGenerated: true,
         },
       ]
 
@@ -136,6 +227,7 @@ export function useFlashcardState({ documents }: FlashcardStateDeps) {
     flashcardSelectedDocumentId,
     addFlashcards,
     deleteFlashcard,
+    updateFlashcard,
     updateFlashcardStatus,
     generateFlashcardsFromDocument,
     loadFlashcardsForDocument,
