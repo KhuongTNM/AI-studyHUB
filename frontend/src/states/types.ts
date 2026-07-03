@@ -152,5 +152,7 @@ export interface Flashcard {
   answer: string
   createdAt: Date
   status?: FlashcardStatus
+  /** true nếu do AI sinh ra (BR-036), false/undefined nếu tạo thủ công (BR-037) */
+  aiGenerated?: boolean
 }
 export type Language = "vi" | "en"
