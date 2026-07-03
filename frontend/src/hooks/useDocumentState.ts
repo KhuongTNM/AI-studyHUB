@@ -189,15 +189,22 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
         let attempts = 0
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 24) { clearInterval(poll); return }
+          if (attempts > 40) {
+            clearInterval(poll)
+            return
+          }
           try {
             const refreshed = await fetchDocumentsApi()
             const updated = refreshed.find(d => d.id === realDoc.id)
-            if (updated && updated.status !== "scanning" && updated.status !== "uploading") {
-              clearInterval(poll)
+            if (updated) {
               setDocuments(prev =>
                 prev.map(d => d.id === realDoc.id ? { ...updated, folderId } : d),
               )
+              const isStatusReady = updated.status !== "scanning" && updated.status !== "uploading"
+              const isEmbeddingReady = updated.embeddingStatus === "done" || updated.embeddingStatus === "failed"
+              if (isStatusReady && isEmbeddingReady) {
+                clearInterval(poll)
+              }
             }
           } catch {
             clearInterval(poll)
