@@ -14,6 +14,7 @@ export function GroupChatPage() {
     currentUser, openAuthModal, language, documents, downloadDocument,
     groups, activeGroupId, groupCreateLimit, groupJoinLimit,
     setActiveGroupId, createGroup, joinGroup, leaveGroup, deleteGroup,
+    updateGroupMuted, updateGroupPinned,
     sendGroupMessage, shareGroupDocument, shareGroupImage, generateGroupCode,
   } = useApp()
 
@@ -36,6 +37,7 @@ export function GroupChatPage() {
   const [mockNotice, setMockNotice] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletePassword, setDeletePassword] = useState("")
+  const [groupActionBusy, setGroupActionBusy] = useState(false)
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -66,8 +68,10 @@ export function GroupChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activeGroup?.messages.length])
 
-  const handleCreateGroup = () => {
-    const result = createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
+  const handleCreateGroup = async () => {
+    setGroupActionBusy(true)
+    const result = await createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.createFailed)
       return
@@ -80,8 +84,10 @@ export function GroupChatPage() {
     setShowCreate(false)
   }
 
-  const handleJoinGroup = () => {
-    const result = joinGroup(joinGroupCode, joinGroupPassword)
+  const handleJoinGroup = async () => {
+    setGroupActionBusy(true)
+    const result = await joinGroup(joinGroupCode, joinGroupPassword)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.joinFailed)
       return
@@ -92,7 +98,7 @@ export function GroupChatPage() {
     setShowJoin(false)
   }
 
-  const handleLeaveOrDelete = () => {
+  const handleLeaveOrDelete = async () => {
     if (!activeGroup || !currentUser) return
     if (activeGroup.ownerId === currentUser.id) {
       setDeletePassword("")
@@ -100,7 +106,9 @@ export function GroupChatPage() {
       return
     }
 
-    const result = leaveGroup(activeGroup.id)
+    setGroupActionBusy(true)
+    const result = await leaveGroup(activeGroup.id)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.actionFailed)
       return
@@ -108,13 +116,11 @@ export function GroupChatPage() {
     setError("")
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!activeGroup) return
-    if (deletePassword.trim() !== activeGroup.password) {
-      setError(text.deletePasswordWrong)
-      return
-    }
-    const result = deleteGroup(activeGroup.id)
+    setGroupActionBusy(true)
+    const result = await deleteGroup(activeGroup.id, deletePassword)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.actionFailed)
       return
@@ -168,6 +174,28 @@ export function GroupChatPage() {
     }
     setError("")
     showMockNotice(text.imageUploaded)
+  }
+
+  const handleToggleMute = async () => {
+    if (!activeGroup) return
+    const result = await updateGroupMuted(activeGroup.id, !activeGroup.muted)
+    if (!result.success) {
+      setError(result.error ?? text.actionFailed)
+      return
+    }
+    setError("")
+    showMockNotice(!activeGroup.muted ? text.mutedSaved : text.unmutedSaved)
+  }
+
+  const handleTogglePin = async () => {
+    if (!activeGroup) return
+    const result = await updateGroupPinned(activeGroup.id, !activeGroup.pinned)
+    if (!result.success) {
+      setError(result.error ?? text.actionFailed)
+      return
+    }
+    setError("")
+    showMockNotice(!activeGroup.pinned ? text.pinnedSaved : text.unpinnedSaved)
   }
 
   if (!currentUser) {
@@ -406,7 +434,7 @@ export function GroupChatPage() {
                 type="password"
                 className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
               />
-              <Button type="button" className="w-full" disabled={joinedGroupCount >= groupJoinLimit} onClick={handleJoinGroup}>
+              <Button type="button" className="w-full" disabled={joinedGroupCount >= groupJoinLimit || groupActionBusy} onClick={handleJoinGroup}>
                 {text.join}
               </Button>
             </div>
@@ -461,7 +489,7 @@ export function GroupChatPage() {
             <div className="space-y-3 text-sm">
               <InfoRow label={text.groupName} value={activeGroup.name} />
               <InfoRow label={text.groupId} value={activeGroup.groupCode} />
-              <InfoRow label={text.password} value={activeGroup.password} />
+              <InfoRow label={text.password} value={text.passwordProtected} />
               <InfoRow label={text.owner} value={activeGroup.ownerName} />
               <InfoRow label={text.memberCount} value={`${activeGroup.members.length}/${activeGroup.maxMembers}`} />
               <InfoRow label={text.createdAt} value={activeGroup.createdAt.toLocaleString()} />
@@ -482,14 +510,14 @@ export function GroupChatPage() {
               </Button>
             </div>
             <div className="space-y-2">
-              {[text.muteGroup, text.pinGroup, text.exportChat, text.reportGroup].map(option => (
-                <Button
-                  key={option}
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => showMockNotice(text.optionMocked(option))}
-                >
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={handleToggleMute}>
+                {activeGroup.muted ? text.unmuteGroup : text.muteGroup}
+              </Button>
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={handleTogglePin}>
+                {activeGroup.pinned ? text.unpinGroup : text.pinGroup}
+              </Button>
+              {[text.exportChat, text.reportGroup].map(option => (
+                <Button key={option} type="button" variant="outline" className="w-full justify-start" onClick={() => showMockNotice(text.optionMocked(option))}>
                   {option}
                 </Button>
               ))}
@@ -547,7 +575,7 @@ export function GroupChatPage() {
             </label>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowCreate(false)}>{text.cancel}</Button>
-              <Button onClick={handleCreateGroup}>{text.create}</Button>
+              <Button onClick={handleCreateGroup} disabled={groupActionBusy}>{text.create}</Button>
             </div>
           </div>
         </div>
@@ -572,7 +600,7 @@ export function GroupChatPage() {
             </label>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>{text.cancel}</Button>
-              <Button variant="destructive" onClick={handleConfirmDelete}>{text.deleteGroup}</Button>
+              <Button variant="destructive" onClick={handleConfirmDelete} disabled={groupActionBusy || !deletePassword.trim()}>{text.deleteGroup}</Button>
             </div>
           </div>
         </div>
@@ -799,11 +827,12 @@ const groupText = {
     groupId: "Group ID",
     password: "Mật khẩu nhóm",
     passwordPlaceholder: "Nhập mật khẩu để bạn học tham gia",
+    passwordProtected: "Được bảo vệ bởi backend",
     regenerate: "Tạo lại",
     leaveGroup: "Rời nhóm",
     deleteGroup: "Xóa nhóm",
     deleteConfirmTitle: "Xác nhận xóa nhóm",
-    deleteConfirmBody: (name: string, code: string) => `Nhập mật khẩu nhóm để xóa "${name}" (${code}). Thao tác này đang được mock ở frontend.`,
+    deleteConfirmBody: (name: string, code: string) => `Nhập mật khẩu nhóm để xóa "${name}" (${code}). Backend sẽ xác thực mật khẩu trước khi xóa.`,
     deletePasswordPlaceholder: "Nhập mật khẩu nhóm",
     deletePasswordWrong: "Mật khẩu nhóm không đúng.",
     uploadImage: "Upload hình ảnh",
@@ -818,14 +847,20 @@ const groupText = {
     groupInfo: "Thông tin nhóm",
     memberCount: "Số thành viên",
     createdAt: "Ngày tạo",
-    groupInfoBackendNote: "Mock frontend đang hiển thị mật khẩu để kiểm thử. Backend thật phải lưu password_hash và không trả plaintext password.",
+    groupInfoBackendNote: "Mật khẩu nhóm không được hiển thị. Backend chỉ lưu password_hash và xác thực khi tham gia hoặc xóa nhóm.",
     groupOptions: "Tùy chọn nhóm",
     muteGroup: "Tắt thông báo nhóm",
+    unmuteGroup: "Bật thông báo nhóm",
     pinGroup: "Ghim nhóm",
+    unpinGroup: "Bỏ ghim nhóm",
+    mutedSaved: "Đã tắt thông báo nhóm.",
+    unmutedSaved: "Đã bật thông báo nhóm.",
+    pinnedSaved: "Đã ghim nhóm.",
+    unpinnedSaved: "Đã bỏ ghim nhóm.",
     exportChat: "Xuất lịch sử chat",
     reportGroup: "Báo cáo nhóm",
     optionMocked: (option: string) => `Mock: "${option}" đã được ghi nhận, backend sẽ triển khai sau.`,
-    optionsBackendNote: "Các tùy chọn này đang mô phỏng luồng thao tác để backend biết API cần bổ sung.",
+    optionsBackendNote: "Ghim và tắt thông báo đã gọi API nhóm. Xuất lịch sử chat và báo cáo nhóm vẫn là luồng mô phỏng cho task sau.",
     sharedImage: "Ảnh đã chia sẻ",
     imageMockNote: "Ảnh mock được tạo trên frontend. Backend sau này sẽ upload file và trả URL thật.",
     noGroups: "Chưa có nhóm nào",
@@ -871,11 +906,12 @@ const groupText = {
     groupId: "Group ID",
     password: "Group password",
     passwordPlaceholder: "Enter the password classmates will use to join",
+    passwordProtected: "Protected by backend",
     regenerate: "Regenerate",
     leaveGroup: "Leave group",
     deleteGroup: "Delete group",
     deleteConfirmTitle: "Confirm group deletion",
-    deleteConfirmBody: (name: string, code: string) => `Enter the group password to delete "${name}" (${code}). This action is mocked on the frontend.`,
+    deleteConfirmBody: (name: string, code: string) => `Enter the group password to delete "${name}" (${code}). The backend will verify the password before deletion.`,
     deletePasswordPlaceholder: "Enter group password",
     deletePasswordWrong: "Group password is incorrect.",
     uploadImage: "Upload image",
@@ -890,14 +926,20 @@ const groupText = {
     groupInfo: "Group info",
     memberCount: "Member count",
     createdAt: "Created at",
-    groupInfoBackendNote: "The frontend mock shows the password for testing. The real backend must store password_hash and never return plaintext passwords.",
+    groupInfoBackendNote: "The group password is never displayed. Backend stores only password_hash and verifies it for join/delete actions.",
     groupOptions: "Group options",
     muteGroup: "Mute group notifications",
+    unmuteGroup: "Unmute group notifications",
     pinGroup: "Pin group",
+    unpinGroup: "Unpin group",
+    mutedSaved: "Group notifications muted.",
+    unmutedSaved: "Group notifications unmuted.",
+    pinnedSaved: "Group pinned.",
+    unpinnedSaved: "Group unpinned.",
     exportChat: "Export chat history",
     reportGroup: "Report group",
     optionMocked: (option: string) => `Mock: "${option}" has been recorded; backend will implement it later.`,
-    optionsBackendNote: "These options simulate the user flow so backend can add the matching APIs later.",
+    optionsBackendNote: "Mute and pin call the group API. Export chat and report group remain mocked for a later task.",
     sharedImage: "Shared image",
     imageMockNote: "Mock image generated in frontend. Backend will later upload the file and return a real URL.",
     noGroups: "No groups yet",

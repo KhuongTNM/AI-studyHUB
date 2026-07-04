@@ -64,6 +64,8 @@ export interface GroupChat {
   maxMembers: number
   members: GroupChatMember[]
   messages: GroupChatMessage[]
+  muted?: boolean
+  pinned?: boolean
   createdAt: Date
   updatedAt: Date
 }
