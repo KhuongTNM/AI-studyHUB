@@ -55,7 +55,9 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
         f"Generate exactly {count} high-quality educational flashcards based strictly on the text below. "
         "Return a clean JSON object containing an array of flashcards with 'question' and 'answer' keys."
     )
-    
+
+    calculated_max_output = min(65536, count * 200 + 1000)
+
     response = client.chat.completions.create(
         model=LLM_MODEL,
         messages=[
@@ -63,29 +65,30 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
             {"role": "user", "content": text}
         ],
         temperature=0.3,
+        max_tokens=calculated_max_output,
         response_format={"type": "json_object"}
     )
-    
+
     content = response.choices[0].message.content
     try:
         parsed_data = json.loads(content)
         flashcards_array = []
-        
+
         # Extract the array from the JSON object
         for key, value in parsed_data.items():
             if isinstance(value, list):
                 flashcards_array = value
                 break
-                
+
         if not flashcards_array and isinstance(parsed_data, list):
             flashcards_array = parsed_data
-            
+
         valid_flashcards = []
         for item in flashcards_array:
             if isinstance(item, dict) and "question" in item and "answer" in item:
                 if item["question"] and item["answer"]:
                     valid_flashcards.append(item)
-                    
+
         return valid_flashcards
     except Exception as e:
         raise Exception(f"Failed to parse JSON response: {e}")

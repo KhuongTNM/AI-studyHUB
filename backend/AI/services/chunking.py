@@ -209,28 +209,28 @@ def semantic_chunk_text(text: str) -> List[Dict[str, str]]:
         
     return result
 
-def build_context_within_budget(chunks: List[dict], max_tokens: int = 6000) -> str:
+def build_context_within_budget(chunks: List[dict], max_tokens: int = int(os.getenv("FLASHCARD_CONTEXT_MAX_TOKENS", "900000"))) -> str:
     if not chunks:
         return ""
-    
+
     encoding = tiktoken.get_encoding("cl100k_base")
     context = ""
     current_tokens = 0
-    
+
     sorted_chunks = sorted(chunks, key=lambda x: x.get("chunk_index", 0))
-    
+
     for chunk in sorted_chunks:
         content = chunk.get("content", "")
         if not content:
             continue
-            
+
         text_to_add = content if not context else "\n\n" + content
         token_count = len(encoding.encode(text_to_add))
-        
+
         if current_tokens + token_count > max_tokens:
             break
-            
+
         context += text_to_add
         current_tokens += token_count
-        
+
     return context

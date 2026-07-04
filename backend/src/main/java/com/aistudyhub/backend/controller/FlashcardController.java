@@ -57,7 +57,7 @@ public class FlashcardController {
 
     @GetMapping
     public ResponseEntity<List<FlashcardResponse>> list(
-            @RequestParam UUID documentId) {
+            @RequestParam(required = false) UUID documentId) {
         return ResponseEntity.ok(flashcardService.listFlashcards(documentId));
     }
 
