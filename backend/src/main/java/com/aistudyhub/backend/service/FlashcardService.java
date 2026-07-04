@@ -176,11 +176,18 @@ public class FlashcardService {
     @Transactional(readOnly = true)
     public List<FlashcardResponse> listFlashcards(UUID documentId) {
         UUID userId = getCurrentUserId();
-        List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
-        if (cards.isEmpty()) return List.of();
-        if (!cards.get(0).getUserId().equals(userId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem flashcards này.");
+
+        if (documentId != null) {
+            List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
+            if (cards.isEmpty()) return List.of();
+            if (!cards.get(0).getUserId().equals(userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem flashcards này.");
+            }
+            return cards.stream().map(FlashcardResponse::from).toList();
         }
+
+        List<Flashcard> cards = flashcardRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        if (cards.isEmpty()) return List.of();
         return cards.stream().map(FlashcardResponse::from).toList();
     }
 
