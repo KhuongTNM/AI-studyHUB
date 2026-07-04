@@ -16,12 +16,18 @@ import { CheckoutModal } from "./checkout-modal"
 type ProfileTab = "info" | "history" | "security" | "packages"
 
 export function ProfilePage() {
-  const { currentUser, updateUser, activityLogs, openAuthModal, packagePrices, language } = useApp()
+  const {
+    currentUser, updateUser, updateOwnProfile, changeOwnPassword,
+    activityLogs, openAuthModal, packagePrices, language,
+  } = useApp()
   const [tab, setTab] = useState<ProfileTab>("info")
   const [displayName, setDisplayName] = useState(currentUser?.displayName ?? "")
   const [saved, setSaved] = useState(false)
+  const [infoError, setInfoError] = useState("")
+  const [savingInfo, setSavingInfo] = useState(false)
   const [passError, setPassError] = useState("")
   const [passSuccess, setPassSuccess] = useState("")
+  const [changingPassword, setChangingPassword] = useState(false)
 
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PackagePrice | null>(null)
@@ -41,6 +47,10 @@ export function ProfilePage() {
     return () => window.removeEventListener("profile-tab-packages", openPackagesTab)
   }, [])
 
+  useEffect(() => {
+    setDisplayName(currentUser?.displayName ?? "")
+  }, [currentUser?.displayName])
+
   if (!currentUser) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
@@ -56,24 +66,53 @@ export function ProfilePage() {
   const avatarInitials = currentUser.displayName.slice(0, 2).toUpperCase()
   const storagePercent = Math.round((currentUser.storageUsed / currentUser.storageLimit) * 100)
 
-  const handleSaveInfo = () => {
-    if (!displayName.trim()) return
-    if (displayName.length > 50) return
-    updateUser(currentUser.id, { displayName: displayName.trim() })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const handleSaveInfo = async () => {
+    const trimmedName = displayName.trim()
+    setInfoError("")
+    setSaved(false)
+    if (!trimmedName) {
+      setInfoError(text.displayNameRequired)
+      return
+    }
+    if (trimmedName.length > 50) {
+      setInfoError(text.displayNameMax)
+      return
+    }
+
+    setSavingInfo(true)
+    try {
+      const result = await updateOwnProfile(trimmedName)
+      if (!result.success) {
+        setInfoError(result.error ?? text.profileUpdateFailed)
+        return
+      }
+      setDisplayName(trimmedName)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } finally {
+      setSavingInfo(false)
+    }
   }
 
-  const handleChangePassword = (oldPass: string, newPass: string, confirmPass: string) => {
+  const handleChangePassword = async (oldPass: string, newPass: string, confirmPass: string) => {
     setPassError("")
     setPassSuccess("")
-    if (!oldPass) { setPassError(text.currentPasswordRequired); return }
-    if (newPass.length < 8) { setPassError(text.passwordMin); return }
-    if (!/[a-zA-Z]/.test(newPass) || !/[0-9]/.test(newPass)) { setPassError(text.passwordLetterNumber); return }
-    if (newPass !== confirmPass) { setPassError(text.passwordMismatch); return }
-    
-    // In a real app, this would be an API call
-    setPassSuccess(text.passwordChanged)
+    if (!oldPass) { setPassError(text.currentPasswordRequired); return false }
+    if (newPass.length < 8) { setPassError(text.passwordMin); return false }
+    if (!/[a-zA-Z]/.test(newPass) || !/[0-9]/.test(newPass)) { setPassError(text.passwordLetterNumber); return false }
+    if (newPass !== confirmPass) { setPassError(text.passwordMismatch); return false }
+    setChangingPassword(true)
+    try {
+      const result = await changeOwnPassword(oldPass, newPass, confirmPass)
+      if (!result.success) {
+        setPassError(result.error ?? text.passwordChangeFailed)
+        return false
+      }
+      setPassSuccess(result.message ?? text.passwordChanged)
+      return true
+    } finally {
+      setChangingPassword(false)
+    }
   }
 
   const openCheckout = (plan: PackagePrice) => {
@@ -169,8 +208,11 @@ export function ProfilePage() {
               displayName={displayName}
               setDisplayName={setDisplayName}
               saved={saved}
+              error={infoError}
+              saving={savingInfo}
               onSave={handleSaveInfo}
               storagePercent={storagePercent}
+              language={language}
             />
           )}
 
@@ -181,6 +223,8 @@ export function ProfilePage() {
               onChangePassword={handleChangePassword}
               error={passError}
               success={passSuccess}
+              loading={changingPassword}
+              language={language}
             />
           )}
 
@@ -218,10 +262,14 @@ const profileText = {
     loginToView: "Đăng nhập để xem hồ sơ cá nhân",
     loginNow: "Đăng nhập ngay",
     currentPasswordRequired: "Nhập mật khẩu hiện tại.",
+    displayNameRequired: "Tên hiển thị không được để trống.",
+    displayNameMax: "Tên hiển thị không được vượt quá 50 ký tự.",
+    profileUpdateFailed: "Không thể cập nhật hồ sơ.",
     passwordMin: "Mật khẩu mới phải có ít nhất 8 ký tự.",
     passwordLetterNumber: "Mật khẩu cần chứa chữ và số.",
     passwordMismatch: "Mật khẩu xác nhận không khớp.",
     passwordChanged: "Đổi mật khẩu thành công! Vui lòng đăng nhập lại.",
+    passwordChangeFailed: "Không thể đổi mật khẩu.",
     info: "Thông tin",
     packages: "Gói dịch vụ",
     history: "Lịch sử",
@@ -239,10 +287,14 @@ const profileText = {
     loginToView: "Log in to view your profile",
     loginNow: "Log in now",
     currentPasswordRequired: "Enter your current password.",
+    displayNameRequired: "Display name is required.",
+    displayNameMax: "Display name cannot exceed 50 characters.",
+    profileUpdateFailed: "Could not update profile.",
     passwordMin: "New password must be at least 8 characters.",
     passwordLetterNumber: "Password must contain letters and numbers.",
     passwordMismatch: "Password confirmation does not match.",
     passwordChanged: "Password changed successfully. Please log in again.",
+    passwordChangeFailed: "Could not change password.",
     info: "Info",
     packages: "Packages",
     history: "History",
