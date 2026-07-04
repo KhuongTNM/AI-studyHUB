@@ -15,10 +15,25 @@ interface SubscriptionStateDeps {
   addLog: (action: string, target: string, userId: string) => void
 }
 
-function tierToPlanName(tier: PackageTier): string {
+function tierToPlanName(tier: string): string {
   if (tier === "2-4") return "plan_2_4"
   if (tier === "5+") return "plan_5_plus"
-  return "free"
+  if (tier === "free") return "free"
+  return tier
+}
+
+function tierFromPlanName(planName: string): string {
+  if (planName === "plan_2_4") return "2-4"
+  if (planName === "plan_5_plus") return "5+"
+  return planName
+}
+
+function formatStorage(bytes: number) {
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (gb >= 1 && Number.isInteger(gb)) return `${gb} GB`
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1 && Number.isInteger(mb)) return `${mb} MB`
+  return `${bytes} B`
 }
 
 export function useSubscriptionState({
@@ -36,20 +51,18 @@ export function useSubscriptionState({
     fetchSubscriptionPlansApi()
       .then(plans => {
         if (cancelled) return
-        setPackagePrices(prev =>
-          prev.map(pkg => {
-            const planName = tierToPlanName(pkg.tier)
-            const plan = plans.find(item => item.name === planName)
-            if (!plan) return pkg
-            return {
-              ...pkg,
-              id: String(plan.id),
-              name: plan.displayName,
-              price: Number(plan.price),
-              maxUsers: plan.maxRoomMembers || pkg.maxUsers,
-            }
-          }),
-        )
+        setPackagePrices(plans.map(plan => ({
+          id: String(plan.id),
+          planName: plan.name,
+          tier: tierFromPlanName(plan.name),
+          name: plan.displayName,
+          price: Number(plan.price),
+          maxUsers: plan.maxRoomMembers,
+          defaultStorageBytes: plan.defaultStorageBytes,
+          storageLabel: formatStorage(plan.defaultStorageBytes),
+          createGroupLimit: plan.createGroupLimit,
+          joinGroupLimit: plan.joinGroupLimit,
+        })))
       })
       .catch(() => {
         // Giữ giá mock nếu backend không khả dụng
@@ -60,14 +73,14 @@ export function useSubscriptionState({
   }, [currentUser?.id])
 
   const updatePackagePrice = useCallback(
-    async (tier: PackageTier, newPrice: number, adminPassword: string) => {
+    async (tier: PackageTier | string, newPrice: number, adminPassword: string) => {
       if (currentUser?.role !== "admin") {
         return { success: false, error: "Chỉ Admin mới được chỉnh sửa giá gói." }
       }
       try {
-        const updatedPlan = await updatePackagePriceApi(tier, newPrice, adminPassword)
+        const updatedPlan = await updatePackagePriceApi(tierToPlanName(tier), newPrice, adminPassword)
         const updatedPrice = Number(updatedPlan.price)
-        setPackagePrices(prev => prev.map(p => (p.tier === tier ? { ...p, price: updatedPrice } : p)))
+        setPackagePrices(prev => prev.map(p => (tierToPlanName(p.planName ?? p.tier) === updatedPlan.name ? { ...p, price: updatedPrice } : p)))
         const tierName = tier === "2-4" ? "Gói Pro" : "Gói VIP"
         addLog(
           `Cập nhật giá ${tierName}`,

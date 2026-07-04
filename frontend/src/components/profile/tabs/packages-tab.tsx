@@ -1,27 +1,28 @@
 import { Clock, Sparkles, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { type PackageTier } from "@/lib/store"
-import type { Language } from "@/states/types"
+import type { Language, PackagePrice } from "@/states/types"
 
 interface PackagesTabProps {
   currentUser: any
-  packagePrices: any[]
-  onBuy: (tier: PackageTier) => void
+  packagePrices: PackagePrice[]
+  onBuy: (plan: PackagePrice) => void
   language: Language
 }
 
 export function PackagesTab({ currentUser, packagePrices, onBuy, language }: PackagesTabProps) {
   const text = packagesText[language]
 
+  const currentPlan = packagePrices.find(pkg => Number(pkg.id) === currentUser.subscriptionPlanId)
   const currentPlanLabel =
     currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now()
       ? text.expiredPlan
-      : currentUser.subscriptionTier === "2-4"
-      ? text.plan2To4
-      : currentUser.subscriptionTier === "5+"
-      ? text.plan5Plus
-      : text.freePlan
+      : currentPlan?.name ??
+        (currentUser.subscriptionTier === "2-4"
+          ? text.plan2To4
+          : currentUser.subscriptionTier === "5+"
+          ? text.plan5Plus
+          : text.freePlan)
 
   return (
     <div className="space-y-6">
@@ -56,14 +57,13 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
         <h3 className="mb-6 text-center text-lg font-semibold text-foreground">{text.availablePlans}</h3>
         <div className="grid gap-6 md:grid-cols-3">
           {packagePrices.map((pkg) => {
-            const isActive = currentUser.subscriptionTier === pkg.tier &&
+            const isActive = (
+              Number(pkg.id) === currentUser.subscriptionPlanId ||
+              currentUser.subscriptionTier === pkg.tier
+            ) &&
               (!currentUser.subscriptionExpiresAt || new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now())
-            const planName =
-              pkg.tier === "2-4"
-                ? text.plan2To4Card
-                : pkg.tier === "5+"
-                ? text.plan5PlusCard
-                : text.freeCard
+            const planName = pkg.name
+            const isFreePlan = (pkg.planName ?? pkg.tier) === "free"
             return (
               <div
                 key={pkg.id}
@@ -94,17 +94,15 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>
-                        {pkg.tier === "free"
-                          ? text.noGroupChat
-                          : pkg.tier === "2-4"
-                          ? text.group4
-                          : text.group99}
+                        {(pkg.createGroupLimit ?? 0) === 0
+                          ? text.noGroupChat(pkg.joinGroupLimit ?? pkg.maxUsers)
+                          : text.groupLimits(pkg.createGroupLimit ?? 0, pkg.joinGroupLimit ?? pkg.maxUsers)}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>
-                        {text.storage}: {pkg.tier === "free" ? "512 MB" : pkg.tier === "2-4" ? "1 GB" : "5 GB"}
+                        {text.storage}: {pkg.storageLabel ?? "1 GB"}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
@@ -114,7 +112,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                   </ul>
                 </div>
 
-                {pkg.tier === "free" ? (
+                {isFreePlan ? (
                   <Button variant="outline" className="w-full" disabled>
                     {text.default}
                   </Button>
@@ -122,7 +120,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                   <Button
                     variant={isActive ? "outline" : "default"}
                     className="w-full"
-                    onClick={() => onBuy(pkg.tier)}
+                    onClick={() => onBuy(pkg)}
                   >
                     {isActive ? text.renew : text.upgrade}
                   </Button>
@@ -155,9 +153,8 @@ const packagesText = {
     freePrice: "Miễn phí",
     perMonth: "/tháng",
     aiChat: "AI Chat cá nhân hỏi đáp",
-    noGroupChat: "Không hỗ trợ tạo nhóm, tham gia tối đa 5 nhóm",
-    group4: "Tạo tối đa 20 nhóm, tham gia tối đa 30 nhóm",
-    group99: "Tạo tối đa 50 nhóm, tham gia tối đa 60 nhóm",
+    noGroupChat: (joinLimit: number) => `Không hỗ trợ tạo nhóm, tham gia tối đa ${joinLimit} nhóm`,
+    groupLimits: (createLimit: number, joinLimit: number) => `Tạo tối đa ${createLimit} nhóm, tham gia tối đa ${joinLimit} nhóm`,
     storage: "Dung lượng lưu trữ",
     flashcards: "Tạo flashcards từ tài liệu",
     default: "Mặc định",
@@ -182,9 +179,8 @@ const packagesText = {
     freePrice: "Free",
     perMonth: "/month",
     aiChat: "Personal AI chat Q&A",
-    noGroupChat: "Group creation is not available, join up to 5 groups",
-    group4: "Create up to 20 groups, join up to 30 groups",
-    group99: "Create up to 50 groups, join up to 60 groups",
+    noGroupChat: (joinLimit: number) => `Group creation is not available, join up to ${joinLimit} groups`,
+    groupLimits: (createLimit: number, joinLimit: number) => `Create up to ${createLimit} groups, join up to ${joinLimit} groups`,
     storage: "Storage",
     flashcards: "Create flashcards from documents",
     default: "Default",
