@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Document, GroupChat, GroupChatMessage, PackageTier, User } from "@/states/types"
+import {
+  createGroupApi,
+  deleteGroupApi,
+  fetchGroupMembersApi,
+  fetchGroupsApi,
+  fetchGroupSettingsApi,
+  joinGroupApi,
+  leaveGroupApi,
+  updateGroupMuteApi,
+  updateGroupPinApi,
+} from "@/services/api/group-chats"
 
 interface GroupChatStateDeps {
   currentUser: User | null
@@ -44,58 +55,15 @@ function makeGroupCode() {
   return `GRP-${Math.random().toString(36).slice(2, 5).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`
 }
 
-function makeSystemMessage(groupId: string, content: string): GroupChatMessage {
-  return {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    groupId,
-    senderId: "system",
-    senderName: "System",
-    content,
-    timestamp: new Date(),
-    messageType: "system",
-  }
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
-function createSeedGroup(user: User): GroupChat {
-  const now = new Date()
-  const groupId = `group-${user.id}-demo`
+function mergeOwnerName(group: GroupChat): GroupChat {
+  const owner = group.members.find(member => member.userId === group.ownerId)
   return {
-    id: groupId,
-    groupCode: "GRP-DEMO-101",
-    password: "123456",
-    name: "SWP391 - Study Group",
-    description: "Shared study discussion and files",
-    ownerId: "mock-owner",
-    ownerName: "Demo Host",
-    maxMembers: 30,
-    members: [
-      {
-        userId: user.id,
-        displayName: user.displayName,
-        role: "member",
-        joinedAt: now,
-      },
-      {
-        userId: "mock-member-1",
-        displayName: "Demo Classmate",
-        role: "member",
-        joinedAt: now,
-      },
-    ],
-    messages: [
-      makeSystemMessage(groupId, "Group chat is running with mocked frontend state. Backend APIs are documented separately."),
-      {
-        id: `msg-${Date.now()}-sample`,
-        groupId,
-        senderId: "mock-member-1",
-        senderName: "Demo Classmate",
-        content: "Can you share the programming document here?",
-        timestamp: now,
-        messageType: "text",
-      },
-    ],
-    createdAt: now,
-    updatedAt: now,
+    ...group,
+    ownerName: owner?.displayName ?? group.ownerName,
   }
 }
 
@@ -107,6 +75,42 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
   const groupJoinLimit = GROUP_JOIN_LIMIT_BY_TIER[ruleTier]
 
+  const hydrateGroup = useCallback(async (group: GroupChat): Promise<GroupChat> => {
+    const [members, settings] = await Promise.all([
+      fetchGroupMembersApi(group.id).catch(() => group.members),
+      fetchGroupSettingsApi(group.id).catch(() => ({ muted: false, pinned: false })),
+    ])
+
+    return mergeOwnerName({
+      ...group,
+      members,
+      muted: settings.muted,
+      pinned: settings.pinned,
+    })
+  }, [])
+
+  const reloadGroups = useCallback(async (preferredGroupId?: string | null, preferredGroupCode?: string | null) => {
+    if (!currentUser) {
+      setGroups([])
+      setActiveGroupId(null)
+      return []
+    }
+
+    const apiGroups = await fetchGroupsApi()
+    const hydratedGroups = await Promise.all(apiGroups.map(group => hydrateGroup(group)))
+    setGroups(hydratedGroups)
+
+    const preferred =
+      (preferredGroupId && hydratedGroups.find(group => group.id === preferredGroupId)) ||
+      (preferredGroupCode && hydratedGroups.find(group => group.groupCode.toUpperCase() === preferredGroupCode.toUpperCase())) ||
+      hydratedGroups.find(group => group.id === activeGroupId) ||
+      hydratedGroups[0] ||
+      null
+
+    setActiveGroupId(preferred?.id ?? null)
+    return hydratedGroups
+  }, [activeGroupId, currentUser, hydrateGroup])
+
   useEffect(() => {
     if (!currentUser) {
       setGroups([])
@@ -114,176 +118,107 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return
     }
 
-    setGroups(prev => {
-      if (prev.some(group => group.members.some(member => member.userId === currentUser.id))) {
-        return prev
-      }
-      const seededGroup = createSeedGroup(currentUser)
-      setActiveGroupId(seededGroup.id)
-      return [seededGroup]
-    })
-  }, [currentUser?.id])
+    let cancelled = false
+    fetchGroupsApi()
+      .then(apiGroups => Promise.all(apiGroups.map(group => hydrateGroup(group))))
+      .then(hydratedGroups => {
+        if (cancelled) return
+        setGroups(hydratedGroups)
+        setActiveGroupId(prev => {
+          if (prev && hydratedGroups.some(group => group.id === prev)) return prev
+          return hydratedGroups[0]?.id ?? null
+        })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGroups([])
+          setActiveGroupId(null)
+        }
+      })
 
-  const getJoinedCount = useCallback(() => {
-    if (!currentUser) return 0
-    return groups.filter(group => group.members.some(member => member.userId === currentUser.id)).length
-  }, [currentUser, groups])
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser?.id, hydrateGroup])
 
-  const createGroup = useCallback((
+  const createGroup = useCallback(async (
     name: string,
     description: string | undefined,
     password: string,
     groupCode = makeGroupCode(),
-  ): ActionResult => {
+  ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to create a group." }
-    if (groupCreateLimit <= 0) {
-      return { success: false, error: "Your current package cannot create groups." }
-    }
 
-    const ownedGroups = groups.filter(group => group.ownerId === currentUser.id)
-    const joinedCount = getJoinedCount()
-    if (ownedGroups.length >= groupCreateLimit) {
-      return { success: false, error: `Your current package allows ${groupCreateLimit} created group(s).` }
-    }
-    if (joinedCount >= groupJoinLimit) {
-      return { success: false, error: `Your current package allows ${groupJoinLimit} total joined group(s).` }
-    }
-
-    const trimmedName = name.trim()
-    const trimmedPassword = password.trim()
-    if (!trimmedName) return { success: false, error: "Group name is required." }
-    if (!trimmedPassword) return { success: false, error: "Group password is required." }
-    if (groups.some(group => group.groupCode.toUpperCase() === groupCode.toUpperCase())) {
-      return { success: false, error: "Generated group ID already exists. Generate another ID." }
-    }
-
-    const now = new Date()
-    const groupId = `group-${Date.now()}`
-    const group: GroupChat = {
-      id: groupId,
-      groupCode,
-      password: trimmedPassword,
-      name: trimmedName,
-      description: description?.trim() || undefined,
-      ownerId: currentUser.id,
-      ownerName: currentUser.displayName,
-      maxMembers: 99,
-      members: [{
-        userId: currentUser.id,
-        displayName: currentUser.displayName,
-        role: "owner",
-        joinedAt: now,
-      }],
-      messages: [makeSystemMessage(groupId, `${currentUser.displayName} created the group.`)],
-      createdAt: now,
-      updatedAt: now,
-    }
-
-    setGroups(prev => [group, ...prev])
-    setActiveGroupId(group.id)
-    return { success: true }
-  }, [currentUser, getJoinedCount, groupCreateLimit, groupJoinLimit, groups])
-
-  const joinGroup = useCallback((groupCode: string, password: string): ActionResult => {
-    if (!currentUser) return { success: false, error: "Please log in to join a group." }
-    const trimmedCode = groupCode.trim().toUpperCase()
-    const trimmedPassword = password.trim()
-    if (!trimmedCode) return { success: false, error: "Group ID is required." }
-    if (!trimmedPassword) return { success: false, error: "Group password is required." }
-    if (getJoinedCount() >= groupJoinLimit) {
-      return { success: false, error: `Your current package allows ${groupJoinLimit} total joined group(s).` }
-    }
-
-    const existingGroup = groups.find(group => group.groupCode.toUpperCase() === trimmedCode)
-    if (existingGroup) {
-      if (existingGroup.password !== trimmedPassword) return { success: false, error: "Group password is incorrect." }
-      if (existingGroup.members.some(member => member.userId === currentUser.id)) {
-        setActiveGroupId(existingGroup.id)
-        return { success: true }
-      }
-      const updatedGroup = {
-        ...existingGroup,
-        members: [
-          ...existingGroup.members,
-          {
-            userId: currentUser.id,
-            displayName: currentUser.displayName,
-            role: "member" as const,
-            joinedAt: new Date(),
-          },
-        ],
-        messages: [...existingGroup.messages, makeSystemMessage(existingGroup.id, `${currentUser.displayName} joined the group.`)],
-        updatedAt: new Date(),
-      }
-      setGroups(prev => prev.map(group => group.id === existingGroup.id ? updatedGroup : group))
-      setActiveGroupId(existingGroup.id)
+    try {
+      const group = await createGroupApi({
+        groupCode: groupCode.trim().toUpperCase(),
+        name: name.trim(),
+        description: description?.trim() || undefined,
+        password: password.trim(),
+      })
+      await reloadGroups(group.id, group.groupCode)
       return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not create group.") }
     }
+  }, [currentUser, reloadGroups])
 
-    const now = new Date()
-    const groupId = `group-joined-${Date.now()}`
-    const joinedGroup: GroupChat = {
-      id: groupId,
-      groupCode: trimmedCode,
-      password: trimmedPassword,
-      name: `Group ${trimmedCode}`,
-      description: "Mocked joined group. Backend will load real group details later.",
-      ownerId: "mock-owner",
-      ownerName: "Group Owner",
-      maxMembers: 99,
-      members: [
-        {
-          userId: "mock-owner",
-          displayName: "Group Owner",
-          role: "owner",
-          joinedAt: now,
-        },
-        {
-          userId: currentUser.id,
-          displayName: currentUser.displayName,
-          role: "member",
-          joinedAt: now,
-        },
-      ],
-      messages: [makeSystemMessage(groupId, `${currentUser.displayName} joined with group ID ${trimmedCode}.`)],
-      createdAt: now,
-      updatedAt: now,
+  const joinGroup = useCallback(async (groupCode: string, password: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "Please log in to join a group." }
+
+    const trimmedCode = groupCode.trim().toUpperCase()
+    try {
+      await joinGroupApi(trimmedCode, password.trim())
+      await reloadGroups(null, trimmedCode)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not join group.") }
     }
-    setGroups(prev => [joinedGroup, ...prev])
-    setActiveGroupId(groupId)
-    return { success: true }
-  }, [currentUser, getJoinedCount, groupJoinLimit, groups])
+  }, [currentUser, reloadGroups])
 
-  const leaveGroup = useCallback((groupId: string): ActionResult => {
+  const leaveGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
-    const group = groups.find(item => item.id === groupId)
-    if (!group) return { success: false, error: "Group not found." }
-    if (group.ownerId === currentUser.id) return { success: false, error: "Owners must delete the group instead of leaving it." }
 
-    setGroups(prev => prev
-      .map(item => item.id === groupId
-        ? {
-            ...item,
-            members: item.members.filter(member => member.userId !== currentUser.id),
-            messages: [...item.messages, makeSystemMessage(item.id, `${currentUser.displayName} left the group.`)],
-            updatedAt: new Date(),
-          }
-        : item)
-      .filter(item => item.members.some(member => member.userId === currentUser.id) || item.ownerId === currentUser.id),
-    )
-    setActiveGroupId(prev => prev === groupId ? null : prev)
-    return { success: true }
-  }, [currentUser, groups])
+    try {
+      await leaveGroupApi(groupId)
+      await reloadGroups(null, null)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not leave group.") }
+    }
+  }, [currentUser, reloadGroups])
 
-  const deleteGroup = useCallback((groupId: string): ActionResult => {
+  const deleteGroup = useCallback(async (groupId: string, password: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
-    const group = groups.find(item => item.id === groupId)
-    if (!group) return { success: false, error: "Group not found." }
-    if (group.ownerId !== currentUser.id) return { success: false, error: "Only the group owner can delete this group." }
-    setGroups(prev => prev.filter(item => item.id !== groupId))
-    setActiveGroupId(prev => prev === groupId ? null : prev)
-    return { success: true }
-  }, [currentUser, groups])
+
+    try {
+      await deleteGroupApi(groupId, password.trim())
+      await reloadGroups(null, null)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not delete group.") }
+    }
+  }, [currentUser, reloadGroups])
+
+  const updateGroupMuted = useCallback(async (groupId: string, muted: boolean): Promise<ActionResult> => {
+    try {
+      const settings = await updateGroupMuteApi(groupId, muted)
+      setGroups(prev => prev.map(group => group.id === groupId ? { ...group, muted: settings.muted, pinned: settings.pinned } : group))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not update group notifications.") }
+    }
+  }, [])
+
+  const updateGroupPinned = useCallback(async (groupId: string, pinned: boolean): Promise<ActionResult> => {
+    try {
+      const settings = await updateGroupPinApi(groupId, pinned)
+      setGroups(prev => prev.map(group => group.id === groupId ? { ...group, muted: settings.muted, pinned: settings.pinned } : group))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not update group pin.") }
+    }
+  }, [])
 
   const sendGroupMessage = useCallback((groupId: string, content: string): ActionResult => {
     if (!currentUser) return { success: false, error: "Please log in to send messages." }
@@ -366,6 +301,8 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     joinGroup,
     leaveGroup,
     deleteGroup,
+    updateGroupMuted,
+    updateGroupPinned,
     sendGroupMessage,
     shareGroupDocument,
     shareGroupImage,

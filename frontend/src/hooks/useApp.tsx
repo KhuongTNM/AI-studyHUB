@@ -143,10 +143,12 @@ export interface AppState {
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
-  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => { success: boolean; error?: string }
-  joinGroup: (groupCode: string, password: string) => { success: boolean; error?: string }
-  leaveGroup: (groupId: string) => { success: boolean; error?: string }
-  deleteGroup: (groupId: string) => { success: boolean; error?: string }
+  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
+  joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
+  leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
+  deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
+  updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
+  updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
   sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
   shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
   shareGroupImage: (groupId: string) => { success: boolean; error?: string }
@@ -363,6 +365,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         joinGroup: groupChat.joinGroup,
         leaveGroup: groupChat.leaveGroup,
         deleteGroup: groupChat.deleteGroup,
+        updateGroupMuted: groupChat.updateGroupMuted,
+        updateGroupPinned: groupChat.updateGroupPinned,
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
         shareGroupImage: groupChat.shareGroupImage,
