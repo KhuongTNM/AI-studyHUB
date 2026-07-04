@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   CheckCircle2, HardDrive, KeyRound, LayoutDashboard, Package,
   Pencil, Plus, Sparkles, Trash2, UserCog, Users, X,
@@ -12,31 +12,99 @@ import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
 import { SubAdminForm } from "./sub-admin-form"
+import {
+  createSubscriptionPlanApi,
+  deleteSubscriptionPlanApi,
+  fetchSubscriptionPlansApi,
+  updatePackagePriceApi,
+  updateSubscriptionPlanApi,
+  type ApiSubscriptionPlan,
+  type UpdateSubscriptionPlanInput,
+} from "@/services/api/subscription-plans"
 
 // ─── Editable package type used only in admin UI ───────────────────────────
 interface EditablePkg {
   id: string
   tier: string
+  planName: string
   name: string
   price: number
   maxUsers: number
   storage: string
+  defaultStorageBytes: number
   createGroupLimit: number
   joinGroupLimit: number
   hasAiChat: boolean
   hasFlashcards: boolean
 }
 
+const BUILT_IN_PLAN_NAMES = new Set(["free", "plan_2_4", "plan_5_plus"])
+
+function tierToPlanName(tier: string) {
+  if (tier === "2-4") return "plan_2_4"
+  if (tier === "5+") return "plan_5_plus"
+  return tier
+}
+
+function tierFromPlanName(name: string): string {
+  if (name === "plan_2_4") return "2-4"
+  if (name === "plan_5_plus") return "5+"
+  return name
+}
+
+function formatStorage(bytes: number) {
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (gb >= 1 && Number.isInteger(gb)) return `${gb} GB`
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1 && Number.isInteger(mb)) return `${mb} MB`
+  return `${bytes} B`
+}
+
+function parseStorageBytes(value: string) {
+  const match = value.trim().match(/^(\d+(?:[.,]\d+)?)\s*(b|kb|mb|gb)?$/i)
+  if (!match) return Number.NaN
+  const amount = Number(match[1].replace(",", "."))
+  const unit = (match[2] ?? "gb").toLowerCase()
+  const multiplier =
+    unit === "gb" ? 1024 ** 3 :
+    unit === "mb" ? 1024 ** 2 :
+    unit === "kb" ? 1024 :
+    1
+  return Math.round(amount * multiplier)
+}
+
+function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
+  const tier = tierFromPlanName(plan.name)
+  return {
+    id: String(plan.id),
+    tier,
+    planName: plan.name,
+    name: plan.displayName,
+    price: Number(plan.price),
+    maxUsers: plan.maxRoomMembers,
+    storage: formatStorage(plan.defaultStorageBytes),
+    defaultStorageBytes: plan.defaultStorageBytes,
+    createGroupLimit: plan.createGroupLimit,
+    joinGroupLimit: plan.joinGroupLimit,
+    hasAiChat: true,
+    hasFlashcards: true,
+  }
+}
+
 function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: number; maxUsers: number }): EditablePkg {
+  const defaultStorageBytes = pkg.tier === "free" ? 512 * 1024 * 1024 : pkg.tier === "2-4" ? 1024 * 1024 * 1024 : 5 * 1024 * 1024 * 1024
+  const joinGroupLimit = pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60
   return {
     id: pkg.id,
     tier: pkg.tier,
+    planName: tierToPlanName(pkg.tier),
     name: pkg.name,
     price: pkg.price,
     maxUsers: pkg.maxUsers,
-    storage: pkg.tier === "free" ? "512 MB" : pkg.tier === "2-4" ? "1 GB" : "5 GB",
+    storage: formatStorage(defaultStorageBytes),
+    defaultStorageBytes,
     createGroupLimit: pkg.tier === "free" ? 0 : pkg.tier === "2-4" ? 20 : 50,
-    joinGroupLimit: pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60,
+    joinGroupLimit,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -58,7 +126,7 @@ export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, createSubAdminAccount,
-    packagePrices, updatePackagePrice, grantSubscription, updateUserStorageLimit,
+    packagePrices, grantSubscription, updateUserStorageLimit,
   } = useApp()
 
   const [section, setSection] = useState<AdminSection>(getStoredAdminSection)
@@ -79,10 +147,10 @@ export function AdminDashboard() {
   const [pkgEditId, setPkgEditId] = useState<string | null>(null)
   const [pkgDraft, setPkgDraft] = useState<Partial<EditablePkg>>({})
   const [showAddPkgModal, setShowAddPkgModal] = useState(false)
+  const [packagesLoading, setPackagesLoading] = useState(false)
   const [newPkgForm, setNewPkgForm] = useState({
     name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30,
   })
-  const syncedRef = useRef(false)
 
   const isAdmin = currentUser?.role === "admin"
   const isSubAdmin = currentUser?.role === "sub-admin"
@@ -95,13 +163,22 @@ export function AdminDashboard() {
     return () => window.removeEventListener(ADMIN_SECTION_EVENT, syncSection)
   }, [])
 
-  // Sync editable packages once from backend data on first load
-  useEffect(() => {
-    if (!syncedRef.current && packagePrices.length > 0) {
-      syncedRef.current = true
+  const loadEditablePackages = useCallback(async () => {
+    setPackagesLoading(true)
+    try {
+      const plans = await fetchSubscriptionPlansApi()
+      setEditablePackages(plans.map(pkgFromPlan))
+    } catch (error) {
       setEditablePackages(packagePrices.map(pkgFromPrice))
+      setMessage(error instanceof Error ? error.message : text.actionFailed)
+    } finally {
+      setPackagesLoading(false)
     }
-  }, [packagePrices])
+  }, [packagePrices, text.actionFailed])
+
+  useEffect(() => {
+    if (section === "packages") void loadEditablePackages()
+  }, [loadEditablePackages, section])
 
   const selectSection = (nextSection: AdminSection) => {
     window.sessionStorage.setItem("admin-section", nextSection)
@@ -264,55 +341,94 @@ export function AdminDashboard() {
     setPkgDraft({})
   }
 
-  const savePkg = (pkg: EditablePkg) => {
+  const buildPlanUpdatePayload = (pkg: EditablePkg): { error: string } | { payload: UpdateSubscriptionPlanInput } => {
+    const defaultStorageBytes = parseStorageBytes(pkg.storage)
+    if (!pkg.name.trim()) return { error: "Tên gói không được để trống." }
+    if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) {
+      return { error: "Dung lượng mặc định không hợp lệ." }
+    }
+    if (pkg.createGroupLimit < 0) return { error: "Giới hạn tạo nhóm phải lớn hơn hoặc bằng 0." }
+    if (pkg.joinGroupLimit < 1) return { error: "Giới hạn tham gia nhóm phải lớn hơn hoặc bằng 1." }
+
+    return {
+      payload: {
+        displayName: pkg.name.trim(),
+        maxRoomMembers: pkg.joinGroupLimit,
+        defaultStorageBytes,
+        createGroupLimit: pkg.createGroupLimit,
+        joinGroupLimit: pkg.joinGroupLimit,
+      },
+    }
+  }
+
+  const savePkg = async (pkg: EditablePkg) => {
     const updated = { ...pkg, ...pkgDraft }
-    const isKnownTier = ["free", "2-4", "5+"].includes(pkg.tier)
-    if (isKnownTier && updated.price !== pkg.price) {
-      const pkgName = updated.name
-      requirePassword(
-        formatAdminText(text.updatePrice, { name: pkgName }),
-        async (password) => {
-          const result = await updatePackagePrice(pkg.tier as PackageTier, updated.price, password)
-          if (result.success) {
-            setEditablePackages(prev => prev.map(p => p.id === pkg.id ? updated : p))
-            setMessage(formatAdminText(text.priceUpdated, { name: pkgName }))
-          } else {
-            setMessage(result.error ?? text.actionFailed)
-          }
+    const payloadResult = buildPlanUpdatePayload(updated)
+    if ("error" in payloadResult) {
+      setMessage(payloadResult.error)
+      return
+    }
+
+    const runSave = async (password?: string) => {
+      try {
+        let savedPlan = pkgFromPlan(await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload))
+        if (updated.price !== pkg.price) {
+          const pricedPlan = await updatePackagePriceApi(pkg.planName, updated.price, password ?? "")
+          savedPlan = pkgFromPlan(pricedPlan)
         }
-      )
-    } else {
-      setEditablePackages(prev => prev.map(p => p.id === pkg.id ? updated : p))
-      setMessage(`Đã cập nhật gói "${updated.name}".`)
+        setEditablePackages(prev => prev.map(p => p.id === pkg.id ? savedPlan : p))
+        setMessage(`Đã cập nhật gói "${savedPlan.name}".`)
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : text.actionFailed)
+      } finally {
+        setPkgEditId(null)
+        setPkgDraft({})
+      }
     }
-    setPkgEditId(null)
-    setPkgDraft({})
+
+    if (updated.price !== pkg.price) {
+      requirePassword(formatAdminText(text.updatePrice, { name: updated.name }), runSave)
+      return
+    }
+
+    await runSave()
   }
 
-  const deletePkg = (pkg: EditablePkg) => {
-    setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
-    setMessage(`Đã xóa gói "${pkg.name}".`)
+  const deletePkg = async (pkg: EditablePkg) => {
+    try {
+      await deleteSubscriptionPlanApi(pkg.planName)
+      setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
+      setMessage(`Đã xóa gói "${pkg.name}".`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : text.actionFailed)
+    }
   }
 
-  const addNewPkg = () => {
+  const addNewPkg = async () => {
     if (!newPkgForm.name.trim()) return
-    const id = `pkg-custom-${Date.now()}`
-    const newPkg: EditablePkg = {
-      id,
-      tier: id,
-      name: newPkgForm.name,
-      price: newPkgForm.price,
-      maxUsers: newPkgForm.joinGroupLimit,
-      storage: newPkgForm.storage,
-      createGroupLimit: newPkgForm.createGroupLimit,
-      joinGroupLimit: newPkgForm.joinGroupLimit,
-      hasAiChat: true,
-      hasFlashcards: true,
+    const defaultStorageBytes = parseStorageBytes(newPkgForm.storage)
+    if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) {
+      setMessage("Dung lượng mặc định không hợp lệ.")
+      return
     }
-    setEditablePackages(prev => [...prev, newPkg])
-    setShowAddPkgModal(false)
-    setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
-    setMessage(`Đã thêm gói "${newPkg.name}".`)
+
+    try {
+      const created = await createSubscriptionPlanApi({
+        displayName: newPkgForm.name.trim(),
+        price: newPkgForm.price,
+        defaultStorageBytes,
+        maxRoomMembers: newPkgForm.joinGroupLimit,
+        createGroupLimit: newPkgForm.createGroupLimit,
+        joinGroupLimit: newPkgForm.joinGroupLimit,
+      })
+      const newPkg = pkgFromPlan(created)
+      setEditablePackages(prev => [...prev, newPkg])
+      setShowAddPkgModal(false)
+      setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
+      setMessage(`Đã thêm gói "${newPkg.name}".`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : text.actionFailed)
+    }
   }
 
   const renderPackages = () => (
@@ -323,7 +439,7 @@ export function AdminDashboard() {
           <Package className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">Quản lý gói dịch vụ</h2>
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {editablePackages.length} gói
+            {packagesLoading ? "Đang tải..." : `${editablePackages.length} gói`}
           </span>
         </div>
         <Button
@@ -381,6 +497,7 @@ export function AdminDashboard() {
                 ) : (
                   <h3 className="mb-1 text-lg font-bold text-foreground">{pkg.name}</h3>
                 )}
+                <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
 
                 {/* Price */}
                 <div className="mb-5 flex items-baseline gap-1">
@@ -392,6 +509,7 @@ export function AdminDashboard() {
                         step="1000"
                         value={draft.price}
                         onChange={e => setPkgDraft(d => ({ ...d, price: Number(e.target.value) }))}
+                        disabled={pkg.planName === "free"}
                         className="w-36 rounded-lg border border-primary bg-background px-3 py-1.5 text-xl font-extrabold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                       <span className="text-sm text-muted-foreground">đ/tháng</span>
@@ -511,8 +629,10 @@ export function AdminDashboard() {
                     <Button
                       variant="outline"
                       size="sm"
+                      disabled={BUILT_IN_PLAN_NAMES.has(pkg.planName)}
                       onClick={() => deletePkg(pkg)}
                       className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive"
+                      title={BUILT_IN_PLAN_NAMES.has(pkg.planName) ? "Không được xóa gói mặc định" : "Xóa gói"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -583,7 +703,7 @@ export function AdminDashboard() {
                   <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tham gia tối đa (nhóm)</span>
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     value={newPkgForm.joinGroupLimit}
                     onChange={e => setNewPkgForm(f => ({ ...f, joinGroupLimit: Number(e.target.value) }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"

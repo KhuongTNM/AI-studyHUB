@@ -10,16 +10,36 @@ export interface ApiSubscriptionPlan {
   price: number
   maxRoomMembers: number
   defaultStorageBytes: number
+  createGroupLimit: number
+  joinGroupLimit: number
+}
+
+export interface CreateSubscriptionPlanInput {
+  displayName: string
+  price: number
+  maxRoomMembers: number
+  defaultStorageBytes: number
+  createGroupLimit: number
+  joinGroupLimit: number
+}
+
+export interface UpdateSubscriptionPlanInput {
+  displayName: string
+  maxRoomMembers: number
+  defaultStorageBytes: number
+  createGroupLimit: number
+  joinGroupLimit: number
 }
 
 interface ErrorBody {
   message?: string
 }
 
-function getPlanName(tier: PackageTier): string {
-  if (tier === "2-4") return "plan_2_4"
-  if (tier === "5+") return "plan_5_plus"
-  return "free"
+function getPlanName(plan: PackageTier | string): string {
+  if (plan === "2-4") return "plan_2_4"
+  if (plan === "5+") return "plan_5_plus"
+  if (plan === "free") return "free"
+  return plan
 }
 
 async function parseError(response: Response): Promise<string> {
@@ -46,11 +66,11 @@ export async function fetchSubscriptionPlansApi(): Promise<ApiSubscriptionPlan[]
 }
 
 export async function updatePackagePriceApi(
-  tier: PackageTier,
+  plan: PackageTier | string,
   price: number,
   adminPassword: string
 ): Promise<ApiSubscriptionPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${getPlanName(tier)}/price`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${getPlanName(plan)}/price`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -60,4 +80,41 @@ export async function updatePackagePriceApi(
   })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
+}
+
+export async function createSubscriptionPlanApi(input: CreateSubscriptionPlanInput): Promise<ApiSubscriptionPlan> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function updateSubscriptionPlanApi(
+  planName: string,
+  input: UpdateSubscriptionPlanInput,
+): Promise<ApiSubscriptionPlan> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function deleteSubscriptionPlanApi(planName: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
 }
