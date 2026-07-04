@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import { User, Lock, Clock, Camera, Zap, Sparkles, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useApp, formatBytes, type PackageTier } from "@/lib/store"
+import { useApp, formatBytes } from "@/lib/store"
+import type { PackagePrice } from "@/states/types"
 
 import { InfoTab } from "./tabs/info-tab"
 import { HistoryTab } from "./tabs/history-tab"
@@ -23,7 +24,7 @@ export function ProfilePage() {
   const [passSuccess, setPassSuccess] = useState("")
 
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
-  const [selectedTier, setSelectedTier] = useState<PackageTier | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<PackagePrice | null>(null)
   const text = profileText[language]
 
   useEffect(() => {
@@ -75,8 +76,8 @@ export function ProfilePage() {
     setPassSuccess(text.passwordChanged)
   }
 
-  const openCheckout = (tier: PackageTier) => {
-    setSelectedTier(tier)
+  const openCheckout = (plan: PackagePrice) => {
+    setSelectedPlan(plan)
     setShowCheckoutModal(true)
   }
 
@@ -194,10 +195,9 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {showCheckoutModal && selectedTier && (
+      {showCheckoutModal && selectedPlan && (
         <CheckoutModal
-          selectedTier={selectedTier}
-          packagePrices={packagePrices}
+          selectedPlan={selectedPlan}
           currentUser={currentUser}
           updateUser={updateUser}
           language={language}

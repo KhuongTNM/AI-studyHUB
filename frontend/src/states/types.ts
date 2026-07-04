@@ -15,6 +15,7 @@ export interface User {
   lastActive: Date
   storageUsed: number
   storageLimit: number
+  subscriptionPlanId?: number | null
   subscriptionTier?: PackageTier
   subscriptionExpiresAt?: Date
   languagePreference?: Language
@@ -22,10 +23,15 @@ export interface User {
 
 export interface PackagePrice {
   id: string
+  planName?: string
   name: string
-  tier: PackageTier
+  tier: string
   price: number
   maxUsers: number
+  defaultStorageBytes?: number
+  storageLabel?: string
+  createGroupLimit?: number
+  joinGroupLimit?: number
 }
 
 export interface GroupChatMember {
@@ -64,6 +70,8 @@ export interface GroupChat {
   maxMembers: number
   members: GroupChatMember[]
   messages: GroupChatMessage[]
+  muted?: boolean
+  pinned?: boolean
   createdAt: Date
   updatedAt: Date
 }

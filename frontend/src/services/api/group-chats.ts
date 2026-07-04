@@ -3,15 +3,14 @@ import type { GroupChat, GroupChatMember, GroupChatMessage } from "@/states/type
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
-// Frontend Group Chat is still mocked in useGroupChatState.
-// These wrappers define the real backend contract so the mock can be swapped
-// to API-backed state without changing the UI component.
+// Group core is API-backed. Message/file/image helpers remain here for later
+// backend tasks and should only be called once those endpoints are available.
 
 type GroupMessageType = "text" | "document" | "image" | "system"
 
 interface ApiGroupMember {
   userId: string
-  displayName: string
+  displayName?: string | null
   avatar?: string | null
   role: string
   joinedAt: string
@@ -27,7 +26,7 @@ interface ApiGroupMessage {
   documentId?: string | null
   documentName?: string | null
   documentSubject?: string | null
-  documentVisibility?: "public" | "private" | null
+  documentVisibility?: string | null
   documentDownloadable?: boolean | null
   imageUrl?: string | null
   imageName?: string | null
@@ -40,7 +39,7 @@ interface ApiGroup {
   name: string
   description?: string | null
   ownerId: string
-  ownerName: string
+  ownerName?: string | null
   maxMembers?: number | null
   members?: ApiGroupMember[]
   messages?: ApiGroupMessage[]
@@ -48,7 +47,8 @@ interface ApiGroup {
   updatedAt: string
 }
 
-interface ApiGroupSettings {
+export interface ApiGroupSettings {
+  groupId?: string
   muted: boolean
   pinned: boolean
 }
@@ -82,7 +82,7 @@ function jsonHeaders(): HeadersInit {
 function mapMember(api: ApiGroupMember): GroupChatMember {
   return {
     userId: api.userId,
-    displayName: api.displayName,
+    displayName: api.displayName ?? "Member",
     avatar: api.avatar ?? undefined,
     role: api.role === "owner" ? "owner" : "member",
     joinedAt: new Date(api.joinedAt),
@@ -90,6 +90,8 @@ function mapMember(api: ApiGroupMember): GroupChatMember {
 }
 
 function mapMessage(api: ApiGroupMessage): GroupChatMessage {
+  const documentVisibility = api.documentVisibility?.toLowerCase()
+
   return {
     id: api.id,
     groupId: api.groupId,
@@ -101,14 +103,14 @@ function mapMessage(api: ApiGroupMessage): GroupChatMessage {
     documentId: api.documentId ?? undefined,
     documentName: api.documentName ?? undefined,
     documentSubject: api.documentSubject ?? undefined,
-    documentVisibility: api.documentVisibility ?? undefined,
+    documentVisibility: documentVisibility === "public" || documentVisibility === "private" ? documentVisibility : undefined,
     documentDownloadable: api.documentDownloadable ?? undefined,
     imageUrl: api.imageUrl ?? undefined,
     imageName: api.imageName ?? undefined,
   }
 }
 
-function mapGroup(api: ApiGroup): GroupChat {
+export function mapGroup(api: ApiGroup): GroupChat {
   return {
     id: api.id,
     groupCode: api.groupCode,
@@ -116,7 +118,7 @@ function mapGroup(api: ApiGroup): GroupChat {
     name: api.name,
     description: api.description ?? undefined,
     ownerId: api.ownerId,
-    ownerName: api.ownerName,
+    ownerName: api.ownerName ?? "Owner",
     maxMembers: api.maxMembers ?? 99,
     members: (api.members ?? []).map(mapMember),
     messages: (api.messages ?? []).map(mapMessage),
@@ -162,15 +164,14 @@ export async function createGroupApi(input: {
   return mapGroup((await response.json()) as ApiGroup)
 }
 
-/** POST /api/groups/join — join by Group ID and password. */
-export async function joinGroupApi(groupCode: string, password: string): Promise<GroupChat> {
+/** POST /api/groups/join — join by Group ID and password. Backend returns 200 with no body. */
+export async function joinGroupApi(groupCode: string, password: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/groups/join`, {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({ groupCode, password }),
   })
   if (!response.ok) throw new Error(await parseError(response))
-  return mapGroup((await response.json()) as ApiGroup)
 }
 
 /** POST /api/groups/{groupId}/messages — send text message. */

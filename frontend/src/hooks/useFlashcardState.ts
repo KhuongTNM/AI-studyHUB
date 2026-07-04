@@ -1,9 +1,10 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   generateFlashcardsApi,
   fetchFlashcardsApi,
+  fetchAllFlashcardsApi,
   updateFlashcardStatusApi,
   createFlashcardApi,
   deleteFlashcardApi,
@@ -160,20 +161,53 @@ export function useFlashcardState() {
    * Load flashcard theo document từ API (BR-039).
    * Dùng khi user chọn một tài liệu cụ thể trong Flashcard page.
    */
-  const loadFlashcardsForDocument = useCallback(async (docId: string) => {
-    if (docId === "all") return
+  const loadFlashcardsForDocument = useCallback(async (docId: string): Promise<{ success: boolean; message?: string }> => {
+    if (docId === "all") return { success: true }
     try {
       const cards = await fetchFlashcardsApi(docId)
-      if (cards.length > 0) {
-        setFlashcards(prev => {
-          // Loại bỏ cards cũ của doc này, thêm bản mới nhất từ server
-          const others = prev.filter(c => c.documentId !== docId)
-          return [...cards, ...others]
-        })
-      }
-    } catch {
+      setFlashcards(prev => {
+        // Loại bỏ cards cũ của doc này, thay bằng bản mới nhất từ server
+        // (kể cả khi server trả về mảng rỗng — nghĩa là doc này không còn thẻ nào,
+        // trước đây code cũ bỏ qua trường hợp rỗng nên card đã xoá vẫn hiện lại sau reload)
+        const others = prev.filter(c => c.documentId !== docId)
+        return [...cards, ...others]
+      })
+      return { success: true }
+    } catch (error) {
       // Giữ nguyên state nếu API lỗi
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Không thể tải lại flashcard.",
+      }
     }
+  }, [])
+
+  /**
+   * Load TOÀN BỘ flashcard của user hiện tại (mọi document + thẻ không gắn document).
+   * Gọi khi app mount và khi bấm "Làm mới" lúc đang ở chế độ "Tất cả tài liệu",
+   * để flashcard không còn biến mất sau khi F5 trang.
+   *
+   * Yêu cầu backend có GET /api/flashcards KHÔNG bắt buộc documentId — xem
+   * TASK_BACKEND_FLASHCARDS.md (task đã giao cho backend).
+   */
+  const loadAllFlashcards = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const cards = await fetchAllFlashcardsApi()
+      setFlashcards(cards)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Không thể tải lại flashcard.",
+      }
+    }
+  }, [])
+
+  // Tự động nạp flashcard ngay khi hook được khởi tạo (app mount / F5 trang),
+  // thay vì để trống cho tới khi user chọn 1 document cụ thể.
+  useEffect(() => {
+    void loadAllFlashcards()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return {
@@ -185,6 +219,7 @@ export function useFlashcardState() {
     updateFlashcardStatus,
     generateFlashcardsFromDocument,
     loadFlashcardsForDocument,
+    loadAllFlashcards,
     setFlashcardSelectedDocumentId,
   }
 }

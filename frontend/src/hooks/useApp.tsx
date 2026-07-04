@@ -143,13 +143,18 @@ export interface AppState {
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
-  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => { success: boolean; error?: string }
-  joinGroup: (groupCode: string, password: string) => { success: boolean; error?: string }
-  leaveGroup: (groupId: string) => { success: boolean; error?: string }
-  deleteGroup: (groupId: string) => { success: boolean; error?: string }
-  sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
-  shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
-  shareGroupImage: (groupId: string) => { success: boolean; error?: string }
+  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
+  joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
+  leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
+  deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
+  updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
+  updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
+  sendGroupMessage: (groupId: string, content: string) => Promise<{ success: boolean; error?: string }>
+  shareGroupDocument: (groupId: string, document: Document) => Promise<{ success: boolean; error?: string }>
+  shareGroupImage: (groupId: string, file: File) => Promise<{ success: boolean; error?: string }>
+  downloadGroupDocument: (groupId: string, documentId: string) => Promise<{ success: boolean; error?: string }>
+  exportGroupChat: (groupId: string) => Promise<{ success: boolean; error?: string }>
+  reportGroup: (groupId: string, reason: string) => Promise<{ success: boolean; error?: string }>
   generateGroupCode: () => string
 
   // ── Flashcards ────────────────────────────────────────────────────────────
@@ -174,7 +179,9 @@ export interface AppState {
     count?: number,
   ) => Promise<{ success: boolean; count: number; message?: string }>
   /** Load flashcard từ API theo document (BR-039) */
-  loadFlashcardsForDocument: (docId: string) => Promise<void>
+  loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
+  /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
+  loadAllFlashcards: () => Promise<{ success: boolean; message?: string }>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -189,7 +196,7 @@ export interface AppState {
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
-  updatePackagePrice: (tier: PackageTier, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
   grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
@@ -363,9 +370,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         joinGroup: groupChat.joinGroup,
         leaveGroup: groupChat.leaveGroup,
         deleteGroup: groupChat.deleteGroup,
+        updateGroupMuted: groupChat.updateGroupMuted,
+        updateGroupPinned: groupChat.updateGroupPinned,
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
         shareGroupImage: groupChat.shareGroupImage,
+        downloadGroupDocument: groupChat.downloadGroupDocument,
+        exportGroupChat: groupChat.exportGroupChat,
+        reportGroup: groupChat.reportGroup,
         generateGroupCode: groupChat.generateGroupCode,
 
         // Flashcards
@@ -377,6 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateFlashcardStatus: flashcards.updateFlashcardStatus,
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
         loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
+        loadAllFlashcards: flashcards.loadAllFlashcards,
         setFlashcardSelectedDocumentId: flashcards.setFlashcardSelectedDocumentId,
 
         // Admin
