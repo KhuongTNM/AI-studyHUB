@@ -108,6 +108,24 @@ export async function fetchFlashcardsApi(documentId: string): Promise<Flashcard[
 }
 
 /**
+ * GET /api/flashcards — lấy TOÀN BỘ flashcard của user hiện tại (không giới hạn theo document).
+ * Dùng để nạp lại dữ liệu khi mở app / F5 trang khi đang ở chế độ "Tất cả tài liệu".
+ *
+ * LƯU Ý: endpoint này hiện backend CHƯA hỗ trợ (GET /api/flashcards đang bắt buộc
+ * query param `documentId`). Đã giao task cho backend bổ sung — xem
+ * TASK_BACKEND_FLASHCARDS.md. Cho tới khi backend làm xong, hàm này sẽ trả lỗi và
+ * được nuốt (catch) ở phía gọi, không làm crash UI.
+ */
+export async function fetchAllFlashcardsApi(): Promise<Flashcard[]> {
+  const response = await fetch(`${API_BASE_URL}/api/flashcards`, {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const cards = (await response.json()) as ApiFlashcard[]
+  return cards.map(mapApiFlashcard)
+}
+
+/**
  * PATCH /api/flashcards/{id}/status — cập nhật trạng thái flashcard (BR-038).
  * Trạng thái: "new" | "learning" | "mastered"
  */

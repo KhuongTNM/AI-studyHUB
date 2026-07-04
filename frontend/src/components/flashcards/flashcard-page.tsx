@@ -28,6 +28,7 @@ export function FlashcardPage() {
     generateFlashcardsFromDocument,
     updateFlashcardStatus,
     loadFlashcardsForDocument,
+    loadAllFlashcards,
     flashcardSelectedDocumentId,
     setFlashcardSelectedDocumentId,
     language,
@@ -43,6 +44,7 @@ export function FlashcardPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const text = language === "vi" ? {
     title: "Flashcards học tập",
@@ -81,6 +83,8 @@ export function FlashcardPage() {
     updateError: "Không thể cập nhật flashcard.",
     deleteSuccess: "Đã xoá flashcard.",
     deleteError: "Không thể xoá flashcard.",
+    refreshError: "Không thể tải lại flashcard.",
+    refreshing: "Đang tải lại...",
     validationError: "Vui lòng nhập cả câu hỏi và câu trả lời.",
     aiBadge: "AI",
     manualBadge: "Tùy chỉnh",
@@ -128,6 +132,8 @@ export function FlashcardPage() {
     updateError: "Could not update the flashcard.",
     deleteSuccess: "Flashcard deleted.",
     deleteError: "Could not delete the flashcard.",
+    refreshError: "Could not refresh flashcards.",
+    refreshing: "Refreshing...",
     validationError: "Please enter both a question and an answer.",
     aiBadge: "AI",
     manualBadge: "Manual",
@@ -176,7 +182,14 @@ export function FlashcardPage() {
   // Tài liệu phải embedding xong ("done") mới đủ điều kiện sinh flashcard AI (khớp check ở FlashcardService.generateFlashcards phía BE).
   const embeddingNotReady = selectedDocId !== "all" && selectedDoc?.embeddingStatus !== "done"
 
-  const activeCard = filteredCards[activeIndex]
+  // Clamp ngay tại thời điểm render: nếu filteredCards vừa co lại (ví dụ vừa xoá
+  // đúng thẻ cuối danh sách đang active), activeIndex cũ có thể trỏ ra ngoài mảng
+  // mới trong khung hình render này (useEffect bên dưới chỉ sửa lại SAU khi đã
+  // render xong), gây activeCard = undefined và crash khi đọc activeCard.aiGenerated.
+  const safeActiveIndex = filteredCards.length > 0
+    ? Math.min(activeIndex, filteredCards.length - 1)
+    : 0
+  const activeCard = filteredCards[safeActiveIndex]
 
   const resetForm = () => {
     setQuestion("")
@@ -224,8 +237,27 @@ export function FlashcardPage() {
     }
   }
 
-  const handleReset = () => {
-    resetForm()
+  // Nút "Làm mới": nếu đang sửa thẻ, huỷ sửa (như trước). Nếu không, đây chính
+  // là hành động refresh mà tên nút mô tả — tải lại danh sách flashcard từ
+  // server (trước đây nút này chỉ resetForm() nên KHÔNG có tác dụng gì với danh
+  // sách thẻ, kể cả khi thẻ bị "biến mất" trên UI do lỗi state ở client).
+  const handleReset = async () => {
+    if (editingId) {
+      resetForm()
+      return
+    }
+    setIsRefreshing(true)
+    try {
+      const result = selectedDocId === "all"
+        ? await loadAllFlashcards()
+        : await loadFlashcardsForDocument(selectedDocId)
+      if (!result.success) {
+        toast.error(result.message ?? text.refreshError)
+      }
+      setFlipped(false)
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   const handleStartEdit = (id: string) => {
@@ -350,7 +382,7 @@ export function FlashcardPage() {
             <div className="space-y-4">
               <div className="rounded-[2rem] border border-border bg-gradient-to-br from-primary/10 to-sky-50 p-6 shadow-xl">
                 <div className="flex items-center justify-between text-xs uppercase tracking-[0.32em] text-muted-foreground">
-                  <span>{language === "vi" ? "Thẻ" : "Card"} {activeIndex + 1}/{filteredCards.length}</span>
+                  <span>{language === "vi" ? "Thẻ" : "Card"} {safeActiveIndex + 1}/{filteredCards.length}</span>
                   <span className="rounded-full border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase text-primary">
                     {activeCard.aiGenerated ? text.aiBadge : text.manualBadge}
                   </span>
@@ -444,9 +476,9 @@ export function FlashcardPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      disabled={activeIndex === 0}
+                      disabled={safeActiveIndex === 0}
                       onClick={() => {
-                        setActiveIndex(prev => Math.max(0, prev - 1))
+                        setActiveIndex(Math.max(0, safeActiveIndex - 1))
                         setFlipped(false)
                       }}
                     >
@@ -455,9 +487,9 @@ export function FlashcardPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      disabled={activeIndex === filteredCards.length - 1}
+                      disabled={safeActiveIndex === filteredCards.length - 1}
                       onClick={() => {
-                        setActiveIndex(prev => Math.min(filteredCards.length - 1, prev + 1))
+                        setActiveIndex(Math.min(filteredCards.length - 1, safeActiveIndex + 1))
                         setFlipped(false)
                       }}
                     >
@@ -520,9 +552,14 @@ export function FlashcardPage() {
               {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {isSaving ? (editingId ? text.saving : text.creating) : (editingId ? text.saveButton : text.addButton)}
             </Button>
-            <Button variant="outline" onClick={handleReset} className="gap-2">
-              <RotateCcw className="h-4 w-4" />
-              {editingId ? text.cancelEdit : text.resetButton}
+            <Button
+              variant="outline"
+              onClick={() => void handleReset()}
+              disabled={!editingId && isRefreshing}
+              className="gap-2"
+            >
+              <RotateCcw className={cn("h-4 w-4", !editingId && isRefreshing && "animate-spin")} />
+              {editingId ? text.cancelEdit : (isRefreshing ? text.refreshing : text.resetButton)}
             </Button>
           </div>
         </aside>
