@@ -68,6 +68,7 @@ export function mapApiUserToStoreUser(apiUser: ApiUser): User {
     lastActive: new Date(),
     storageUsed: apiUser.storageUsedBytes,
     storageLimit: apiUser.storageLimitBytes,
+    subscriptionPlanId: apiUser.subscriptionPlanId ?? null,
     subscriptionTier: mapSubscriptionTier(apiUser.subscriptionPlanId),
     subscriptionExpiresAt: apiUser.subscriptionExpiresAt ? new Date(apiUser.subscriptionExpiresAt) : undefined,
     languagePreference: apiUser.languagePreference === "en" ? "en" : "vi",
