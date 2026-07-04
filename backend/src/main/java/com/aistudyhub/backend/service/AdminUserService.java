@@ -62,7 +62,7 @@ public class AdminUserService {
     @Transactional(readOnly = true)
     public List<UserResponse> getUsers() {
         requireAdminOrSubAdmin();
-        return userRepository.findAllByOrderByCreatedAtDesc().stream()
+        return userRepository.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
                 .map(UserResponse::from)
                 .toList();
     }
