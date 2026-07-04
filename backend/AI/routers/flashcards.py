@@ -22,16 +22,16 @@ def generate_flashcards(request: GenerateFlashcardsRequest):
     if not chunks:
         raise HTTPException(status_code=400, detail="Document chunks not found.")
         
-    context = build_context_within_budget(chunks, max_tokens=6000)
+    context = build_context_within_budget(chunks)
     if not context:
         raise HTTPException(status_code=400, detail="Document has no valid text chunks to process.")
-        
+
     try:
         items = generate_flashcards_from_text(context, count=request.count)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse structured flashcards: {str(e)}")
-        
+
     if not items:
         raise HTTPException(status_code=422, detail="Failed to parse structured flashcards: No valid items found.")
-        
+
     return [{"question": item["question"], "answer": item["answer"]} for item in items]
