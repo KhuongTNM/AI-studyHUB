@@ -2,8 +2,7 @@
 import { CheckCircle2, CreditCard, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { type PackageTier } from "@/lib/store"
-import type { Language } from "@/states/types"
+import type { Language, PackagePrice } from "@/states/types"
 import { fetchCurrentUserApi } from "@/services/api/auth"
 import {
   createSubscriptionPurchaseApi,
@@ -12,8 +11,7 @@ import {
 } from "@/services/api/subscription-purchases"
 
 interface CheckoutModalProps {
-  selectedTier: PackageTier
-  packagePrices: any[]
+  selectedPlan: PackagePrice
   currentUser: any
   updateUser: (id: string, data: any) => void
   language: Language
@@ -22,8 +20,7 @@ interface CheckoutModalProps {
 }
 
 export function CheckoutModal({
-  selectedTier,
-  packagePrices,
+  selectedPlan,
   currentUser,
   updateUser,
   language,
@@ -37,7 +34,7 @@ export function CheckoutModal({
   const [isCreatingPurchase, setIsCreatingPurchase] = useState(false)
   const [isCheckingPurchase, setIsCheckingPurchase] = useState(false)
   const text = checkoutText[language]
-  const selectedPlanName = selectedTier === "2-4" ? text.plan2To4 : text.plan5Plus
+  const selectedPlanName = selectedPlan.name
 
   const syncPaidUser = async (order: SubscriptionPurchase) => {
     const paidUser = order.user ?? (await fetchCurrentUserApi())
@@ -63,7 +60,7 @@ export function CheckoutModal({
     setIsCreatingPurchase(true)
     setPurchaseError("")
     try {
-      const order = await createSubscriptionPurchaseApi(selectedTier)
+      const order = await createSubscriptionPurchaseApi(selectedPlan.planName ?? selectedPlan.tier)
       setPurchaseOrder(order)
       openPayOsCheckout(order)
     } catch (error) {
@@ -144,7 +141,7 @@ export function CheckoutModal({
               <div className="mb-6 flex items-center justify-between rounded-xl bg-muted p-4">
                 <span className="text-sm font-medium text-muted-foreground">{text.total}</span>
                 <span className="text-xl font-extrabold text-primary">
-                  {(packagePrices.find(p => p.tier === selectedTier)?.price || 0).toLocaleString("vi-VN")}đ
+                  {selectedPlan.price.toLocaleString("vi-VN")}đ
                 </span>
               </div>
 

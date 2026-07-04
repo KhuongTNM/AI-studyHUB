@@ -1,6 +1,6 @@
 ﻿import { getAccessToken } from "@/lib/auth-storage"
 import { mapApiUserToStoreUser, type ApiUser } from "@/services/api/auth"
-import type { PackageTier, User } from "@/lib/store"
+import type { User } from "@/lib/store"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-studyhub.onrender.com"
 
@@ -28,10 +28,11 @@ interface ErrorBody {
   message?: string
 }
 
-function getPlanName(tier: PackageTier): string {
-  if (tier === "2-4") return "plan_2_4"
-  if (tier === "5+") return "plan_5_plus"
-  return "free"
+function getPlanName(tierOrPlanName: string): string {
+  if (tierOrPlanName === "2-4") return "plan_2_4"
+  if (tierOrPlanName === "5+") return "plan_5_plus"
+  if (tierOrPlanName === "free") return "free"
+  return tierOrPlanName
 }
 
 async function parseError(response: Response): Promise<string> {
@@ -57,14 +58,14 @@ function mapPurchase(apiPurchase: ApiSubscriptionPurchase): SubscriptionPurchase
   }
 }
 
-export async function createSubscriptionPurchaseApi(tier: PackageTier): Promise<SubscriptionPurchase> {
+export async function createSubscriptionPurchaseApi(tierOrPlanName: string): Promise<SubscriptionPurchase> {
   const response = await fetch(`${API_BASE_URL}/api/subscription-purchases`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ planName: getPlanName(tier) }),
+    body: JSON.stringify({ planName: getPlanName(tierOrPlanName) }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapPurchase((await response.json()) as ApiSubscriptionPurchase)

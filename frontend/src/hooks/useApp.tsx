@@ -189,7 +189,7 @@ export interface AppState {
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
-  updatePackagePrice: (tier: PackageTier, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
   grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
