@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   fetchCurrentUserApi,
+  changePasswordApi,
   loginApi,
   loginWithGoogleApi,
   logoutApi,
   registerApi,
+  updateProfileApi,
 } from "@/services/api/auth"
 import { clearAccessToken } from "@/lib/auth-storage"
 import type { Language, User } from "@/states/types"
@@ -151,6 +153,35 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
     setCurrentUser(null)
   }, [])
 
+  const updateOwnProfile = useCallback(async (displayName: string) => {
+    try {
+      const user = await updateProfileApi(displayName)
+      setCurrentUser(user)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Không thể cập nhật hồ sơ.",
+      }
+    }
+  }, [])
+
+  const changeOwnPassword = useCallback(
+    async (currentPassword: string, newPassword: string, confirmPassword: string) => {
+      try {
+        const result = await changePasswordApi(currentPassword, newPassword)
+        if (!result.success) return result
+        return { success: true, message: result.message }
+      } catch {
+        return {
+          success: false,
+          error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
+        }
+      }
+    },
+    [],
+  )
+
   return {
     currentUser,
     /** Exposed so sibling hooks and AppProvider can update the current user */
@@ -159,6 +190,8 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
     register,
     loginWithGoogle,
     logoutUser,
+    updateOwnProfile,
+    changeOwnPassword,
   }
 }
 
