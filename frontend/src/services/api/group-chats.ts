@@ -2,10 +2,9 @@ import { getAccessToken } from "@/lib/auth-storage"
 import type { GroupChat, GroupChatMember, GroupChatMessage } from "@/states/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+const GROUP_API_TIMEOUT_MS = 15000
 
-// Frontend Group Chat is still mocked in useGroupChatState.
-// These wrappers define the real backend contract so the mock can be swapped
-// to API-backed state without changing the UI component.
+// Group Chat uses the real backend for core group/message/document actions.
 
 type GroupMessageType = "text" | "document" | "image" | "system"
 
@@ -65,6 +64,26 @@ async function parseError(response: Response): Promise<string> {
     // ignore
   }
   return "Đã xảy ra lỗi. Vui lòng thử lại."
+}
+
+function withTimeout(): AbortSignal {
+  if (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) {
+    return AbortSignal.timeout(GROUP_API_TIMEOUT_MS)
+  }
+
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), GROUP_API_TIMEOUT_MS)
+  return controller.signal
+}
+
+function normalizeRequestError(error: unknown): Error {
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return new Error("Backend did not respond. Please check the group API/backend logs.")
+  }
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new Error("Backend request timed out. Please try again.")
+  }
+  return error instanceof Error ? error : new Error("Đã xảy ra lỗi. Vui lòng thử lại.")
 }
 
 function authHeaders(): HeadersInit {
@@ -129,12 +148,17 @@ function mapGroup(api: ApiGroup): GroupChat {
 
 /** GET /api/groups — list groups where current user is a member. */
 export async function fetchGroupsApi(): Promise<GroupChat[]> {
-  const response = await fetch(`${API_BASE_URL}/api/groups`, {
-    headers: authHeaders(),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
-  const groups = (await response.json()) as ApiGroup[]
-  return groups.map(mapGroup)
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/groups`, {
+      headers: authHeaders(),
+      signal: withTimeout(),
+    })
+    if (!response.ok) throw new Error(await parseError(response))
+    const groups = (await response.json()) as ApiGroup[]
+    return groups.map(mapGroup)
+  } catch (error) {
+    throw normalizeRequestError(error)
+  }
 }
 
 /** GET /api/groups/{groupId} — group detail with members and recent messages. */
@@ -153,24 +177,37 @@ export async function createGroupApi(input: {
   description?: string
   password: string
 }): Promise<GroupChat> {
-  const response = await fetch(`${API_BASE_URL}/api/groups`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify(input),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
-  return mapGroup((await response.json()) as ApiGroup)
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/groups`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(input),
+      signal: withTimeout(),
+    })
+    if (!response.ok) throw new Error(await parseError(response))
+    return mapGroup((await response.json()) as ApiGroup)
+  } catch (error) {
+    throw normalizeRequestError(error)
+  }
 }
 
 /** POST /api/groups/join — join by Group ID and password. */
-export async function joinGroupApi(groupCode: string, password: string): Promise<GroupChat> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/join`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ groupCode, password }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
-  return mapGroup((await response.json()) as ApiGroup)
+export async function joinGroupApi(groupCode: string, password: string): Promise<GroupChat | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/groups/join`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ groupCode, password }),
+      signal: withTimeout(),
+    })
+    if (!response.ok) throw new Error(await parseError(response))
+    if (response.status === 204) return null
+    const text = await response.text()
+    if (!text.trim()) return null
+    return mapGroup(JSON.parse(text) as ApiGroup)
+  } catch (error) {
+    throw normalizeRequestError(error)
+  }
 }
 
 /** POST /api/groups/{groupId}/messages — send text message. */

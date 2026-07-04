@@ -34,6 +34,9 @@ export function GroupChatPage() {
   const [joinGroupPassword, setJoinGroupPassword] = useState("")
   const [error, setError] = useState("")
   const [mockNotice, setMockNotice] = useState("")
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false)
+  const [isJoiningGroup, setIsJoiningGroup] = useState(false)
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletePassword, setDeletePassword] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
@@ -66,33 +69,47 @@ export function GroupChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activeGroup?.messages.length])
 
-  const handleCreateGroup = () => {
-    const result = createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
-    if (!result.success) {
-      setError(result.error ?? text.createFailed)
-      return
-    }
+  const handleCreateGroup = async () => {
+    if (isCreatingGroup) return
     setError("")
-    setNewGroupName("")
-    setNewGroupDesc("")
-    setNewGroupPassword("")
-    setNewGroupCode(generateGroupCode())
-    setShowCreate(false)
+    setIsCreatingGroup(true)
+    try {
+      const result = await createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
+      if (!result.success) {
+        setError(result.error ?? text.createFailed)
+        return
+      }
+      setError("")
+      setNewGroupName("")
+      setNewGroupDesc("")
+      setNewGroupPassword("")
+      setNewGroupCode(generateGroupCode())
+      setShowCreate(false)
+    } finally {
+      setIsCreatingGroup(false)
+    }
   }
 
-  const handleJoinGroup = () => {
-    const result = joinGroup(joinGroupCode, joinGroupPassword)
-    if (!result.success) {
-      setError(result.error ?? text.joinFailed)
-      return
-    }
+  const handleJoinGroup = async () => {
+    if (isJoiningGroup) return
     setError("")
-    setJoinGroupCode("")
-    setJoinGroupPassword("")
-    setShowJoin(false)
+    setIsJoiningGroup(true)
+    try {
+      const result = await joinGroup(joinGroupCode, joinGroupPassword)
+      if (!result.success) {
+        setError(result.error ?? text.joinFailed)
+        return
+      }
+      setError("")
+      setJoinGroupCode("")
+      setJoinGroupPassword("")
+      setShowJoin(false)
+    } finally {
+      setIsJoiningGroup(false)
+    }
   }
 
-  const handleLeaveOrDelete = () => {
+  const handleLeaveOrDelete = async () => {
     if (!activeGroup || !currentUser) return
     if (activeGroup.ownerId === currentUser.id) {
       setDeletePassword("")
@@ -100,7 +117,7 @@ export function GroupChatPage() {
       return
     }
 
-    const result = leaveGroup(activeGroup.id)
+    const result = await leaveGroup(activeGroup.id)
     if (!result.success) {
       setError(result.error ?? text.actionFailed)
       return
@@ -108,20 +125,23 @@ export function GroupChatPage() {
     setError("")
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!activeGroup) return
-    if (deletePassword.trim() !== activeGroup.password) {
-      setError(text.deletePasswordWrong)
-      return
-    }
-    const result = deleteGroup(activeGroup.id)
-    if (!result.success) {
-      setError(result.error ?? text.actionFailed)
-      return
-    }
+    if (isDeletingGroup) return
     setError("")
-    setDeletePassword("")
-    setShowDeleteConfirm(false)
+    setIsDeletingGroup(true)
+    try {
+      const result = await deleteGroup(activeGroup.id, deletePassword)
+      if (!result.success) {
+        setError(result.error ?? text.actionFailed)
+        return
+      }
+      setError("")
+      setDeletePassword("")
+      setShowDeleteConfirm(false)
+    } finally {
+      setIsDeletingGroup(false)
+    }
   }
 
   const showMockNotice = (notice: string) => {
@@ -129,13 +149,13 @@ export function GroupChatPage() {
     setError("")
   }
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!currentUser) {
       openAuthModal("login")
       return
     }
     if (!activeGroup) return
-    const result = sendGroupMessage(activeGroup.id, message)
+    const result = await sendGroupMessage(activeGroup.id, message)
     if (!result.success) {
       setError(result.error ?? text.sendFailed)
       return
@@ -144,11 +164,11 @@ export function GroupChatPage() {
     setMessage("")
   }
 
-  const handleShareDocument = () => {
+  const handleShareDocument = async () => {
     if (!activeGroup) return
     const document = readyDocuments.find(item => item.id === selectedDocumentId)
     if (!document) return
-    const result = shareGroupDocument(activeGroup.id, document)
+    const result = await shareGroupDocument(activeGroup.id, document)
     if (!result.success) {
       setError(result.error ?? text.shareFailed)
       return
@@ -388,10 +408,15 @@ export function GroupChatPage() {
                 <h2 className="text-lg font-semibold text-foreground">{text.joinGroup}</h2>
                 <p className="text-sm text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowJoin(false)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowJoin(false)} disabled={isJoiningGroup}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            {error && (
+              <div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
             <div className="space-y-3">
               <input
                 value={joinGroupCode}
@@ -406,8 +431,8 @@ export function GroupChatPage() {
                 type="password"
                 className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
               />
-              <Button type="button" className="w-full" disabled={joinedGroupCount >= groupJoinLimit} onClick={handleJoinGroup}>
-                {text.join}
+              <Button type="button" className="w-full" disabled={isJoiningGroup || joinedGroupCount >= groupJoinLimit} onClick={handleJoinGroup}>
+                {isJoiningGroup ? text.joining : text.join}
               </Button>
             </div>
           </div>
@@ -504,6 +529,11 @@ export function GroupChatPage() {
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-foreground">{text.createTitle}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{text.createHint(groupCreateLimit, groupJoinLimit)}</p>
+            {error && (
+              <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
             <label className="mt-4 block">
               <span className="mb-1 block text-sm font-medium text-foreground">{text.groupId}</span>
               <div className="flex gap-2">
@@ -546,8 +576,10 @@ export function GroupChatPage() {
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowCreate(false)}>{text.cancel}</Button>
-              <Button onClick={handleCreateGroup}>{text.create}</Button>
+              <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreatingGroup}>{text.cancel}</Button>
+              <Button onClick={handleCreateGroup} disabled={isCreatingGroup}>
+                {isCreatingGroup ? text.creating : text.create}
+              </Button>
             </div>
           </div>
         </div>
@@ -560,6 +592,11 @@ export function GroupChatPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {text.deleteConfirmBody(activeGroup.name, activeGroup.groupCode)}
             </p>
+            {error && (
+              <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
             <label className="mt-4 block">
               <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
               <input
@@ -571,8 +608,10 @@ export function GroupChatPage() {
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>{text.cancel}</Button>
-              <Button variant="destructive" onClick={handleConfirmDelete}>{text.deleteGroup}</Button>
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={isDeletingGroup}>{text.cancel}</Button>
+              <Button variant="destructive" onClick={handleConfirmDelete} disabled={isDeletingGroup}>
+                {isDeletingGroup ? text.deleting : text.deleteGroup}
+              </Button>
             </div>
           </div>
         </div>
@@ -795,6 +834,7 @@ const groupText = {
     search: "Tìm kiếm nhóm",
     joinGroup: "Tham gia nhóm",
     join: "Tham gia",
+    joining: "Đang tham gia...",
     joinHint: (groups: number) => `Bạn có thể tham gia tối đa ${groups} nhóm, tính cả nhóm tự tạo.`,
     groupId: "Group ID",
     password: "Mật khẩu nhóm",
@@ -802,6 +842,7 @@ const groupText = {
     regenerate: "Tạo lại",
     leaveGroup: "Rời nhóm",
     deleteGroup: "Xóa nhóm",
+    deleting: "Đang xóa...",
     deleteConfirmTitle: "Xác nhận xóa nhóm",
     deleteConfirmBody: (name: string, code: string) => `Nhập mật khẩu nhóm để xóa "${name}" (${code}). Thao tác này đang được mock ở frontend.`,
     deletePasswordPlaceholder: "Nhập mật khẩu nhóm",
@@ -856,6 +897,7 @@ const groupText = {
     descriptionPlaceholder: "Mục tiêu học tập, môn học, hoặc ghi chú cho nhóm",
     cancel: "Hủy",
     create: "Tạo nhóm",
+    creating: "Đang tạo...",
     download: "Tải xuống",
     unavailable: "Không thể tải",
   },
@@ -867,6 +909,7 @@ const groupText = {
     search: "Search groups",
     joinGroup: "Join group",
     join: "Join",
+    joining: "Joining...",
     joinHint: (groups: number) => `You can join up to ${groups} groups, including groups you created.`,
     groupId: "Group ID",
     password: "Group password",
@@ -874,6 +917,7 @@ const groupText = {
     regenerate: "Regenerate",
     leaveGroup: "Leave group",
     deleteGroup: "Delete group",
+    deleting: "Deleting...",
     deleteConfirmTitle: "Confirm group deletion",
     deleteConfirmBody: (name: string, code: string) => `Enter the group password to delete "${name}" (${code}). This action is mocked on the frontend.`,
     deletePasswordPlaceholder: "Enter group password",
@@ -928,6 +972,7 @@ const groupText = {
     descriptionPlaceholder: "Study goal, subject, or note for this group",
     cancel: "Cancel",
     create: "Create group",
+    creating: "Creating...",
     download: "Download",
     unavailable: "Unavailable",
   },
