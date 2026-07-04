@@ -174,7 +174,9 @@ export interface AppState {
     count?: number,
   ) => Promise<{ success: boolean; count: number; message?: string }>
   /** Load flashcard từ API theo document (BR-039) */
-  loadFlashcardsForDocument: (docId: string) => Promise<void>
+  loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
+  /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
+  loadAllFlashcards: () => Promise<{ success: boolean; message?: string }>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -377,6 +379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateFlashcardStatus: flashcards.updateFlashcardStatus,
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
         loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
+        loadAllFlashcards: flashcards.loadAllFlashcards,
         setFlashcardSelectedDocumentId: flashcards.setFlashcardSelectedDocumentId,
 
         // Admin
