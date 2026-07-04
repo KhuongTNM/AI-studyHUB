@@ -11,11 +11,12 @@ import { useApp, type Document, type GroupChat, type GroupChatMessage } from "@/
 
 export function GroupChatPage() {
   const {
-    currentUser, openAuthModal, language, documents, downloadDocument,
+    currentUser, openAuthModal, language, documents,
     groups, activeGroupId, groupCreateLimit, groupJoinLimit,
     setActiveGroupId, createGroup, joinGroup, leaveGroup, deleteGroup,
     updateGroupMuted, updateGroupPinned,
-    sendGroupMessage, shareGroupDocument, shareGroupImage, generateGroupCode,
+    sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
+    exportGroupChat, reportGroup, generateGroupCode,
   } = useApp()
 
   const text = groupText[language]
@@ -27,6 +28,7 @@ export function GroupChatPage() {
   const [showMembers, setShowMembers] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   const [newGroupName, setNewGroupName] = useState("")
   const [newGroupDesc, setNewGroupDesc] = useState("")
   const [newGroupCode, setNewGroupCode] = useState(generateGroupCode)
@@ -38,8 +40,10 @@ export function GroupChatPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletePassword, setDeletePassword] = useState("")
   const [groupActionBusy, setGroupActionBusy] = useState(false)
+  const [reportReason, setReportReason] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const activeGroup = groups.find(group => group.id === activeGroupId) ?? groups[0] ?? null
   const ownedGroupCount = currentUser ? groups.filter(group => group.ownerId === currentUser.id).length : 0
@@ -135,13 +139,15 @@ export function GroupChatPage() {
     setError("")
   }
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!currentUser) {
       openAuthModal("login")
       return
     }
     if (!activeGroup) return
-    const result = sendGroupMessage(activeGroup.id, message)
+    setGroupActionBusy(true)
+    const result = await sendGroupMessage(activeGroup.id, message)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.sendFailed)
       return
@@ -150,11 +156,13 @@ export function GroupChatPage() {
     setMessage("")
   }
 
-  const handleShareDocument = () => {
+  const handleShareDocument = async () => {
     if (!activeGroup) return
     const document = readyDocuments.find(item => item.id === selectedDocumentId)
     if (!document) return
-    const result = shareGroupDocument(activeGroup.id, document)
+    setGroupActionBusy(true)
+    const result = await shareGroupDocument(activeGroup.id, document)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.shareFailed)
       return
@@ -165,15 +173,27 @@ export function GroupChatPage() {
     setShowFileShare(false)
   }
 
-  const handleImageUpload = () => {
+  const handleImageUpload = async (file: File) => {
     if (!activeGroup) return
-    const result = shareGroupImage(activeGroup.id)
+    setGroupActionBusy(true)
+    const result = await shareGroupImage(activeGroup.id, file)
+    setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.imageUploadFailed)
       return
     }
     setError("")
     showMockNotice(text.imageUploaded)
+  }
+
+  const handleDownloadSharedDocument = async (documentId: string) => {
+    if (!activeGroup) return
+    const result = await downloadGroupDocument(activeGroup.id, documentId)
+    if (!result.success) {
+      setError(result.error ?? text.downloadFailed)
+      return
+    }
+    setError("")
   }
 
   const handleToggleMute = async () => {
@@ -196,6 +216,31 @@ export function GroupChatPage() {
     }
     setError("")
     showMockNotice(!activeGroup.pinned ? text.pinnedSaved : text.unpinnedSaved)
+  }
+
+  const handleExportChat = async () => {
+    if (!activeGroup) return
+    const result = await exportGroupChat(activeGroup.id)
+    if (!result.success) {
+      setError(result.error ?? text.exportFailed)
+      return
+    }
+    setError("")
+    showMockNotice(text.exportStarted)
+  }
+
+  const handleReportGroup = async () => {
+    if (!activeGroup) return
+    const result = await reportGroup(activeGroup.id, reportReason)
+    if (!result.success) {
+      setError(result.error ?? text.reportFailed)
+      return
+    }
+    setError("")
+    setReportReason("")
+    setShowReport(false)
+    setShowOptions(false)
+    showMockNotice(text.reportSubmitted)
   }
 
   if (!currentUser) {
@@ -321,7 +366,7 @@ export function GroupChatPage() {
                     message={item}
                     isSelf={item.senderId === currentUser.id}
                     text={text}
-                    onDownload={() => item.documentId && downloadDocument(item.documentId)}
+                    onDownload={() => item.documentId && handleDownloadSharedDocument(item.documentId)}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -354,7 +399,7 @@ export function GroupChatPage() {
                         </optgroup>
                       ))}
                     </select>
-                    <Button onClick={handleShareDocument} disabled={!selectedDocumentId}>
+                    <Button onClick={handleShareDocument} disabled={!selectedDocumentId || groupActionBusy}>
                       <FileText className="mr-2 h-4 w-4" />
                       {text.share}
                     </Button>
@@ -369,9 +414,20 @@ export function GroupChatPage() {
                 <Button variant="ghost" size="icon" title={text.shareFile} onClick={() => setShowFileShare(prev => !prev)}>
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" title={text.uploadImage} onClick={handleImageUpload}>
+                <Button variant="ghost" size="icon" title={text.uploadImage} onClick={() => imageInputRef.current?.click()}>
                   <Image className="h-4 w-4" />
                 </Button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    event.currentTarget.value = ""
+                    if (file) void handleImageUpload(file)
+                  }}
+                />
                 <input
                   value={message}
                   onChange={event => setMessage(event.target.value)}
@@ -387,7 +443,7 @@ export function GroupChatPage() {
                 <Button variant="ghost" size="icon" title={text.mockEmoji} onClick={() => showMockNotice(text.mockEmoji)}>
                   <Smile className="h-4 w-4" />
                 </Button>
-                <Button size="icon" onClick={handleSend} disabled={!message.trim()}>
+                <Button size="icon" onClick={handleSend} disabled={!message.trim() || groupActionBusy}>
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -516,13 +572,38 @@ export function GroupChatPage() {
               <Button type="button" variant="outline" className="w-full justify-start" onClick={handleTogglePin}>
                 {activeGroup.pinned ? text.unpinGroup : text.pinGroup}
               </Button>
-              {[text.exportChat, text.reportGroup].map(option => (
-                <Button key={option} type="button" variant="outline" className="w-full justify-start" onClick={() => showMockNotice(text.optionMocked(option))}>
-                  {option}
-                </Button>
-              ))}
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={handleExportChat}>
+                {text.exportChat}
+              </Button>
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setShowReport(true)}>
+                {text.reportGroup}
+              </Button>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">{text.optionsBackendNote}</p>
+          </div>
+        </div>
+      )}
+
+      {showReport && activeGroup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">{text.reportGroup}</h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowReport(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="mb-3 text-sm text-muted-foreground">{text.reportHint(activeGroup.name)}</p>
+            <textarea
+              value={reportReason}
+              onChange={event => setReportReason(event.target.value)}
+              className="min-h-28 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              placeholder={text.reportPlaceholder}
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowReport(false)}>{text.cancel}</Button>
+              <Button onClick={handleReportGroup} disabled={!reportReason.trim()}>{text.submitReport}</Button>
+            </div>
           </div>
         </div>
       )}
@@ -735,6 +816,7 @@ function GroupMessageBubble({
   }
 
   const downloadable = message.documentDownloadable !== false && message.documentVisibility !== "private"
+  const imageCanPreview = Boolean(message.imageUrl && /^(https?:\/\/|\/)/.test(message.imageUrl))
   return (
     <div className={cn("flex gap-2", isSelf ? "justify-end" : "justify-start")}>
       {!isSelf && (
@@ -778,7 +860,7 @@ function GroupMessageBubble({
             </div>
           ) : message.messageType === "image" ? (
             <div className="w-72 max-w-full space-y-2">
-              {message.imageUrl && (
+              {imageCanPreview && (
                 <img
                   src={message.imageUrl}
                   alt={message.imageName ?? text.sharedImage}
@@ -792,10 +874,11 @@ function GroupMessageBubble({
                   size="sm"
                   variant={isSelf ? "secondary" : "outline"}
                   className="h-8 shrink-0 gap-2"
+                  disabled={!imageCanPreview}
                   onClick={() => message.imageUrl && window.open(message.imageUrl, "_blank", "noopener,noreferrer")}
                 >
                   <Download className="h-3.5 w-3.5" />
-                  {text.download}
+                  {imageCanPreview ? text.download : text.previewUnavailable}
                 </Button>
               </div>
               <p className={cn("text-xs", isSelf ? "text-primary-foreground/80" : "text-muted-foreground")}>
@@ -836,9 +919,9 @@ const groupText = {
     deletePasswordPlaceholder: "Nhập mật khẩu nhóm",
     deletePasswordWrong: "Mật khẩu nhóm không đúng.",
     uploadImage: "Upload hình ảnh",
-    imageUploaded: "Mock: hình ảnh đã được upload vào chat nhóm.",
+    imageUploaded: "Hình ảnh đã được upload vào chat nhóm.",
     imageUploadFailed: "Không thể upload hình ảnh.",
-    documentUploaded: "Mock: tài liệu đã được chia sẻ vào chat nhóm.",
+    documentUploaded: "Tài liệu đã được chia sẻ vào chat nhóm.",
     mockEmoji: "Mock: bảng emoji sẽ được triển khai sau.",
     memberList: "Danh sách thành viên",
     joinedAt: "Tham gia",
@@ -860,9 +943,16 @@ const groupText = {
     exportChat: "Xuất lịch sử chat",
     reportGroup: "Báo cáo nhóm",
     optionMocked: (option: string) => `Mock: "${option}" đã được ghi nhận, backend sẽ triển khai sau.`,
-    optionsBackendNote: "Ghim và tắt thông báo đã gọi API nhóm. Xuất lịch sử chat và báo cáo nhóm vẫn là luồng mô phỏng cho task sau.",
+    optionsBackendNote: "Ghim, tắt thông báo, xuất lịch sử và báo cáo nhóm đều gọi API nhóm.",
+    exportStarted: "File lịch sử chat đang được tải xuống.",
+    exportFailed: "Không thể xuất lịch sử chat.",
+    reportHint: (name: string) => `Mô tả lý do bạn muốn báo cáo nhóm "${name}".`,
+    reportPlaceholder: "Nhập lý do báo cáo...",
+    submitReport: "Gửi báo cáo",
+    reportSubmitted: "Đã gửi báo cáo nhóm.",
+    reportFailed: "Không thể gửi báo cáo nhóm.",
     sharedImage: "Ảnh đã chia sẻ",
-    imageMockNote: "Ảnh mock được tạo trên frontend. Backend sau này sẽ upload file và trả URL thật.",
+    imageMockNote: "Ảnh đã được gửi qua API nhóm. Bản xem trước chỉ hiển thị khi backend trả URL công khai.",
     noGroups: "Chưa có nhóm nào",
     loginTitle: "Đăng nhập để dùng chat nhóm",
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
@@ -892,6 +982,8 @@ const groupText = {
     cancel: "Hủy",
     create: "Tạo nhóm",
     download: "Tải xuống",
+    downloadFailed: "Không thể tải tài liệu.",
+    previewUnavailable: "Chưa có URL",
     unavailable: "Không thể tải",
   },
   en: {
@@ -915,9 +1007,9 @@ const groupText = {
     deletePasswordPlaceholder: "Enter group password",
     deletePasswordWrong: "Group password is incorrect.",
     uploadImage: "Upload image",
-    imageUploaded: "Mock: image uploaded to the group chat.",
+    imageUploaded: "Image uploaded to the group chat.",
     imageUploadFailed: "Could not upload image.",
-    documentUploaded: "Mock: document shared to the group chat.",
+    documentUploaded: "Document shared to the group chat.",
     mockEmoji: "Mock: emoji picker will be implemented later.",
     memberList: "Member list",
     joinedAt: "Joined",
@@ -939,9 +1031,16 @@ const groupText = {
     exportChat: "Export chat history",
     reportGroup: "Report group",
     optionMocked: (option: string) => `Mock: "${option}" has been recorded; backend will implement it later.`,
-    optionsBackendNote: "Mute and pin call the group API. Export chat and report group remain mocked for a later task.",
+    optionsBackendNote: "Mute, pin, export chat history, and report group all call group APIs.",
+    exportStarted: "Chat history download started.",
+    exportFailed: "Could not export chat history.",
+    reportHint: (name: string) => `Describe why you want to report "${name}".`,
+    reportPlaceholder: "Enter report reason...",
+    submitReport: "Submit report",
+    reportSubmitted: "Group report submitted.",
+    reportFailed: "Could not report group.",
     sharedImage: "Shared image",
-    imageMockNote: "Mock image generated in frontend. Backend will later upload the file and return a real URL.",
+    imageMockNote: "Image was sent through the group API. Preview appears only when backend returns a public URL.",
     noGroups: "No groups yet",
     loginTitle: "Log in to use group chat",
     loginBody: "Group chat lets students discuss together and share public study documents.",
@@ -971,6 +1070,8 @@ const groupText = {
     cancel: "Cancel",
     create: "Create group",
     download: "Download",
+    downloadFailed: "Could not download document.",
+    previewUnavailable: "No URL yet",
     unavailable: "Unavailable",
   },
 } as const

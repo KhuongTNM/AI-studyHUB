@@ -5,13 +5,19 @@ import type { Document, GroupChat, GroupChatMessage, PackageTier, User } from "@
 import {
   createGroupApi,
   deleteGroupApi,
+  downloadGroupDocumentApi,
+  exportGroupChatApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
   joinGroupApi,
   leaveGroupApi,
+  reportGroupApi,
+  sendGroupMessageApi,
+  shareGroupDocumentApi,
   updateGroupMuteApi,
   updateGroupPinApi,
+  uploadGroupImageApi,
 } from "@/services/api/group-chats"
 
 interface GroupChatStateDeps {
@@ -65,6 +71,16 @@ function mergeOwnerName(group: GroupChat): GroupChat {
     ...group,
     ownerName: owner?.displayName ?? group.ownerName,
   }
+}
+
+function withCurrentSender(message: GroupChatMessage, user: User): GroupChatMessage {
+  if (message.senderId && message.senderId !== "system") {
+    return {
+      ...message,
+      senderName: message.senderName === "System" ? user.displayName : message.senderName,
+    }
+  }
+  return message
 }
 
 export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
@@ -220,76 +236,77 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [])
 
-  const sendGroupMessage = useCallback((groupId: string, content: string): ActionResult => {
+  const appendGroupMessage = useCallback((message: GroupChatMessage) => {
+    setGroups(prev => prev.map(group => group.id === message.groupId
+      ? { ...group, messages: [...group.messages, message], updatedAt: message.timestamp }
+      : group,
+    ))
+  }, [])
+
+  const sendGroupMessage = useCallback(async (groupId: string, content: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to send messages." }
     if (!content.trim()) return { success: false, error: "Message is empty." }
 
-    const message: GroupChatMessage = {
-      id: `msg-${Date.now()}`,
-      groupId,
-      senderId: currentUser.id,
-      senderName: currentUser.displayName,
-      content: content.trim(),
-      timestamp: new Date(),
-      messageType: "text",
+    try {
+      const message = await sendGroupMessageApi(groupId, content.trim())
+      appendGroupMessage(withCurrentSender(message, currentUser))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not send message.") }
     }
+  }, [appendGroupMessage, currentUser])
 
-    setGroups(prev => prev.map(group => group.id === groupId
-      ? { ...group, messages: [...group.messages, message], updatedAt: new Date() }
-      : group,
-    ))
-    return { success: true }
-  }, [currentUser])
-
-  const shareGroupDocument = useCallback((groupId: string, document: Document): ActionResult => {
+  const shareGroupDocument = useCallback(async (groupId: string, document: Document): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to share documents." }
     if (!document.isPublic) return { success: false, error: "Private documents cannot be shared to a group." }
 
-    const message: GroupChatMessage = {
-      id: `msg-${Date.now()}`,
-      groupId,
-      senderId: currentUser.id,
-      senderName: currentUser.displayName,
-      content: document.name,
-      timestamp: new Date(),
-      messageType: "document",
-      documentId: document.id,
-      documentName: document.name,
-      documentSubject: document.subject || "No subject",
-      documentVisibility: document.isPublic ? "public" : "private",
-      documentDownloadable: document.isPublic,
+    try {
+      const message = await shareGroupDocumentApi(groupId, document.id)
+      appendGroupMessage(withCurrentSender(message, currentUser))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not share document.") }
     }
+  }, [appendGroupMessage, currentUser])
 
-    setGroups(prev => prev.map(group => group.id === groupId
-      ? { ...group, messages: [...group.messages, message], updatedAt: new Date() }
-      : group,
-    ))
-    return { success: true }
-  }, [currentUser])
-
-  const shareGroupImage = useCallback((groupId: string): ActionResult => {
+  const shareGroupImage = useCallback(async (groupId: string, file: File): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to upload images." }
 
-    const imageSeed = `${currentUser.id}-${Date.now()}`
-    const imageNumber = Math.floor(100 + Math.random() * 900)
-    const message: GroupChatMessage = {
-      id: `msg-${Date.now()}`,
-      groupId,
-      senderId: currentUser.id,
-      senderName: currentUser.displayName,
-      content: `study-snapshot-${imageNumber}.png`,
-      timestamp: new Date(),
-      messageType: "image",
-      imageName: `study-snapshot-${imageNumber}.png`,
-      imageUrl: `https://picsum.photos/seed/${encodeURIComponent(imageSeed)}/720/420`,
+    try {
+      const message = await uploadGroupImageApi(groupId, file)
+      appendGroupMessage(withCurrentSender(message, currentUser))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not upload image.") }
     }
+  }, [appendGroupMessage, currentUser])
 
-    setGroups(prev => prev.map(group => group.id === groupId
-      ? { ...group, messages: [...group.messages, message], updatedAt: new Date() }
-      : group,
-    ))
-    return { success: true }
-  }, [currentUser])
+  const downloadGroupDocument = useCallback(async (groupId: string, documentId: string): Promise<ActionResult> => {
+    try {
+      await downloadGroupDocumentApi(groupId, documentId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not download document.") }
+    }
+  }, [])
+
+  const exportGroupChat = useCallback(async (groupId: string): Promise<ActionResult> => {
+    try {
+      await exportGroupChatApi(groupId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not export chat history.") }
+    }
+  }, [])
+
+  const reportGroup = useCallback(async (groupId: string, reason: string): Promise<ActionResult> => {
+    try {
+      await reportGroupApi(groupId, reason.trim())
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not report group.") }
+    }
+  }, [])
 
   return {
     groups,
@@ -306,6 +323,9 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     sendGroupMessage,
     shareGroupDocument,
     shareGroupImage,
+    downloadGroupDocument,
+    exportGroupChat,
+    reportGroup,
     generateGroupCode: makeGroupCode,
   }
 }

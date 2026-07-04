@@ -26,7 +26,7 @@ interface ApiGroupMessage {
   documentId?: string | null
   documentName?: string | null
   documentSubject?: string | null
-  documentVisibility?: "public" | "private" | null
+  documentVisibility?: string | null
   documentDownloadable?: boolean | null
   imageUrl?: string | null
   imageName?: string | null
@@ -90,6 +90,8 @@ function mapMember(api: ApiGroupMember): GroupChatMember {
 }
 
 function mapMessage(api: ApiGroupMessage): GroupChatMessage {
+  const documentVisibility = api.documentVisibility?.toLowerCase()
+
   return {
     id: api.id,
     groupId: api.groupId,
@@ -101,7 +103,7 @@ function mapMessage(api: ApiGroupMessage): GroupChatMessage {
     documentId: api.documentId ?? undefined,
     documentName: api.documentName ?? undefined,
     documentSubject: api.documentSubject ?? undefined,
-    documentVisibility: api.documentVisibility ?? undefined,
+    documentVisibility: documentVisibility === "public" || documentVisibility === "private" ? documentVisibility : undefined,
     documentDownloadable: api.documentDownloadable ?? undefined,
     imageUrl: api.imageUrl ?? undefined,
     imageName: api.imageName ?? undefined,
