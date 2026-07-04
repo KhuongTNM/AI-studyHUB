@@ -92,6 +92,15 @@ export async function resetUserPasswordApi(userId: string, newPassword: string):
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
+/** FR-19 / BR-061: Admin/Sub-admin deletes a user and backend soft-deletes their documents. */
+export async function deleteAdminUserApi(userId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+}
+
 /**
  * BR-063: Admin/Sub-admin cấp gói subscription trực tiếp cho user.
  *

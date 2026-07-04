@@ -125,7 +125,7 @@ function getStoredAdminSection(): AdminSection {
 export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
-    toggleUserLock, resetUserPassword, createSubAdminAccount,
+    toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
     packagePrices, grantSubscription, updateUserStorageLimit,
   } = useApp()
 
@@ -292,6 +292,16 @@ export function AdminDashboard() {
         )
       }
       onReset={(user) => setResetTarget(user)}
+      onDelete={(user) =>
+        requirePassword(
+          `${text.delete}: ${user.email}`,
+          async () =>
+            runAccountAction(
+              await deleteUserAccount(user.id),
+              text.accountDeleted,
+            ),
+        )
+      }
       onGrant={(user) => {
         setGrantTarget(user)
         setGrantTier(user.subscriptionTier || "free")
