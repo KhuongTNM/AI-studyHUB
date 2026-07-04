@@ -149,9 +149,12 @@ export interface AppState {
   deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
   updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
   updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
-  sendGroupMessage: (groupId: string, content: string) => { success: boolean; error?: string }
-  shareGroupDocument: (groupId: string, document: Document) => { success: boolean; error?: string }
-  shareGroupImage: (groupId: string) => { success: boolean; error?: string }
+  sendGroupMessage: (groupId: string, content: string) => Promise<{ success: boolean; error?: string }>
+  shareGroupDocument: (groupId: string, document: Document) => Promise<{ success: boolean; error?: string }>
+  shareGroupImage: (groupId: string, file: File) => Promise<{ success: boolean; error?: string }>
+  downloadGroupDocument: (groupId: string, documentId: string) => Promise<{ success: boolean; error?: string }>
+  exportGroupChat: (groupId: string) => Promise<{ success: boolean; error?: string }>
+  reportGroup: (groupId: string, reason: string) => Promise<{ success: boolean; error?: string }>
   generateGroupCode: () => string
 
   // ── Flashcards ────────────────────────────────────────────────────────────
@@ -370,6 +373,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sendGroupMessage: groupChat.sendGroupMessage,
         shareGroupDocument: groupChat.shareGroupDocument,
         shareGroupImage: groupChat.shareGroupImage,
+        downloadGroupDocument: groupChat.downloadGroupDocument,
+        exportGroupChat: groupChat.exportGroupChat,
+        reportGroup: groupChat.reportGroup,
         generateGroupCode: groupChat.generateGroupCode,
 
         // Flashcards
