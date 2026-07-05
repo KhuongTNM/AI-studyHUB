@@ -1,7 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { createSubAdminApi, fetchAdminUsersApi, resetUserPasswordApi, toggleUserLockApi, updateUserStorageLimitApi } from "@/services/api/admin-users"
+import {
+  createSubAdminApi,
+  deleteAdminUserApi,
+  fetchAdminUsersApi,
+  resetUserPasswordApi,
+  toggleUserLockApi,
+  updateUserStorageLimitApi,
+} from "@/services/api/admin-users"
 import { MOCK_USERS } from "@/states/mock-data"
 import type { Document, User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
@@ -148,22 +155,34 @@ export function useAdminState({
   )
 
   const deleteUserAccount = useCallback(
-    (id: string) => {
+    async (id: string): Promise<{ success: boolean; error?: string }> => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
       if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
-      if (currentUser.role === "sub-admin" && target.role === "admin") {
-        return { success: false, error: "Sub-admin không được xóa tài khoản Admin." }
+      if (target.role === "admin") {
+        return { success: false, error: "Không được phép xóa tài khoản Admin." }
+      }
+      if (currentUser.role === "sub-admin" && target.role !== "user") {
+        return { success: false, error: "Sub-admin chỉ được xóa tài khoản user." }
       }
       if (target.id === currentUser.id) return { success: false, error: "Không thể tự xóa tài khoản hiện tại." }
 
-      setUsers(prev => prev.filter(u => u.id !== id))
-      setDocuments(prev =>
-        prev.map(d => (d.uploadedBy === id ? { ...d, status: "deleted" } : d)),
-      )
-      return { success: true }
+      try {
+        await deleteAdminUserApi(id)
+        setUsers(prev => prev.filter(u => u.id !== id))
+        setDocuments(prev =>
+          prev.map(d => (d.uploadedBy === id ? { ...d, status: "deleted" } : d)),
+        )
+        addLog("Xóa tài khoản", target.email, currentUser.id)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể xóa tài khoản.",
+        }
+      }
     },
-    [currentUser, users, setDocuments],
+    [currentUser, users, setDocuments, addLog],
   )
 
   const createSubAdminAccount = useCallback(
