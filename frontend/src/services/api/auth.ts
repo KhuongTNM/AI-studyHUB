@@ -185,6 +185,52 @@ export async function updateLanguagePreferenceApi(language: Language): Promise<U
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
+export async function updateProfileApi(displayName: string): Promise<User> {
+  const token = getAccessToken()
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ displayName }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await parseError(response))
+  }
+
+  return mapApiUserToStoreUser((await response.json()) as ApiUser)
+}
+
+export async function changePasswordApi(
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ success: true; message?: string } | { success: false; error: string }> {
+  const token = getAccessToken()
+  const response = await fetch(`${API_BASE_URL}/api/auth/me/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ oldPassword, newPassword }),
+  })
+
+  if (!response.ok) {
+    return { success: false, error: await parseError(response) }
+  }
+
+  let message: string | undefined
+  try {
+    const body = (await response.json()) as MessageBody
+    message = body.message
+  } catch {
+    // Empty response is acceptable for password change.
+  }
+  return { success: true, message }
+}
+
 export async function forgotPasswordApi(
   email: string
 ): Promise<{ success: true; message?: string } | { success: false; error: string }> {

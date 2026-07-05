@@ -50,6 +50,8 @@ export interface AppState {
   /** Đăng nhập/đăng ký bằng Google — idToken là JWT từ Google Identity Services */
   loginWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
+  updateOwnProfile: (displayName: string) => Promise<{ success: boolean; error?: string }>
+  changeOwnPassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>
   openAuthModal: (tab?: "login" | "register" | "forgot") => void
   closeAuthModal: () => void
 
@@ -191,7 +193,7 @@ export interface AppState {
   updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
   toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
   resetUserPassword: (id: string, password: string) => Promise<{ success: boolean; error?: string }>
-  deleteUserAccount: (id: string) => { success: boolean; error?: string }
+  deleteUserAccount: (id: string) => Promise<{ success: boolean; error?: string }>
   createSubAdminAccount: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
 
   // ── Subscription ──────────────────────────────────────────────────────────
@@ -314,6 +316,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         register: auth.register,
         loginWithGoogle: auth.loginWithGoogle,
         logout,
+        updateOwnProfile: auth.updateOwnProfile,
+        changeOwnPassword: auth.changeOwnPassword,
         openAuthModal: ui.openAuthModal,
         closeAuthModal: ui.closeAuthModal,
 
