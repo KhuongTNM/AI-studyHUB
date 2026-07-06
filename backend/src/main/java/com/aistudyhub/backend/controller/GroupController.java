@@ -50,7 +50,7 @@ public class GroupController {
     public ResponseEntity<GroupResponse> getGroupDetail(
             @PathVariable UUID groupId,
             @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(groupService.getGroupDetail(userId, groupId));
+        return ResponseEntity.ok(groupService.getGroupDetail(groupId, userId));
     }
 
     // 5. Danh sách thành viên
@@ -58,6 +58,8 @@ public class GroupController {
     public ResponseEntity<List<GroupMemberResponse>> getMembers(
             @PathVariable UUID groupId,
             @AuthenticationPrincipal UUID userId) {
+        // Lưu ý: Service định nghĩa getMembers(userId, groupId) - trước đây bị
+        // truyền ngược (groupId, userId) khiến 2 giá trị bị hoán đổi khi xuống Service.
         return ResponseEntity.ok(groupService.getMembers(userId, groupId));
     }
 

@@ -10,6 +10,9 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND"),
+    // Dùng khi request chưa xác thực (userId null từ @AuthenticationPrincipal) -> 401.
+    // Khác với GROUP_ACCESS_DENIED (đã đăng nhập nhưng không đủ quyền/không phải thành viên) -> 403.
+    UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED"),
 
     GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "GROUP_NOT_FOUND"),
     GROUP_ACCESS_DENIED(HttpStatus.FORBIDDEN, "GROUP_ACCESS_DENIED"),

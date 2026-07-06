@@ -60,6 +60,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
+                        // FIX: thiếu rule cho /api/groups/** khiến nó rơi vào anyRequest().permitAll()
+                        // phía dưới -> Security không bắt buộc xác thực cho nhóm endpoint này.
+                        .requestMatchers("/api/groups/**").authenticated()
 
                         // FIX CHUẨN: PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
                         .requestMatchers("/api/payos/webhook").permitAll()
