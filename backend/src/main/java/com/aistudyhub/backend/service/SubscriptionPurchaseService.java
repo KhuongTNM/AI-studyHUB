@@ -108,7 +108,7 @@ public class SubscriptionPurchaseService {
         purchase.setPlanName(plan.getName());
         purchase.setDisplayName(plan.getDisplayName());
         purchase.setAmount(plan.getPrice().setScale(0, RoundingMode.HALF_UP));
-        purchase.setStorageLimitBytes(storageLimitBytesFor(plan.getName()));
+        purchase.setStorageLimitBytes(storageLimitBytesFor(plan));
         purchase.setStatus(SubscriptionPurchase.Status.PENDING);
 
         purchase.setPaymentLinkId(result.getPaymentLinkId());
@@ -252,12 +252,15 @@ public class SubscriptionPurchaseService {
         return orderId;
     }
 
-    private long storageLimitBytesFor(String planName) {
-        return switch (planName) {
-            case "plan_2_4"   -> 1024L * 1024L * 1024L;
-            case "plan_5_plus" -> 5L * 1024L * 1024L * 1024L;
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hỗ trợ mua subscription.");
-        };
+    private long storageLimitBytesFor(SubscriptionPlan plan) {
+        // Dùng dung lượng do Admin cấu hình trực tiếp trên gói (defaultStorageBytes),
+        // thay vì chỉ chấp nhận 2 gói mặc định "plan_2_4" / "plan_5_plus".
+        // Nhờ vậy các gói do Admin tự thêm mới cũng mua/thanh toán được qua PayOS.
+        long bytes = plan.getDefaultStorageBytes();
+        if (bytes <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Gói dịch vụ chưa được cấu hình dung lượng lưu trữ.");
+        }
+        return bytes;
     }
 
     private User getCurrentUser() {
