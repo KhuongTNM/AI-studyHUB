@@ -65,6 +65,19 @@ public class GroupService {
                 .orElse(SubscriptionPlan.FREE_PLAN_NAME);
     }
 
+    /**
+     * Guard clause dùng chung: chặn userId null ngay từ đầu mọi hàm public,
+     * tránh để lọt xuống các Repository.findById/exists... gây
+     * IllegalArgumentException (500). Ném UNAUTHENTICATED (401) vì đây là
+     * trường hợp "chưa xác thực", khác với GROUP_ACCESS_DENIED (403, đã xác
+     * thực nhưng không phải thành viên/không đủ quyền).
+     */
+    private void requireUserId(UUID userId) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+        }
+    }
+
     private void requireMembership(UUID groupId, UUID userId) {
         if (!groupMemberRepository.existsByIdGroupIdAndIdUserId(groupId, userId)) {
             throw new BusinessException(ErrorCode.GROUP_ACCESS_DENIED);
@@ -94,6 +107,8 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public GroupResponse createGroup(CreateGroupRequest req, UUID userId) {
+        requireUserId(userId);
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         Limits lim = limits(user);
@@ -138,6 +153,8 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public void joinGroup(JoinGroupRequest req, UUID userId) {
+        requireUserId(userId);
+
         Group g = groupRepository.findByGroupCode(req.getGroupCode().trim().toUpperCase())
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
@@ -174,6 +191,8 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public void deleteGroup(UUID groupId, DeleteGroupRequest req, UUID userId) {
+        requireUserId(userId);
+
         Group g = groupRepository.findById(groupId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
@@ -189,6 +208,8 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public void leaveGroup(UUID groupId, UUID userId) {
+        requireUserId(userId);
+
         Group g = groupRepository.findById(groupId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
@@ -215,12 +236,16 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public GroupSettingsResponse getSettings(UUID userId, UUID groupId) {
+        requireUserId(userId);
+
         GroupMember member = getMembership(groupId, userId);
         return new GroupSettingsResponse(groupId, member.isMuted(), member.isPinned());
     }
 
     @Transactional(rollbackFor = Exception.class)
     public GroupSettingsResponse updateMute(UUID userId, UUID groupId, MuteGroupRequest req) {
+        requireUserId(userId);
+
         GroupMember member = getMembership(groupId, userId);
         member.setMuted(req.getMuted());
         groupMemberRepository.save(member);
@@ -229,6 +254,8 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public GroupSettingsResponse updatePin(UUID userId, UUID groupId, PinGroupRequest req) {
+        requireUserId(userId);
+
         GroupMember member = getMembership(groupId, userId);
         member.setPinned(req.getPinned());
         groupMemberRepository.save(member);
@@ -238,9 +265,21 @@ public class GroupService {
     // ==========================================
     // 4. TRUY VẤN DỮ LIỆU (GET)
     // ==========================================
+    @Transactional(readOnly = true)
+    public GroupResponse getGroupDetail(UUID groupId, UUID userId) {
+        requireUserId(userId);
+
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+        requireMembership(groupId, userId);
+        return buildResponse(group);
+    }
 
     @Transactional(readOnly = true)
     public List<GroupResponse> listMyGroups(UUID userId) {
+        requireUserId(userId);
+
         List<GroupMember> memberships = groupMemberRepository.findByIdUserId(userId);
         if (memberships.isEmpty()) {
             return List.of();
@@ -260,16 +299,8 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public GroupResponse getGroupDetail(UUID userId, UUID groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
-
-        requireMembership(groupId, userId);
-        return buildResponse(group);
-    }
-
-    @Transactional(readOnly = true)
     public List<GroupMemberResponse> getMembers(UUID userId, UUID groupId) {
+        requireUserId(userId);
         requireMembership(groupId, userId);
 
         List<GroupMember> members = groupMemberRepository.findByIdGroupIdOrderByJoinedAtAsc(groupId);
