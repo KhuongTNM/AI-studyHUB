@@ -2,6 +2,7 @@ import { Clock, Sparkles, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Language, PackagePrice } from "@/states/types"
+import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
 
 interface PackagesTabProps {
   currentUser: any
@@ -17,7 +18,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
   const currentPlanLabel =
     currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now()
       ? text.expiredPlan
-      : currentPlan?.name ??
+      : currentPlan ? getLocalizedPlanName(currentPlan, language) :
         (currentUser.subscriptionTier === "2-4"
           ? text.plan2To4
           : currentUser.subscriptionTier === "5+"
@@ -62,7 +63,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
               currentUser.subscriptionTier === pkg.tier
             ) &&
               (!currentUser.subscriptionExpiresAt || new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now())
-            const planName = pkg.name
+            const planName = getLocalizedPlanName(pkg, language)
             const isFreePlan = (pkg.planName ?? pkg.tier) === "free"
             return (
               <div

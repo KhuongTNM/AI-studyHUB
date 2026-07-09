@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useApp, type ActivityLog, type PackageTier, type User } from "@/lib/store"
 import { adminText } from "@/configs/admin-i18n"
+import { getLocalizedPlanName, isBuiltInPlanName } from "@/configs/subscription-plan-labels"
 import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
@@ -37,8 +38,6 @@ interface EditablePkg {
   hasAiChat: boolean
   hasFlashcards: boolean
 }
-
-const BUILT_IN_PLAN_NAMES = new Set(["free", "plan_2_4", "plan_5_plus"])
 
 function tierToPlanName(tier: string) {
   if (tier === "2-4") return "plan_2_4"
@@ -523,9 +522,9 @@ export function AdminDashboard() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Package className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Quản lý gói dịch vụ</h2>
+          <h2 className="text-lg font-semibold text-foreground">{text.packageManagement}</h2>
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {packagesLoading ? "Đang tải..." : `${editablePackages.length} gói`}
+            {packagesLoading ? text.loading : formatAdminText(text.packageCount, { count: editablePackages.length })}
           </span>
         </div>
         <Button
@@ -534,7 +533,7 @@ export function AdminDashboard() {
           className="gap-1.5"
         >
           <Plus className="h-4 w-4" />
-          Thêm gói
+          {text.addPackage}
         </Button>
       </div>
 
@@ -556,17 +555,17 @@ export function AdminDashboard() {
               {/* Top badge for known tiers */}
               {pkg.tier === "free" && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-muted px-3 py-0.5 text-xs font-semibold text-muted-foreground border border-border">
-                  Mặc định
+                  {text.defaultBadge}
                 </span>
               )}
               {pkg.tier === "2-4" && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground shadow-sm">
-                  Phổ biến
+                  {text.popularBadge}
                 </span>
               )}
               {pkg.tier === "5+" && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-white shadow-sm">
-                  Cao cấp
+                  {text.premiumBadge}
                 </span>
               )}
 
@@ -578,10 +577,10 @@ export function AdminDashboard() {
                     value={draft.name}
                     onChange={e => setPkgDraft(d => ({ ...d, name: e.target.value }))}
                     className="mb-1 w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="Tên gói"
+                    placeholder={text.packageName}
                   />
                 ) : (
-                  <h3 className="mb-1 text-lg font-bold text-foreground">{pkg.name}</h3>
+                  <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
                 )}
                 <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
 
@@ -598,14 +597,14 @@ export function AdminDashboard() {
                         disabled={pkg.planName === "free"}
                         className="w-36 rounded-lg border border-primary bg-background px-3 py-1.5 text-xl font-extrabold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                       />
-                      <span className="text-sm text-muted-foreground">đ/tháng</span>
+                      <span className="text-sm text-muted-foreground">{text.vndPerMonth}</span>
                     </div>
                   ) : (
                     <>
                       <span className="text-2xl font-extrabold text-foreground">
-                        {pkg.price === 0 ? "Miễn phí" : `${pkg.price.toLocaleString("vi-VN")}đ`}
+                        {pkg.price === 0 ? text.freePrice : `${pkg.price.toLocaleString("vi-VN")}đ`}
                       </span>
-                      {pkg.price > 0 && <span className="text-xs text-muted-foreground">/tháng</span>}
+                      {pkg.price > 0 && <span className="text-xs text-muted-foreground">{text.perMonth}</span>}
                     </>
                   )}
                 </div>
@@ -615,7 +614,7 @@ export function AdminDashboard() {
                   {/* AI Chat — always on */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>AI Chat cá nhân hỏi đáp</span>
+                    <span>{text.aiChatFeature}</span>
                   </li>
 
                   {/* Group limits */}
@@ -624,7 +623,7 @@ export function AdminDashboard() {
                     {isEditing ? (
                       <div className="flex flex-col gap-1 w-full">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs w-24 shrink-0">Tạo tối đa:</span>
+                          <span className="text-xs w-24 shrink-0">{text.createLimitLabel}</span>
                           <input
                             type="number"
                             min="0"
@@ -632,10 +631,10 @@ export function AdminDashboard() {
                             onChange={e => setPkgDraft(d => ({ ...d, createGroupLimit: Number(e.target.value) }))}
                             className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           />
-                          <span className="text-xs">nhóm</span>
+                          <span className="text-xs">{text.groupsUnit}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs w-24 shrink-0">Tham gia tối đa:</span>
+                          <span className="text-xs w-24 shrink-0">{text.joinLimitLabel}</span>
                           <input
                             type="number"
                             min="0"
@@ -643,14 +642,14 @@ export function AdminDashboard() {
                             onChange={e => setPkgDraft(d => ({ ...d, joinGroupLimit: Number(e.target.value) }))}
                             className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           />
-                          <span className="text-xs">nhóm</span>
+                          <span className="text-xs">{text.groupsUnit}</span>
                         </div>
                       </div>
                     ) : (
                       <span>
                         {pkg.createGroupLimit === 0
-                          ? `Không tạo nhóm, tham gia tối đa ${pkg.joinGroupLimit} nhóm`
-                          : `Tạo tối đa ${pkg.createGroupLimit} nhóm, tham gia tối đa ${pkg.joinGroupLimit} nhóm`}
+                          ? formatAdminText(text.noCreateGroupLimit, { join: pkg.joinGroupLimit })
+                          : formatAdminText(text.createJoinGroupLimit, { create: pkg.createGroupLimit, join: pkg.joinGroupLimit })}
                       </span>
                     )}
                   </li>
@@ -660,24 +659,24 @@ export function AdminDashboard() {
                     <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
                     {isEditing ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs shrink-0">Dung lượng:</span>
+                        <span className="text-xs shrink-0">{text.storageShortLabel}</span>
                         <input
                           type="text"
                           value={draft.storage ?? ""}
                           onChange={e => setPkgDraft(d => ({ ...d, storage: e.target.value }))}
                           className="w-24 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                          placeholder="vd: 1 GB"
+                          placeholder={text.storagePlaceholder}
                         />
                       </div>
                     ) : (
-                      <span>Dung lượng lưu trữ: {pkg.storage}</span>
+                      <span>{formatAdminText(text.storageFeature, { storage: pkg.storage })}</span>
                     )}
                   </li>
 
                   {/* Flashcards — always on */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>Tạo flashcards từ tài liệu</span>
+                    <span>{text.flashcardsFeature}</span>
                   </li>
                 </ul>
 
@@ -690,7 +689,7 @@ export function AdminDashboard() {
                       onClick={() => savePkg(pkg)}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      Cập nhật gói
+                      {text.updatePackage}
                     </Button>
                     <Button
                       variant="outline"
@@ -710,15 +709,15 @@ export function AdminDashboard() {
                       onClick={() => startEditPkg(pkg)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                      Chỉnh sửa
+                      {text.edit}
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={BUILT_IN_PLAN_NAMES.has(pkg.planName)}
+                      disabled={isBuiltInPlanName(pkg.planName, pkg.tier)}
                       onClick={() => deletePkg(pkg)}
                       className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                      title={BUILT_IN_PLAN_NAMES.has(pkg.planName) ? "Không được xóa gói mặc định" : "Xóa gói"}
+                      title={isBuiltInPlanName(pkg.planName, pkg.tier) ? text.cannotDeleteBuiltIn : text.deletePackage}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -737,7 +736,7 @@ export function AdminDashboard() {
             <div className="mb-5 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
                 <Plus className="h-5 w-5 text-primary" />
-                Thêm gói dịch vụ mới
+                {text.addPackageTitle}
               </h3>
               <button
                 onClick={() => setShowAddPkgModal(false)}
@@ -749,18 +748,18 @@ export function AdminDashboard() {
 
             <div className="space-y-4">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tên gói *</span>
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.packageNameRequired}</span>
                 <input
                   type="text"
                   value={newPkgForm.name}
                   onChange={e => setNewPkgForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="vd: Gói Enterprise"
+                  placeholder={text.packageNamePlaceholder}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Giá gói (VNĐ/tháng)</span>
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.packagePriceLabel}</span>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -770,13 +769,13 @@ export function AdminDashboard() {
                     onChange={e => setNewPkgForm(f => ({ ...f, price: Number(e.target.value) }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <span className="shrink-0 text-xs text-muted-foreground">đ/tháng</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{text.vndPerMonth}</span>
                 </div>
               </label>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tạo tối đa (nhóm)</span>
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.createLimitField}</span>
                   <input
                     type="number"
                     min="0"
@@ -786,7 +785,7 @@ export function AdminDashboard() {
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tham gia tối đa (nhóm)</span>
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.joinLimitField}</span>
                   <input
                     type="number"
                     min="1"
@@ -798,12 +797,12 @@ export function AdminDashboard() {
               </div>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Dung lượng lưu trữ</span>
+                <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.storageLimit}</span>
                 <input
                   type="text"
                   value={newPkgForm.storage}
                   onChange={e => setNewPkgForm(f => ({ ...f, storage: e.target.value }))}
-                  placeholder="vd: 10 GB"
+                  placeholder={text.storagePlaceholderLarge}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </label>
@@ -815,7 +814,7 @@ export function AdminDashboard() {
               </Button>
               <Button onClick={addNewPkg} disabled={!newPkgForm.name.trim()} className="gap-1.5">
                 <Plus className="h-4 w-4" />
-                Thêm gói
+                {text.addPackage}
               </Button>
             </div>
           </div>
