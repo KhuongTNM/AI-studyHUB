@@ -5,6 +5,15 @@ import { Upload, FileText, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
+import {
+  ACCEPTED_UPLOAD_EXTENSIONS,
+  ACCEPTED_UPLOAD_INPUT_TYPES,
+  ACCEPTED_UPLOAD_LABEL,
+  ACCEPTED_UPLOAD_MIME_TYPES,
+  MAX_UPLOAD_FILE_SIZE_BYTES,
+  MAX_UPLOAD_FILE_SIZE_MB,
+  MAX_UPLOAD_FILES_COUNT,
+} from "@/configs/upload"
 
 export function UploadModal({
   initialSubject = "",
@@ -26,15 +35,6 @@ export function UploadModal({
   const { language } = useApp()
   const text = uploadText[language]
 
-  const validTypes = [
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ]
-
-  const maxFileSize = 50 * 1024 * 1024 // 50MB
-  const maxFilesCount = 5
-
   const handleFiles = (files: File[]) => {
     setError(null)
     const valid: File[] = []
@@ -43,15 +43,15 @@ export function UploadModal({
 
     for (const f of files) {
       const ext = f.name.split(".").pop()?.toLowerCase()
-      const isValidExt = ext && ["pdf", "docx", "pptx"].includes(ext)
-      const isValidType = validTypes.includes(f.type) || isValidExt
+      const isValidExt = ext ? (ACCEPTED_UPLOAD_EXTENSIONS as readonly string[]).includes(ext) : false
+      const isValidType = (ACCEPTED_UPLOAD_MIME_TYPES as readonly string[]).includes(f.type) || isValidExt
 
       if (!isValidType) {
         hasInvalidType = true
         continue
       }
 
-      if (f.size > maxFileSize) {
+      if (f.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
         hasOversized = true
         continue
       }
@@ -66,19 +66,19 @@ export function UploadModal({
       )
     } else if (hasOversized) {
       setError(language === "vi" 
-        ? "Có file vượt quá dung lượng tối đa cho phép (50MB)." 
-        : "Some files exceed the maximum allowed size (50MB)."
+        ? `Có file vượt quá dung lượng tối đa cho phép (${MAX_UPLOAD_FILE_SIZE_MB}MB).`
+        : `Some files exceed the maximum allowed size (${MAX_UPLOAD_FILE_SIZE_MB}MB).`
       )
     }
 
     setSelectedFiles(prev => {
       const combined = [...prev, ...valid]
-      if (combined.length > maxFilesCount) {
+      if (combined.length > MAX_UPLOAD_FILES_COUNT) {
         setError(language === "vi" 
-          ? `Chỉ được upload tối đa ${maxFilesCount} file cùng lúc.` 
-          : `You can only upload up to ${maxFilesCount} files at a time.`
+          ? `Chỉ được upload tối đa ${MAX_UPLOAD_FILES_COUNT} file cùng lúc.`
+          : `You can only upload up to ${MAX_UPLOAD_FILES_COUNT} files at a time.`
         )
-        return combined.slice(0, maxFilesCount)
+        return combined.slice(0, MAX_UPLOAD_FILES_COUNT)
       }
       return combined
     })
@@ -163,17 +163,17 @@ export function UploadModal({
             <p className="text-sm font-medium text-foreground">
               {text.dropOrClick}
             </p>
-            <p className="text-xs text-muted-foreground">PDF, DOCX, PPTX</p>
+            <p className="text-xs text-muted-foreground">{ACCEPTED_UPLOAD_LABEL}</p>
             <p className="mt-1 text-xs text-amber-500 font-medium">
               {language === "vi" 
-                ? "Tối đa 5 file, mỗi file không quá 50MB" 
-                : "Max 5 files, up to 50MB per file"}
+                ? `Tối đa ${MAX_UPLOAD_FILES_COUNT} file, mỗi file không quá ${MAX_UPLOAD_FILE_SIZE_MB}MB`
+                : `Max ${MAX_UPLOAD_FILES_COUNT} files, up to ${MAX_UPLOAD_FILE_SIZE_MB}MB per file`}
             </p>
             <input
               ref={inputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.pptx"
+              accept={ACCEPTED_UPLOAD_INPUT_TYPES}
               multiple
               onChange={e => handleFiles(Array.from(e.target.files || []))}
             />
