@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react"
 import {
-  CheckCircle2, HardDrive, KeyRound, LayoutDashboard, Package,
-  Pencil, Plus, Sparkles, Trash2, UserCog, Users, X,
+  CheckCircle2, Clock, HardDrive, KeyRound, LayoutDashboard, Package,
+  Pencil, Plus, RefreshCw, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useApp, type PackageTier, type User } from "@/lib/store"
+import { useApp, type ActivityLog, type PackageTier, type User } from "@/lib/store"
 import { adminText } from "@/configs/admin-i18n"
 import { StatsOverview } from "./stats-overview"
 import { UserTable } from "./user-table"
@@ -110,14 +110,14 @@ function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: numb
   }
 }
 
-type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
+type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs"
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
 const ADMIN_SECTION_EVENT = "admin-section-change"
 
 function getStoredAdminSection(): AdminSection {
   if (typeof window === "undefined") return "overview"
   const stored = window.sessionStorage.getItem("admin-section")
-  return ["overview", "accounts", "sub-admins", "packages"].includes(stored ?? "")
+  return ["overview", "accounts", "sub-admins", "packages", "activity-logs"].includes(stored ?? "")
     ? stored as AdminSection
     : "overview"
 }
@@ -127,6 +127,7 @@ export function AdminDashboard() {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
     packagePrices, grantSubscription, updateUserStorageLimit,
+    activityLogs, activityLogsLoading, activityLogsError, loadActivityLogs,
   } = useApp()
 
   const [section, setSection] = useState<AdminSection>(getStoredAdminSection)
@@ -269,9 +270,84 @@ export function AdminDashboard() {
           <AdminTaskButton label={text.accountsPage} body={text.accountsPageHint} onClick={() => selectSection("accounts")} />
           {isAdmin && <AdminTaskButton label={text.subAdminsPage} body={text.subAdminsPageHint} onClick={() => selectSection("sub-admins")} />}
           {isAdmin && <AdminTaskButton label={text.packagesPage} body={text.packagesPageHint} onClick={() => selectSection("packages")} />}
+          <AdminTaskButton label={text.activityLogsPage} body={text.activityLogsPageHint} onClick={() => selectSection("activity-logs")} />
         </div>
       </section>
     </div>
+  )
+
+  const actorLabel = (log: ActivityLog) => {
+    const actor = users.find(user => user.id === log.userId)
+    return actor ? `${actor.displayName} (${actor.email})` : log.userId
+  }
+
+  const renderActivityLogs = () => (
+    <section className="rounded-lg border border-border bg-card p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <Clock className="h-5 w-5 text-primary" />
+            {text.activityLogsTitle}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{text.activityLogsSubtitle}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={activityLogsLoading}
+          onClick={() => void loadActivityLogs()}
+        >
+          <RefreshCw className={`h-4 w-4 ${activityLogsLoading ? "animate-spin" : ""}`} />
+          {text.activityRefresh}
+        </Button>
+      </div>
+
+      {activityLogsError && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {activityLogsError}
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border border-border">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="bg-muted text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-semibold">{text.activityAction}</th>
+              <th className="px-4 py-3 font-semibold">{text.activityTarget}</th>
+              <th className="px-4 py-3 font-semibold">{text.activityUser}</th>
+              <th className="px-4 py-3 font-semibold">{text.activityTime}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {activityLogsLoading && activityLogs.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  {text.activityLoading}
+                </td>
+              </tr>
+            ) : activityLogs.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  {text.activityEmpty}
+                </td>
+              </tr>
+            ) : (
+              activityLogs.map(log => (
+                <tr key={log.id} className="bg-background/50">
+                  <td className="px-4 py-3 font-medium text-foreground">{log.action}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{log.target}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{actorLabel(log)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {log.timestamp.toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 
   const renderAccounts = () => (
@@ -778,6 +854,7 @@ export function AdminDashboard() {
           {section === "accounts" && renderAccounts()}
           {section === "sub-admins" && isAdmin && renderSubAdmins()}
           {section === "packages" && isAdmin && renderPackages()}
+          {section === "activity-logs" && renderActivityLogs()}
         </main>
       </div>
 
