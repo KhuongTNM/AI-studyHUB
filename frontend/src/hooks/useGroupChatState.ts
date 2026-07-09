@@ -140,7 +140,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return hydratedGroups
     } catch (error) {
       const message = getErrorMessage(error, "Could not load groups.")
-      console.error("[GroupChat] Failed to load groups", error)
+      console.warn("[GroupChat] Failed to load groups", error)
       setGroups([])
       setActiveGroupId(null)
       setGroupLoadError(message)
@@ -184,7 +184,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       .catch(error => {
         if (!cancelled) {
           const message = getErrorMessage(error, "Could not load groups.")
-          console.error("[GroupChat] Failed to load groups", error)
+          console.warn("[GroupChat] Failed to load groups", error)
           setGroups([])
           setActiveGroupId(null)
           setGroupLoadError(message)
