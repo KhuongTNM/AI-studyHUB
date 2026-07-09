@@ -142,9 +142,12 @@ export interface AppState {
   // ── Group chats ───────────────────────────────────────────────────────────
   groups: GroupChat[]
   activeGroupId: string | null
+  groupsLoading: boolean
+  groupLoadError: string | null
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
+  loadGroups: () => Promise<{ success: boolean; error?: string }>
   createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
@@ -367,9 +370,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Group chats
         groups: groupChat.groups,
         activeGroupId: groupChat.activeGroupId,
+        groupsLoading: groupChat.groupsLoading,
+        groupLoadError: groupChat.groupLoadError,
         groupCreateLimit: groupChat.groupCreateLimit,
         groupJoinLimit: groupChat.groupJoinLimit,
         setActiveGroupId: groupChat.setActiveGroupId,
+        loadGroups: groupChat.loadGroups,
         createGroup: groupChat.createGroup,
         joinGroup: groupChat.joinGroup,
         leaveGroup: groupChat.leaveGroup,

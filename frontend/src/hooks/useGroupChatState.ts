@@ -86,6 +86,8 @@ function withCurrentSender(message: GroupChatMessage, user: User): GroupChatMess
 export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [groupLoadError, setGroupLoadError] = useState<string | null>(null)
 
   const ruleTier = useMemo(() => getRuleTier(currentUser), [currentUser])
   const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
@@ -93,8 +95,14 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
 
   const hydrateGroup = useCallback(async (group: GroupChat): Promise<GroupChat> => {
     const [members, settings] = await Promise.all([
-      fetchGroupMembersApi(group.id).catch(() => group.members),
-      fetchGroupSettingsApi(group.id).catch(() => ({ muted: false, pinned: false })),
+      fetchGroupMembersApi(group.id).catch(error => {
+        console.warn("[GroupChat] Failed to load group members", { groupId: group.id, error })
+        return group.members
+      }),
+      fetchGroupSettingsApi(group.id).catch(error => {
+        console.warn("[GroupChat] Failed to load group settings", { groupId: group.id, error })
+        return { muted: false, pinned: false }
+      }),
     ])
 
     return mergeOwnerName({
@@ -109,32 +117,60 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     if (!currentUser) {
       setGroups([])
       setActiveGroupId(null)
+      setGroupLoadError(null)
       return []
     }
 
-    const apiGroups = await fetchGroupsApi()
-    const hydratedGroups = await Promise.all(apiGroups.map(group => hydrateGroup(group)))
-    setGroups(hydratedGroups)
+    setGroupsLoading(true)
+    setGroupLoadError(null)
 
-    const preferred =
-      (preferredGroupId && hydratedGroups.find(group => group.id === preferredGroupId)) ||
-      (preferredGroupCode && hydratedGroups.find(group => group.groupCode.toUpperCase() === preferredGroupCode.toUpperCase())) ||
-      hydratedGroups.find(group => group.id === activeGroupId) ||
-      hydratedGroups[0] ||
-      null
+    try {
+      const apiGroups = await fetchGroupsApi()
+      const hydratedGroups = await Promise.all(apiGroups.map(group => hydrateGroup(group)))
+      setGroups(hydratedGroups)
 
-    setActiveGroupId(preferred?.id ?? null)
-    return hydratedGroups
+      const preferred =
+        (preferredGroupId && hydratedGroups.find(group => group.id === preferredGroupId)) ||
+        (preferredGroupCode && hydratedGroups.find(group => group.groupCode.toUpperCase() === preferredGroupCode.toUpperCase())) ||
+        hydratedGroups.find(group => group.id === activeGroupId) ||
+        hydratedGroups[0] ||
+        null
+
+      setActiveGroupId(preferred?.id ?? null)
+      return hydratedGroups
+    } catch (error) {
+      const message = getErrorMessage(error, "Could not load groups.")
+      console.error("[GroupChat] Failed to load groups", error)
+      setGroups([])
+      setActiveGroupId(null)
+      setGroupLoadError(message)
+      throw error
+    } finally {
+      setGroupsLoading(false)
+    }
   }, [activeGroupId, currentUser, hydrateGroup])
+
+  const loadGroups = useCallback(async (): Promise<ActionResult> => {
+    try {
+      await reloadGroups(null, null)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not load groups.") }
+    }
+  }, [reloadGroups])
 
   useEffect(() => {
     if (!currentUser) {
       setGroups([])
       setActiveGroupId(null)
+      setGroupLoadError(null)
       return
     }
 
     let cancelled = false
+    setGroupsLoading(true)
+    setGroupLoadError(null)
+
     fetchGroupsApi()
       .then(apiGroups => Promise.all(apiGroups.map(group => hydrateGroup(group))))
       .then(hydratedGroups => {
@@ -145,11 +181,17 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
           return hydratedGroups[0]?.id ?? null
         })
       })
-      .catch(() => {
+      .catch(error => {
         if (!cancelled) {
+          const message = getErrorMessage(error, "Could not load groups.")
+          console.error("[GroupChat] Failed to load groups", error)
           setGroups([])
           setActiveGroupId(null)
+          setGroupLoadError(message)
         }
+      })
+      .finally(() => {
+        if (!cancelled) setGroupsLoading(false)
       })
 
     return () => {
@@ -311,9 +353,12 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   return {
     groups,
     activeGroupId,
+    groupsLoading,
+    groupLoadError,
     groupCreateLimit,
     groupJoinLimit,
     setActiveGroupId,
+    loadGroups,
     createGroup,
     joinGroup,
     leaveGroup,
