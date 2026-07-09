@@ -124,6 +124,13 @@ Create this file if it does not exist, then set the backend API URL:
 NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
+Optional upload modal limits can also be configured here. If omitted, the frontend defaults to 5 files per batch and 50 MB per file:
+
+```text
+NEXT_PUBLIC_MAX_UPLOAD_FILE_SIZE_MB=50
+NEXT_PUBLIC_MAX_UPLOAD_FILES_COUNT=5
+```
+
 ### AI Service Side (Python / FastAPI)
 
 ```text
