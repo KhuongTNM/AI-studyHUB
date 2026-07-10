@@ -193,14 +193,15 @@ CREATE TABLE ai.document_chunks (
 -- ============================================================
 
 CREATE TABLE group_chat.groups (
-  id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  group_code    VARCHAR(32)  UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  name          VARCHAR(120) NOT NULL,
-  description   VARCHAR(500),
-  owner_id      UUID         NOT NULL,
-  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_code         VARCHAR(32)  UNIQUE NOT NULL,
+  password_hash      VARCHAR(255) NOT NULL,
+  password_encrypted TEXT,
+  name               VARCHAR(120) NOT NULL,
+  description        VARCHAR(500),
+  owner_id           UUID         NOT NULL,
+  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE group_chat.group_members (

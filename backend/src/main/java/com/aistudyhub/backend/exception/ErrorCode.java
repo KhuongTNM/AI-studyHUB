@@ -25,6 +25,9 @@ public enum ErrorCode {
     GROUP_FULL(HttpStatus.BAD_REQUEST, "GROUP_FULL"),
     GROUP_OWNER_REQUIRED(HttpStatus.FORBIDDEN, "GROUP_OWNER_REQUIRED"),
     GROUP_OWNER_CANNOT_LEAVE(HttpStatus.BAD_REQUEST, "GROUP_OWNER_CANNOT_LEAVE"),
+    // Nhóm được tạo trước khi tính năng "xem lại mật khẩu" ra mắt, chưa có
+    // dữ liệu password_encrypted -> trả lỗi rõ ràng thay vì NullPointerException.
+    GROUP_PASSWORD_NOT_AVAILABLE(HttpStatus.CONFLICT, "GROUP_PASSWORD_NOT_AVAILABLE"),
 
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND"),
     DOCUMENT_NOT_PUBLIC(HttpStatus.FORBIDDEN, "DOCUMENT_NOT_PUBLIC"),

@@ -8,6 +8,7 @@ import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.repository.*;
+import com.aistudyhub.backend.util.AesEncryptionUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class GroupService {
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AesEncryptionUtil aesEncryptionUtil;
 
     // ==========================================
     // 1. UTILITY & SECURITY GUARDS
@@ -134,6 +136,7 @@ public class GroupService {
         Group g = new Group();
         g.setGroupCode(code);
         g.setPasswordHash(passwordEncoder.encode(req.getPassword().trim()));
+        g.setPasswordEncrypted(aesEncryptionUtil.encrypt(req.getPassword().trim()));
         g.setName(req.getName().trim());
         g.setDescription(req.getDescription());
         g.setOwnerId(userId);
@@ -328,5 +331,29 @@ public class GroupService {
                     .joinedAt(member.getJoinedAt())
                     .build();
         }).toList();
+    }
+
+    /**
+     * Trả về mật khẩu (dạng plaintext, giải mã từ passwordEncrypted) của nhóm -
+     * CHỈ dành cho OWNER. Fail-fast: check userId -> check group tồn tại ->
+     * check quyền owner -> check dữ liệu mã hoá đã tồn tại, chặn đứng ngay
+     * khi phát hiện lỗi, không xử lý gì thêm.
+     */
+    @Transactional(readOnly = true)
+    public String getGroupPassword(UUID groupId, UUID userId) {
+        requireUserId(userId);
+
+        Group g = groupRepository.findById(groupId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+        if (!g.getOwnerId().equals(userId)) {
+            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
+        }
+
+        if (g.getPasswordEncrypted() == null) {
+            throw new BusinessException(ErrorCode.GROUP_PASSWORD_NOT_AVAILABLE);
+        }
+
+        return aesEncryptionUtil.decrypt(g.getPasswordEncrypted());
     }
 }
