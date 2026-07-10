@@ -119,4 +119,13 @@ public class GroupController {
         groupService.deleteGroup(groupId, req, userId);
         return ResponseEntity.noContent().build();
     }
+
+    // 11. Xem mật khẩu nhóm (chỉ Owner mới có quyền)
+    @GetMapping("/{groupId}/password")
+    public ResponseEntity<String> getGroupPassword(
+            @PathVariable UUID groupId,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
+        return ResponseEntity.ok(groupService.getGroupPassword(groupId, userId));
+    }
 }
