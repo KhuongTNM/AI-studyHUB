@@ -196,7 +196,6 @@ CREATE TABLE group_chat.groups (
   id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   group_code         VARCHAR(32)  UNIQUE NOT NULL,
   password_hash      VARCHAR(255) NOT NULL,
-  password_encrypted TEXT,
   name               VARCHAR(120) NOT NULL,
   description        VARCHAR(500),
   owner_id           UUID         NOT NULL,

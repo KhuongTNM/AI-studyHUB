@@ -8,9 +8,7 @@ import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.repository.*;
-import com.aistudyhub.backend.util.AesEncryptionUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +29,6 @@ public class GroupService {
     private final GroupMessageRepository groupMessageRepository;
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final AesEncryptionUtil aesEncryptionUtil;
 
     // ==========================================
     // 1. UTILITY & SECURITY GUARDS
@@ -67,13 +63,6 @@ public class GroupService {
                 .orElse(SubscriptionPlan.FREE_PLAN_NAME);
     }
 
-    /**
-     * Guard clause dùng chung: chặn userId null ngay từ đầu mọi hàm public,
-     * tránh để lọt xuống các Repository.findById/exists... gây
-     * IllegalArgumentException (500). Ném UNAUTHENTICATED (401) vì đây là
-     * trường hợp "chưa xác thực", khác với GROUP_ACCESS_DENIED (403, đã xác
-     * thực nhưng không phải thành viên/không đủ quyền).
-     */
     private void requireUserId(UUID userId) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
@@ -135,8 +124,8 @@ public class GroupService {
 
         Group g = new Group();
         g.setGroupCode(code);
-        g.setPasswordHash(passwordEncoder.encode(req.getPassword().trim()));
-        g.setPasswordEncrypted(aesEncryptionUtil.encrypt(req.getPassword().trim()));
+        // Lưu plaintext trực tiếp - mật khẩu nhóm là join code, không cần hash.
+        g.setPasswordHash(req.getPassword().trim());
         g.setName(req.getName().trim());
         g.setDescription(req.getDescription());
         g.setOwnerId(userId);
@@ -164,22 +153,18 @@ public class GroupService {
         if (groupMemberRepository.existsByIdGroupIdAndIdUserId(g.getId(), userId)) {
             throw new BusinessException(ErrorCode.GROUP_ALREADY_JOINED);
         }
-        if (!passwordEncoder.matches(req.getPassword().trim(), g.getPasswordHash())) {
+        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
+        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
             throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         User owner = userRepository.findById(g.getOwnerId()).orElseThrow();
         Limits ownerLim = limits(owner);
-        // Nhóm không có cột maxCapacity riêng, sức chứa tối đa được tính theo plan của OWNER.
-        // -> Đây là số THÀNH VIÊN trong 1 NHÓM, dùng countByIdGroupId.
         if (groupMemberRepository.countByIdGroupId(g.getId()) >= ownerLim.maxCapacity()) {
             throw new BusinessException(ErrorCode.GROUP_FULL);
         }
 
         Limits userLim = limits(userRepository.findById(userId).orElseThrow());
-        // Đây là tổng số NHÓM mà USER đang tham gia, KHÁC với check ở trên.
-        // Dùng countGroupsJoinedByUser thay vì countByIdUserId để tránh nhầm lẫn
-        // giữa "đếm theo nhóm" và "đếm theo user" khi đọc lướt 2 dòng check liền kề nhau.
         if (groupMemberRepository.countGroupsJoinedByUser(userId) >= userLim.maxJoined()) {
             throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
         }
@@ -202,7 +187,8 @@ public class GroupService {
         if (!g.getOwnerId().equals(userId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
-        if (!passwordEncoder.matches(req.getPassword().trim(), g.getPasswordHash())) {
+        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
+        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
             throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
@@ -223,7 +209,6 @@ public class GroupService {
         GroupMember member = getMembership(groupId, userId);
         groupMemberRepository.delete(member);
 
-        // Map nguyên object Group g vào tin nhắn thay vì UUID
         GroupMessage sys = new GroupMessage();
         sys.setGroup(g);
         sys.setSenderId(null);
@@ -311,8 +296,6 @@ public class GroupService {
             return List.of();
         }
 
-        // GroupMember chỉ giữ userId (qua GroupMemberId), không có quan hệ tới User,
-        // nên phải batch-load User theo danh sách userId để lấy displayName.
         List<UUID> userIds = members.stream()
                 .map(member -> member.getId().getUserId())
                 .toList();
@@ -334,10 +317,8 @@ public class GroupService {
     }
 
     /**
-     * Trả về mật khẩu (dạng plaintext, giải mã từ passwordEncrypted) của nhóm -
-     * CHỈ dành cho OWNER. Fail-fast: check userId -> check group tồn tại ->
-     * check quyền owner -> check dữ liệu mã hoá đã tồn tại, chặn đứng ngay
-     * khi phát hiện lỗi, không xử lý gì thêm.
+     * Trả về mật khẩu nhóm (plaintext) - CHỈ dành cho OWNER.
+     * Fail-fast: check userId -> check group tồn tại -> check quyền owner.
      */
     @Transactional(readOnly = true)
     public String getGroupPassword(UUID groupId, UUID userId) {
@@ -350,10 +331,6 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
 
-        if (g.getPasswordEncrypted() == null) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_NOT_AVAILABLE);
-        }
-
-        return aesEncryptionUtil.decrypt(g.getPasswordEncrypted());
+        return g.getPasswordHash();
     }
 }

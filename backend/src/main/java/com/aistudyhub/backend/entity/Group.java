@@ -24,9 +24,6 @@ public class Group {
     @Column(name = "password_hash", length = 255, nullable = false)
     private String passwordHash;
 
-    @Column(name = "password_encrypted", columnDefinition = "TEXT", nullable = true)
-    private String passwordEncrypted;
-
     @Column(name = "name", length = 120, nullable = false)
     private String name;
 
