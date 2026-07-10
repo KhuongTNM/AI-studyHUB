@@ -142,9 +142,12 @@ export interface AppState {
   // ── Group chats ───────────────────────────────────────────────────────────
   groups: GroupChat[]
   activeGroupId: string | null
+  groupsLoading: boolean
+  groupLoadError: string | null
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
+  loadGroups: () => Promise<{ success: boolean; error?: string }>
   createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
@@ -189,6 +192,9 @@ export interface AppState {
   // ── Admin ─────────────────────────────────────────────────────────────────
   users: User[]
   activityLogs: ActivityLog[]
+  activityLogsLoading: boolean
+  activityLogsError: string | null
+  loadActivityLogs: () => Promise<{ success: boolean; error?: string }>
   updateUser: (id: string, updates: Partial<User>) => void
   updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
   toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
@@ -212,7 +218,6 @@ const AppContext = createContext<AppState | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
   // ── 1. Leaf hooks với không có deps ────────────────────────────────────
-  const logs = useActivityLogs()
   const ui = useUIState()
   const [pendingChatDocumentId, setPendingChatDocumentId] = useState<string | null>(null)
 
@@ -231,6 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeAuthModal: ui.closeAuthModal,
     onAuthenticated: routeAfterAuthentication,
   })
+  const logs = useActivityLogs(auth.currentUser)
 
   // ── 3. Documents (cần currentUser để load và upload) ────────────────────
   const docs = useDocumentState({
@@ -367,9 +373,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Group chats
         groups: groupChat.groups,
         activeGroupId: groupChat.activeGroupId,
+        groupsLoading: groupChat.groupsLoading,
+        groupLoadError: groupChat.groupLoadError,
         groupCreateLimit: groupChat.groupCreateLimit,
         groupJoinLimit: groupChat.groupJoinLimit,
         setActiveGroupId: groupChat.setActiveGroupId,
+        loadGroups: groupChat.loadGroups,
         createGroup: groupChat.createGroup,
         joinGroup: groupChat.joinGroup,
         leaveGroup: groupChat.leaveGroup,
@@ -399,6 +408,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Admin
         users: admin.users,
         activityLogs: logs.activityLogs,
+        activityLogsLoading: logs.activityLogsLoading,
+        activityLogsError: logs.activityLogsError,
+        loadActivityLogs: logs.loadActivityLogs,
         updateUser: admin.updateUser,
         updateUserStorageLimit: admin.updateUserStorageLimit,
         toggleUserLock: admin.toggleUserLock,

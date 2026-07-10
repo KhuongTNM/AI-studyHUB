@@ -16,7 +16,7 @@ interface SidebarProps {
 }
 
 type NavPage = "home" | "documents" | "chat" | "groups" | "cloud" | "profile" | "admin" | "trash" | "flashcards"
-type AdminSection = "overview" | "accounts" | "sub-admins" | "packages"
+type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs"
 
 const navItems: { page: NavPage; icon: React.ElementType; label: { vi: string; en: string }; adminOnly?: boolean }[] = [
   { page: "home", icon: Home, label: { vi: "Trang chủ", en: "Home" } },
@@ -33,12 +33,13 @@ const adminNavItems: { section: AdminSection; icon: React.ElementType; label: { 
   { section: "accounts", icon: Users, label: { vi: "Tài khoản", en: "Accounts" } },
   { section: "sub-admins", icon: ShieldCheck, label: { vi: "Sub-admin", en: "Sub-admins" }, adminOnly: true },
   { section: "packages", icon: Sparkles, label: { vi: "Gói dịch vụ", en: "Packages" }, adminOnly: true },
+  { section: "activity-logs", icon: Clock, label: { vi: "Nhật ký hoạt động", en: "Activity logs" } },
 ]
 
 const getInitialAdminSection = (): AdminSection => {
   if (typeof window === "undefined") return "overview"
   const stored = window.sessionStorage.getItem("admin-section")
-  return ["overview", "accounts", "sub-admins", "packages"].includes(stored ?? "")
+  return ["overview", "accounts", "sub-admins", "packages", "activity-logs"].includes(stored ?? "")
     ? stored as AdminSection
     : "overview"
 }

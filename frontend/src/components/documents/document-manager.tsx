@@ -32,7 +32,7 @@ export function DocumentManager() {
   const {
     documents, categories, deleteDocument,
     uploadDocument, downloadDocument, changeDocumentVisibility,
-    currentUser, setCurrentPage, generateFlashcardsFromDocument, language,
+    currentUser, setCurrentPage, setFlashcardSelectedDocumentId, language,
     folders, createFolder, renameFolder, deleteFolder,
     moveFolder, moveDocumentToFolder, openChatWithDocument,
   } = useApp()
@@ -653,7 +653,11 @@ const handleSelectSubject = useCallback((subject: string) => {
                     onToggleVisibility={handleToggleVisibility}
                     onChat={() => openChatWithDocument(doc.id)}
                     onGenerateFlashcards={document => {
-                      generateFlashcardsFromDocument(document.id)
+                      // Chỉ chọn tài liệu và điều hướng sang trang Flashcard.
+                      // KHÔNG tự động gọi AI sinh flashcard ở đây — việc sinh
+                      // flashcard bằng AI chỉ nên xảy ra khi user bấm nút
+                      // "Tạo flashcard bằng AI" ngay trong trang Flashcard.
+                      setFlashcardSelectedDocumentId(document.id)
                       setCurrentPage("flashcards")
                     }}
                     categories={categories}
@@ -689,7 +693,7 @@ const handleSelectSubject = useCallback((subject: string) => {
           onDeleteFile={doc => deleteDocument(doc.id)}
           onChatFile={doc => openChatWithDocument(doc.id)}
           onFlashcardsFile={doc => {
-            generateFlashcardsFromDocument(doc.id)
+            setFlashcardSelectedDocumentId(doc.id)
             setCurrentPage("flashcards")
           }}
           onToggleVisibility={doc => handleToggleVisibility(doc.id, !doc.isPublic)}

@@ -4,6 +4,7 @@ import com.aistudyhub.backend.dto.GroupMemberResponse;
 import com.aistudyhub.backend.dto.GroupResponse;
 import com.aistudyhub.backend.dto.GroupSettingsResponse;
 import com.aistudyhub.backend.dto.request.*;
+import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.service.GroupService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,8 @@ public class GroupController {
     @PostMapping
     public ResponseEntity<GroupResponse> createGroup(
             @Valid @RequestBody CreateGroupRequest req,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return new ResponseEntity<>(groupService.createGroup(req, userId), HttpStatus.CREATED);
     }
 
@@ -34,14 +36,17 @@ public class GroupController {
     @PostMapping("/join")
     public ResponseEntity<Void> joinGroup(
             @Valid @RequestBody JoinGroupRequest req,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         groupService.joinGroup(req, userId);
         return ResponseEntity.ok().build();
     }
 
     // 3. Danh sách nhóm đang tham gia
     @GetMapping
-    public ResponseEntity<List<GroupResponse>> listMyGroups(@AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<List<GroupResponse>> listMyGroups(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.listMyGroups(userId));
     }
 
@@ -49,7 +54,8 @@ public class GroupController {
     @GetMapping("/{groupId}")
     public ResponseEntity<GroupResponse> getGroupDetail(
             @PathVariable UUID groupId,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.getGroupDetail(groupId, userId));
     }
 
@@ -57,7 +63,8 @@ public class GroupController {
     @GetMapping("/{groupId}/members")
     public ResponseEntity<List<GroupMemberResponse>> getMembers(
             @PathVariable UUID groupId,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         // Lưu ý: Service định nghĩa getMembers(userId, groupId) - trước đây bị
         // truyền ngược (groupId, userId) khiến 2 giá trị bị hoán đổi khi xuống Service.
         return ResponseEntity.ok(groupService.getMembers(userId, groupId));
@@ -67,7 +74,8 @@ public class GroupController {
     @GetMapping("/{groupId}/settings")
     public ResponseEntity<GroupSettingsResponse> getSettings(
             @PathVariable UUID groupId,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.getSettings(userId, groupId));
     }
 
@@ -76,7 +84,8 @@ public class GroupController {
     public ResponseEntity<GroupSettingsResponse> updateMute(
             @PathVariable UUID groupId,
             @Valid @RequestBody MuteGroupRequest req,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.updateMute(userId, groupId, req));
     }
 
@@ -85,7 +94,8 @@ public class GroupController {
     public ResponseEntity<GroupSettingsResponse> updatePin(
             @PathVariable UUID groupId,
             @Valid @RequestBody PinGroupRequest req,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.updatePin(userId, groupId, req));
     }
 
@@ -93,7 +103,8 @@ public class GroupController {
     @DeleteMapping("/{groupId}/members/me")
     public ResponseEntity<Void> leaveGroup(
             @PathVariable UUID groupId,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         groupService.leaveGroup(groupId, userId);
         return ResponseEntity.noContent().build();
     }
@@ -103,7 +114,8 @@ public class GroupController {
     public ResponseEntity<Void> deleteGroup(
             @PathVariable UUID groupId,
             @Valid @RequestBody DeleteGroupRequest req,
-            @AuthenticationPrincipal UUID userId) {
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
         groupService.deleteGroup(groupId, req, userId);
         return ResponseEntity.noContent().build();
     }
