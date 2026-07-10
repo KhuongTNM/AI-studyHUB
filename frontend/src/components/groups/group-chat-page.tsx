@@ -12,8 +12,8 @@ import { useApp, type Document, type GroupChat, type GroupChatMessage } from "@/
 export function GroupChatPage() {
   const {
     currentUser, openAuthModal, language, documents,
-    groups, activeGroupId, groupCreateLimit, groupJoinLimit,
-    setActiveGroupId, createGroup, joinGroup, leaveGroup, deleteGroup,
+    groups, activeGroupId, groupsLoading, groupLoadError, groupCreateLimit, groupJoinLimit,
+    setActiveGroupId, loadGroups, createGroup, joinGroup, leaveGroup, deleteGroup,
     updateGroupMuted, updateGroupPinned,
     sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
     exportGroupChat, reportGroup, generateGroupCode,
@@ -303,13 +303,31 @@ export function GroupChatPage() {
             {text.joinGroup}
           </Button>
           <p className="mt-2 text-[11px] text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
+          {groupLoadError && (
+            <div className="mt-3 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-xs text-destructive">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1">{groupLoadError}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-8 w-full"
+                onClick={() => void loadGroups()}
+                disabled={groupsLoading}
+              >
+                {text.retry}
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
           {filteredGroups.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
               <MessageCircle className="mx-auto mb-2 h-8 w-8" />
-              {text.noGroups}
+              {groupsLoading ? text.loadingGroups : groupLoadError ? text.loadFailed : text.noGroups}
             </div>
           ) : (
             filteredGroups.map(group => (
@@ -454,7 +472,14 @@ export function GroupChatPage() {
             <div className="max-w-md text-center">
               <Users className="mx-auto mb-3 h-12 w-12 text-primary" />
               <h2 className="text-xl font-semibold text-foreground">{text.emptyTitle}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{text.emptyBody}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {groupsLoading ? text.loadingGroups : groupLoadError ? text.loadFailed : text.emptyBody}
+              </p>
+              {groupLoadError && (
+                <Button variant="outline" className="mt-4" onClick={() => void loadGroups()} disabled={groupsLoading}>
+                  {text.retry}
+                </Button>
+              )}
               <Button className="mt-5" disabled={groupCreateLimit <= 0 || joinedGroupCount >= groupJoinLimit} onClick={() => setShowCreate(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 {text.newGroup}
@@ -954,6 +979,9 @@ const groupText = {
     sharedImage: "Ảnh đã chia sẻ",
     imageMockNote: "Ảnh đã được gửi qua API nhóm. Bản xem trước chỉ hiển thị khi backend trả URL công khai.",
     noGroups: "Chưa có nhóm nào",
+    loadingGroups: "Đang tải nhóm...",
+    loadFailed: "Không thể tải danh sách nhóm.",
+    retry: "Thử lại",
     loginTitle: "Đăng nhập để dùng chat nhóm",
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
     login: "Đăng nhập",
@@ -1042,6 +1070,9 @@ const groupText = {
     sharedImage: "Shared image",
     imageMockNote: "Image was sent through the group API. Preview appears only when backend returns a public URL.",
     noGroups: "No groups yet",
+    loadingGroups: "Loading groups...",
+    loadFailed: "Could not load groups.",
+    retry: "Retry",
     loginTitle: "Log in to use group chat",
     loginBody: "Group chat lets students discuss together and share public study documents.",
     login: "Log in",

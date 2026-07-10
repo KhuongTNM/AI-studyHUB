@@ -55,16 +55,28 @@ export interface ApiGroupSettings {
 
 interface ErrorBody {
   message?: string
+  error?: string
+  code?: string
 }
 
 async function parseError(response: Response): Promise<string> {
+  let backendMessage = ""
+
   try {
     const body = (await response.json()) as ErrorBody
-    if (body.message) return body.message
+    backendMessage = body.message || body.error || body.code || ""
   } catch {
     // ignore
   }
-  return "Đã xảy ra lỗi. Vui lòng thử lại."
+
+  const normalized = backendMessage.trim().toUpperCase()
+  if (response.status === 401 || normalized === "UNAUTHENTICATED") {
+    return "Group API rejected this session. Please refresh or log in again. If other modules still work, backend group authentication needs checking."
+  }
+
+  if (backendMessage) return backendMessage
+
+  return `Không thể gọi Group API (HTTP ${response.status}). Vui lòng thử lại.`
 }
 
 function authHeaders(): HeadersInit {
