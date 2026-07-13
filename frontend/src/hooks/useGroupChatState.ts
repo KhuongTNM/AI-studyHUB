@@ -7,6 +7,7 @@ import {
   deleteGroupApi,
   downloadGroupDocumentApi,
   exportGroupChatApi,
+  fetchGroupPasswordApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
@@ -25,6 +26,7 @@ interface GroupChatStateDeps {
 }
 
 type ActionResult = { success: boolean; error?: string }
+type GroupPasswordResult = ActionResult & { password?: string }
 
 const GROUP_CREATE_LIMIT_BY_TIER: Record<PackageTier, number> = {
   free: 0,
@@ -63,6 +65,12 @@ function makeGroupCode() {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+function getHttpStatus(error: unknown) {
+  if (!error || typeof error !== "object") return undefined
+  const status = (error as { status?: unknown }).status
+  return typeof status === "number" ? status : undefined
 }
 
 function mergeOwnerName(group: GroupChat): GroupChat {
@@ -258,6 +266,21 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, reloadGroups])
 
+  const getGroupPassword = useCallback(async (groupId: string): Promise<GroupPasswordResult> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    try {
+      const password = await fetchGroupPasswordApi(groupId)
+      return { success: true, password }
+    } catch (error) {
+      const status = getHttpStatus(error)
+      if (status === 401) return { success: false, error: "UNAUTHENTICATED" }
+      if (status === 403) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+      if (status === 404) return { success: false, error: "GROUP_NOT_FOUND" }
+      return { success: false, error: getErrorMessage(error, "GROUP_PASSWORD_NOT_AVAILABLE") }
+    }
+  }, [currentUser])
+
   const updateGroupMuted = useCallback(async (groupId: string, muted: boolean): Promise<ActionResult> => {
     try {
       const settings = await updateGroupMuteApi(groupId, muted)
@@ -363,6 +386,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     joinGroup,
     leaveGroup,
     deleteGroup,
+    getGroupPassword,
     updateGroupMuted,
     updateGroupPinned,
     sendGroupMessage,

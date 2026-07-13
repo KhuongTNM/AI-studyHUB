@@ -1,8 +1,8 @@
 "use client"
 
-import { useMemo, useRef, useState, useEffect } from "react"
+import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
 import {
-  AlertCircle, Download, FileText, Image, Info, LogOut, MessageCircle,
+  AlertCircle, Download, Eye, EyeOff, FileText, Image, Info, LogOut, MessageCircle,
   MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ export function GroupChatPage() {
   const {
     currentUser, openAuthModal, language, documents,
     groups, activeGroupId, groupsLoading, groupLoadError, groupCreateLimit, groupJoinLimit,
-    setActiveGroupId, loadGroups, createGroup, joinGroup, leaveGroup, deleteGroup,
+    setActiveGroupId, loadGroups, createGroup, joinGroup, leaveGroup, deleteGroup, getGroupPassword,
     updateGroupMuted, updateGroupPinned,
     sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
     exportGroupChat, reportGroup, generateGroupCode,
@@ -39,6 +39,10 @@ export function GroupChatPage() {
   const [mockNotice, setMockNotice] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletePassword, setDeletePassword] = useState("")
+  const [groupPassword, setGroupPassword] = useState("")
+  const [groupPasswordVisible, setGroupPasswordVisible] = useState(false)
+  const [groupPasswordBusy, setGroupPasswordBusy] = useState(false)
+  const [groupPasswordError, setGroupPasswordError] = useState("")
   const [groupActionBusy, setGroupActionBusy] = useState(false)
   const [reportReason, setReportReason] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
@@ -46,6 +50,7 @@ export function GroupChatPage() {
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const activeGroup = groups.find(group => group.id === activeGroupId) ?? groups[0] ?? null
+  const isActiveGroupOwner = Boolean(activeGroup && currentUser && activeGroup.ownerId === currentUser.id)
   const ownedGroupCount = currentUser ? groups.filter(group => group.ownerId === currentUser.id).length : 0
   const joinedGroupCount = currentUser ? groups.filter(group => group.members.some(member => member.userId === currentUser.id)).length : 0
   const readyDocuments = documents.filter(document => document.status === "ready")
@@ -67,6 +72,13 @@ export function GroupChatPage() {
   useEffect(() => {
     if (!activeGroupId && activeGroup) setActiveGroupId(activeGroup.id)
   }, [activeGroup, activeGroupId, setActiveGroupId])
+
+  useEffect(() => {
+    setGroupPassword("")
+    setGroupPasswordVisible(false)
+    setGroupPasswordBusy(false)
+    setGroupPasswordError("")
+  }, [activeGroup?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -132,6 +144,53 @@ export function GroupChatPage() {
     setError("")
     setDeletePassword("")
     setShowDeleteConfirm(false)
+  }
+
+  const getGroupPasswordErrorText = (error?: string) => {
+    switch (error) {
+      case "GROUP_OWNER_REQUIRED":
+        return text.passwordOwnerOnly
+      case "GROUP_NOT_FOUND":
+        return text.groupNotFound
+      case "UNAUTHENTICATED":
+        return text.sessionExpired
+      case "GROUP_PASSWORD_NOT_AVAILABLE":
+        return text.passwordFetchFailed
+      default:
+        return error || text.passwordFetchFailed
+    }
+  }
+
+  const handleToggleGroupPassword = async () => {
+    if (!activeGroup || !isActiveGroupOwner) return
+
+    setGroupPasswordError("")
+    if (groupPasswordVisible) {
+      setGroupPasswordVisible(false)
+      return
+    }
+    if (groupPassword) {
+      setGroupPasswordVisible(true)
+      return
+    }
+
+    setGroupPasswordBusy(true)
+    const result = await getGroupPassword(activeGroup.id)
+    setGroupPasswordBusy(false)
+    if (!result.success || !result.password) {
+      setGroupPasswordError(getGroupPasswordErrorText(result.error))
+      return
+    }
+
+    setGroupPassword(result.password)
+    setGroupPasswordVisible(true)
+  }
+
+  const closeGroupInfo = () => {
+    setShowInfo(false)
+    setGroupPassword("")
+    setGroupPasswordVisible(false)
+    setGroupPasswordError("")
   }
 
   const showMockNotice = (notice: string) => {
@@ -563,14 +622,40 @@ export function GroupChatPage() {
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">{text.groupInfo}</h2>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowInfo(false)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeGroupInfo}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
             <div className="space-y-3 text-sm">
               <InfoRow label={text.groupName} value={activeGroup.name} />
               <InfoRow label={text.groupId} value={activeGroup.groupCode} />
-              <InfoRow label={text.password} value={text.passwordProtected} />
+              <InfoRow
+                label={text.password}
+                value={
+                  isActiveGroupOwner ? (
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 break-all font-mono">
+                          {groupPasswordVisible && groupPassword ? groupPassword : "••••••••"}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={handleToggleGroupPassword}
+                          disabled={groupPasswordBusy}
+                          title={groupPasswordVisible ? text.hidePassword : text.showPassword}
+                          aria-label={groupPasswordVisible ? text.hidePassword : text.showPassword}
+                        >
+                          {groupPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      {groupPasswordError && <p className="mt-1 text-xs text-destructive">{groupPasswordError}</p>}
+                    </div>
+                  ) : text.passwordProtected
+                }
+              />
               <InfoRow label={text.owner} value={activeGroup.ownerName} />
               <InfoRow label={text.memberCount} value={`${activeGroup.members.length}/${activeGroup.maxMembers}`} />
               <InfoRow label={text.createdAt} value={activeGroup.createdAt.toLocaleString()} />
@@ -762,7 +847,7 @@ function GroupListItem({
   )
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="grid grid-cols-[130px_1fr] gap-3 rounded-lg border border-border bg-background px-3 py-2">
       <span className="text-muted-foreground">{label}</span>
@@ -935,7 +1020,13 @@ const groupText = {
     groupId: "Group ID",
     password: "Mật khẩu nhóm",
     passwordPlaceholder: "Nhập mật khẩu để bạn học tham gia",
-    passwordProtected: "Được bảo vệ bởi backend",
+    passwordProtected: "Chỉ chủ nhóm có thể xem",
+    showPassword: "Hiện mật khẩu nhóm",
+    hidePassword: "Ẩn mật khẩu nhóm",
+    passwordOwnerOnly: "Chỉ chủ nhóm mới có quyền xem mật khẩu nhóm.",
+    passwordFetchFailed: "Không thể lấy mật khẩu nhóm.",
+    groupNotFound: "Không tìm thấy nhóm.",
+    sessionExpired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
     regenerate: "Tạo lại",
     leaveGroup: "Rời nhóm",
     deleteGroup: "Xóa nhóm",
@@ -955,7 +1046,7 @@ const groupText = {
     groupInfo: "Thông tin nhóm",
     memberCount: "Số thành viên",
     createdAt: "Ngày tạo",
-    groupInfoBackendNote: "Mật khẩu nhóm không được hiển thị. Backend chỉ lưu password_hash và xác thực khi tham gia hoặc xóa nhóm.",
+    groupInfoBackendNote: "Mật khẩu chỉ được lấy khi chủ nhóm bấm hiện. Thành viên khác không thấy nút này.",
     groupOptions: "Tùy chọn nhóm",
     muteGroup: "Tắt thông báo nhóm",
     unmuteGroup: "Bật thông báo nhóm",
@@ -1026,7 +1117,13 @@ const groupText = {
     groupId: "Group ID",
     password: "Group password",
     passwordPlaceholder: "Enter the password classmates will use to join",
-    passwordProtected: "Protected by backend",
+    passwordProtected: "Only the group owner can view it",
+    showPassword: "Show group password",
+    hidePassword: "Hide group password",
+    passwordOwnerOnly: "Only the group owner can view this group password.",
+    passwordFetchFailed: "Could not retrieve the group password.",
+    groupNotFound: "Group not found.",
+    sessionExpired: "Your session has expired. Please log in again.",
     regenerate: "Regenerate",
     leaveGroup: "Leave group",
     deleteGroup: "Delete group",
@@ -1046,7 +1143,7 @@ const groupText = {
     groupInfo: "Group info",
     memberCount: "Member count",
     createdAt: "Created at",
-    groupInfoBackendNote: "The group password is never displayed. Backend stores only password_hash and verifies it for join/delete actions.",
+    groupInfoBackendNote: "The password is fetched only after the owner chooses to reveal it. Other members do not see this control.",
     groupOptions: "Group options",
     muteGroup: "Mute group notifications",
     unmuteGroup: "Unmute group notifications",
