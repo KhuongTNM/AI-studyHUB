@@ -152,6 +152,7 @@ export interface AppState {
   joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
   deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
+  getGroupPassword: (groupId: string) => Promise<{ success: boolean; password?: string; error?: string }>
   updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
   updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
   sendGroupMessage: (groupId: string, content: string) => Promise<{ success: boolean; error?: string }>
@@ -383,6 +384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         joinGroup: groupChat.joinGroup,
         leaveGroup: groupChat.leaveGroup,
         deleteGroup: groupChat.deleteGroup,
+        getGroupPassword: groupChat.getGroupPassword,
         updateGroupMuted: groupChat.updateGroupMuted,
         updateGroupPinned: groupChat.updateGroupPinned,
         sendGroupMessage: groupChat.sendGroupMessage,
