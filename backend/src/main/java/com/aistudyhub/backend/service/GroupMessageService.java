@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -94,6 +95,19 @@ public class GroupMessageService {
         // Save Message
         GroupMessage saved = groupMessageRepository.save(message);
         return toResponse(saved);
+    }
+
+    // Group Chat History Fetch Logic
+    @Transactional(readOnly = true)
+    public List<GroupMessageResponse> getGroupMessages(UUID groupId, UUID userId) {
+        // Membership Check - Fail-Fast
+        requireMembership(groupId, userId);
+
+        List<GroupMessage> messages = groupMessageRepository.findByGroup_IdOrderByCreatedAtAsc(groupId);
+
+        return messages.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
     // Membership Check
