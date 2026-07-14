@@ -8,6 +8,7 @@ import {
   downloadGroupDocumentApi,
   exportGroupChatApi,
   fetchGroupPasswordApi,
+  fetchGroupMessagesApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
@@ -91,6 +92,34 @@ function withCurrentSender(message: GroupChatMessage, user: User): GroupChatMess
   return message
 }
 
+function mergeGroupMessages(
+  group: GroupChat,
+  messages: GroupChatMessage[],
+  currentUser: User,
+): GroupChat {
+  const senderNames = new Map(group.members.map(member => [member.userId, member.displayName]))
+  const merged = new Map(group.messages.map(message => [message.id, message]))
+
+  for (const message of messages) {
+    const senderName = senderNames.get(message.senderId) ??
+      (message.senderId === currentUser.id ? currentUser.displayName : undefined)
+    merged.set(message.id, senderName ? { ...message, senderName } : message)
+  }
+
+  const orderedMessages = Array.from(merged.values()).sort(
+    (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
+  )
+  const latestMessage = orderedMessages[orderedMessages.length - 1]
+
+  return {
+    ...group,
+    messages: orderedMessages,
+    updatedAt: latestMessage && latestMessage.timestamp > group.updatedAt
+      ? latestMessage.timestamp
+      : group.updatedAt,
+  }
+}
+
 export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
@@ -102,7 +131,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const groupJoinLimit = GROUP_JOIN_LIMIT_BY_TIER[ruleTier]
 
   const hydrateGroup = useCallback(async (group: GroupChat): Promise<GroupChat> => {
-    const [members, settings] = await Promise.all([
+    const [members, settings, messages] = await Promise.all([
       fetchGroupMembersApi(group.id).catch(error => {
         console.warn("[GroupChat] Failed to load group members", { groupId: group.id, error })
         return group.members
@@ -111,15 +140,19 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
         console.warn("[GroupChat] Failed to load group settings", { groupId: group.id, error })
         return { muted: false, pinned: false }
       }),
+      fetchGroupMessagesApi(group.id).catch(error => {
+        console.warn("[GroupChat] Failed to load group messages", { groupId: group.id, error })
+        return group.messages
+      }),
     ])
 
-    return mergeOwnerName({
+    return mergeOwnerName(mergeGroupMessages({
       ...group,
       members,
       muted: settings.muted,
       pinned: settings.pinned,
-    })
-  }, [])
+    }, messages, currentUser!))
+  }, [currentUser])
 
   const reloadGroups = useCallback(async (preferredGroupId?: string | null, preferredGroupCode?: string | null) => {
     if (!currentUser) {
@@ -206,6 +239,44 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       cancelled = true
     }
   }, [currentUser?.id, hydrateGroup])
+
+  // The backend currently exposes history but no push channel. Refresh only
+  // the open group so separate sessions converge without reloading every group.
+  useEffect(() => {
+    if (!currentUser || !activeGroupId) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refreshMessages = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+
+      try {
+        const messages = await fetchGroupMessagesApi(activeGroupId)
+        if (cancelled) return
+
+        setGroups(prev => prev.map(group => group.id === activeGroupId
+          ? mergeGroupMessages(group, messages, currentUser)
+          : group,
+        ))
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[GroupChat] Failed to refresh group messages", { groupId: activeGroupId, error })
+        }
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    void refreshMessages()
+    const intervalId = window.setInterval(() => { void refreshMessages() }, 3000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [activeGroupId, currentUser])
 
   const createGroup = useCallback(async (
     name: string,
