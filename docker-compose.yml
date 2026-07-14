@@ -25,8 +25,9 @@ services:
       DATABASE_URL: postgresql://postgres:12345@postgres:5432/AIStudyHub
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       UPLOAD_DIR: /app/uploads
-      LLM_MODEL: gemini-3.5-flash
+      LLM_MODEL: gemini-2.0-flash
       EMBED_MODEL: gemini-embedding-001
+      OPENAI_EMBEDDING_BATCH_SIZE: 20
       MAX_CHUNK_CHARS: 800
       MIN_CHUNK_CHARS: 80
     volumes:

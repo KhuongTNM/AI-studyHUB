@@ -12,7 +12,9 @@ client = OpenAI(
 )
 EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
 EMBED_DIMENSIONS = int(os.getenv("EMBED_DIMENSIONS", "1536"))  # phải khớp với vector(1536) trong schema DB
-BATCH_SIZE = int(os.getenv("OPENAI_EMBEDDING_BATCH_SIZE", "100"))
+BATCH_SIZE = int(os.getenv("OPENAI_EMBEDDING_BATCH_SIZE", "20"))
+
+import time
 
 tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -23,9 +25,10 @@ def get_token_count(text: str) -> int:
     return len(tokenizer.encode(text))
 
 @retry(
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    stop=stop_after_attempt(5),
-    retry=retry_if_exception_type(Exception)
+    wait=wait_exponential(multiplier=2, min=4, max=65),
+    stop=stop_after_attempt(12),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
 )
 def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     if not texts:
@@ -72,5 +75,10 @@ def process_chunks(chunks: List[Dict[str, any]]) -> List[Dict[str, any]]:
         for idx, text, emb in zip(batch_indices, batch_texts, embeddings):
             embedding_cache[text] = emb
             chunks[idx]["embedding"] = emb
+        
+        # Add a short delay between batches to stay within Gemini Free Tier rate limits (100 RPM)
+        if i + BATCH_SIZE < len(texts_to_embed):
+            time.sleep(2.0)
 
     return chunks
+
