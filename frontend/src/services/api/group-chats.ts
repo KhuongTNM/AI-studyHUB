@@ -352,6 +352,23 @@ export async function leaveGroupApi(groupId: string): Promise<void> {
   if (!response.ok) throw new Error(await parseError(response))
 }
 
+/** DELETE /api/groups/{groupId}/members/{targetUserId} — owner removes a member. */
+export async function kickGroupMemberApi(
+  groupId: string,
+  targetUserId: string,
+  groupPassword: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(targetUserId)}`,
+    {
+      method: "DELETE",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ groupPassword: groupPassword.trim() }),
+    },
+  )
+  if (!response.ok) throw new Error(await parseError(response))
+}
+
 /** DELETE /api/groups/{groupId} — owner deletes group after password confirmation. */
 export async function deleteGroupApi(groupId: string, password: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}`, {
