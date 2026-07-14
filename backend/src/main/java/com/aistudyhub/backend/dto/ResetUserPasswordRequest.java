@@ -13,11 +13,22 @@ public class ResetUserPasswordRequest {
     @Size(min = 8, message = "Mật khẩu phải có ít nhất 8 ký tự.")
     private String newPassword;
 
+    @NotBlank(message = "Mật khẩu Admin không được để trống.")
+    private String adminPassword;
+
     public String getNewPassword() {
         return newPassword;
     }
 
     public void setNewPassword(String newPassword) {
         this.newPassword = newPassword;
+    }
+
+    public String getAdminPassword() {
+        return adminPassword;
+    }
+
+    public void setAdminPassword(String adminPassword) {
+        this.adminPassword = adminPassword;
     }
 }

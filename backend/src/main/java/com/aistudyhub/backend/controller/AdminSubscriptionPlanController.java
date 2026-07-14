@@ -16,7 +16,15 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
 
+/**
+ * Controller cho các thao tác quản trị Subscription Plan.
+ * LƯU Ý (BREAKING CHANGE): Tất cả các endpoint thay đổi dữ liệu (POST, PUT, PATCH, DELETE)
+ * hiện yêu cầu phải có xác thực mật khẩu admin.
+ * - POST/PUT/PATCH: Truyền `adminPassword` trong Request Body.
+ * - DELETE: Truyền qua custom header `X-Admin-Password`.
+ */
 @RestController
 @RequestMapping("/api/admin/subscription-plans")
 public class AdminSubscriptionPlanController {
@@ -50,8 +58,10 @@ public class AdminSubscriptionPlanController {
 
     @DeleteMapping("/{planName}")
     @PreAuthorize("hasRole('admin')")
-    public ResponseEntity<Void> deletePlan(@PathVariable String planName) {
-        adminSubscriptionPlanService.deletePlan(planName);
+    public ResponseEntity<Void> deletePlan(
+            @PathVariable String planName,
+            @RequestHeader("X-Admin-Password") String adminPassword) {
+        adminSubscriptionPlanService.deletePlan(planName, adminPassword);
         return ResponseEntity.noContent().build();
     }
 
