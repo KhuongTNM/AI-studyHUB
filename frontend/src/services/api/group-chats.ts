@@ -3,8 +3,8 @@ import type { GroupChat, GroupChatMember, GroupChatMessage } from "@/states/type
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
-// Group core is API-backed. Message/file/image helpers remain here for later
-// backend tasks and should only be called once those endpoints are available.
+// Group core and message history are API-backed. File/image helpers use the
+// corresponding endpoints when those actions are available.
 
 type GroupMessageType = "text" | "document" | "image" | "system"
 
@@ -42,7 +42,6 @@ interface ApiGroup {
   ownerName?: string | null
   maxMembers?: number | null
   members?: ApiGroupMember[]
-  messages?: ApiGroupMessage[]
   createdAt: string
   updatedAt: string
 }
@@ -133,7 +132,7 @@ export function mapGroup(api: ApiGroup): GroupChat {
     ownerName: api.ownerName ?? "Owner",
     maxMembers: api.maxMembers ?? 99,
     members: (api.members ?? []).map(mapMember),
-    messages: (api.messages ?? []).map(mapMessage),
+    messages: [],
     createdAt: new Date(api.createdAt),
     updatedAt: new Date(api.updatedAt),
   }
@@ -158,6 +157,16 @@ export async function fetchGroupDetailApi(groupId: string): Promise<GroupChat> {
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapGroup((await response.json()) as ApiGroup)
+}
+
+/** GET /api/groups/{groupId}/messages — full member-visible message history. */
+export async function fetchGroupMessagesApi(groupId: string): Promise<GroupChatMessage[]> {
+  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/messages`, {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const messages = (await response.json()) as ApiGroupMessage[]
+  return messages.map(mapMessage)
 }
 
 /** GET /api/groups/{groupId}/password — owner-only plain-text password. */
