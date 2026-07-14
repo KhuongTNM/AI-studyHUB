@@ -2,6 +2,8 @@ import { AlertCircle, Copy, FileText, Sparkles, ThumbsDown, ThumbsUp, User } fro
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type ChatMessage } from "@/lib/store"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 interface ChatMessageProps {
   message: ChatMessage
@@ -48,12 +50,18 @@ export function ChatMessageItem({
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.15s]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" />
             </div>
-          ) : (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">
-              {message.content}
+          ) : message.role === "assistant" ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
               {message.isStreaming && (
                 <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground/60 align-middle" />
               )}
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              {message.content}
             </p>
           )}
 
