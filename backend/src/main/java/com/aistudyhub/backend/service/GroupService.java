@@ -333,4 +333,40 @@ public class GroupService {
 
         return g.getPasswordHash();
     }
+
+    // ==========================================
+    // 5. KICK MEMBER (CHỦ NHÓM XÓA THÀNH VIÊN)
+    // ==========================================
+
+    /**
+     * Chủ nhóm xóa (kick) một thành viên ra khỏi nhóm.
+     * Fail-fast: check đăng nhập -> group tồn tại -> quyền owner -> mật khẩu nhóm
+     * -> không tự kick chính mình -> target có phải thành viên hay không -> xóa.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId, KickMemberRequest req) {
+        requireUserId(operatorId);
+
+        Group g = groupRepository.findById(groupId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+        if (!g.getOwnerId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
+        }
+
+        // So sánh plaintext trực tiếp - đồng nhất với các hàm join/delete hiện có.
+        if (!req.getGroupPassword().trim().equals(g.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
+        }
+
+        if (targetUserId.equals(operatorId)) {
+            throw new BusinessException(ErrorCode.GROUP_CANNOT_KICK_SELF);
+        }
+
+        if (!groupMemberRepository.existsByIdGroupIdAndIdUserId(groupId, targetUserId)) {
+            throw new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND);
+        }
+
+        groupMemberRepository.deleteByIdGroupIdAndIdUserId(groupId, targetUserId);
+    }
 }
