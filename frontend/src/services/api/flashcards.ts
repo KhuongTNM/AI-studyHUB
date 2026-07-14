@@ -65,7 +65,7 @@ export function mapApiFlashcard(api: ApiFlashcard): Flashcard {
  * Backend gọi sang AI service (RAG + LLM) nên có thể mất 5–20s tuỳ độ dài tài liệu;
  * dùng AbortController để tránh treo UI vô thời hạn nếu AI service bị treo/timeout.
  */
-const GENERATE_TIMEOUT_MS = 30_000
+const GENERATE_TIMEOUT_MS = 65_000
 
 export async function generateFlashcardsApi(documentId: string, count?: number): Promise<Flashcard[]> {
   const controller = new AbortController()

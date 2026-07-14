@@ -49,7 +49,6 @@ async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, An
     sources_metadata = json.dumps({"sources": retrieved_chunks}, default=_json_default)
     yield f"\n\n[SOURCES]\n{sources_metadata}\n\n"
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
     system_prompt = (
         f"Generate exactly {count} high-quality educational flashcards based strictly on the text below. "
@@ -66,7 +65,8 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
         ],
         temperature=0.3,
         max_tokens=calculated_max_output,
-        response_format={"type": "json_object"}
+        response_format={"type": "json_object"},
+        timeout=50.0
     )
 
     content = response.choices[0].message.content
