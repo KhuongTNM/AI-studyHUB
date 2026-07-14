@@ -12,6 +12,11 @@ import {
 } from "@/services/api/flashcards"
 import type { Flashcard } from "@/states/types"
 
+function mergeFlashcardsById(incoming: Flashcard[], current: Flashcard[]) {
+  const incomingIds = new Set(incoming.map(card => card.id))
+  return [...incoming, ...current.filter(card => !incomingIds.has(card.id))]
+}
+
 export function useFlashcardState() {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([])
   const [flashcardSelectedDocumentId, setFlashcardSelectedDocId] = useState<string | "all">("all")
@@ -143,7 +148,7 @@ export function useFlashcardState() {
     async (docId: string, count?: number): Promise<{ success: boolean; count: number; message?: string }> => {
       try {
         const generated = await generateFlashcardsApi(docId, count)
-        setFlashcards(prev => [...generated, ...prev])
+        setFlashcards(prev => mergeFlashcardsById(generated, prev))
         setFlashcardSelectedDocId(docId)
         return { success: true, count: generated.length }
       } catch (error) {

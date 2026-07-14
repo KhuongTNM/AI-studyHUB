@@ -209,7 +209,7 @@ def semantic_chunk_text(text: str) -> List[Dict[str, str]]:
         
     return result
 
-def build_context_within_budget(chunks: List[dict], max_tokens: int = int(os.getenv("FLASHCARD_CONTEXT_MAX_TOKENS", "900000"))) -> str:
+def build_context_within_budget(chunks: List[dict], max_tokens: int = int(os.getenv("FLASHCARD_CONTEXT_MAX_TOKENS", "6000"))) -> str:
     if not chunks:
         return ""
 

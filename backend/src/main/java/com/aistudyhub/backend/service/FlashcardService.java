@@ -127,6 +127,7 @@ public class FlashcardService {
     @Transactional
     public List<FlashcardResponse> generateFlashcards(GenerateFlashcardsRequest request) {
         UUID userId = getCurrentUserId();
+        int requestedCount = request.getCount() != null ? Math.max(1, Math.min(request.getCount(), 5)) : 5;
 
         Document doc = documentRepository.findById(request.getDocumentId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Document not found"));
@@ -139,12 +140,22 @@ public class FlashcardService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Document not processed yet. Please try later.");
         }
 
+        List<Flashcard> existingAiCards = flashcardRepository
+                .findByUserIdAndDocumentIdAndAiGeneratedTrueOrderByCreatedAtAsc(userId, request.getDocumentId());
+        if (existingAiCards.size() >= requestedCount) {
+            return existingAiCards.stream()
+                    .limit(requestedCount)
+                    .map(FlashcardResponse::from)
+                    .toList();
+        }
+        int missingCount = requestedCount - existingAiCards.size();
+
         String url = aiServiceUrl + "/api/v1/flashcards/generate";
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("document_id", request.getDocumentId().toString());
         payload.put("user_id", userId.toString());
-        payload.put("count", request.getCount() != null ? request.getCount() : 5);
+        payload.put("count", missingCount);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

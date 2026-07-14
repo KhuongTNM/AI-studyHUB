@@ -53,9 +53,10 @@ import openai
 from tenacity import retry_if_exception
 
 def is_retryable_exception(exception):
-    # Retry on rate limit errors (429) or temporary server errors (5xx/503) or connection errors
+    # Do not retry quota/rate-limit errors. On free-tier Gemini, repeated retries can burn
+    # request quota and still fail until the quota window resets.
     if isinstance(exception, openai.RateLimitError):
-        return True
+        return False
     if isinstance(exception, openai.APIConnectionError):
         return True
     if isinstance(exception, openai.APIStatusError):
@@ -69,6 +70,7 @@ def is_retryable_exception(exception):
     reraise=True
 )
 def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
+    count = max(1, min(count, int(os.getenv("FLASHCARD_MAX_COUNT", "5"))))
     system_prompt = (
         f"Generate exactly {count} high-quality educational flashcards based strictly on the text below. "
         "Return a clean JSON object containing an array of flashcards with 'question' and 'answer' keys."
