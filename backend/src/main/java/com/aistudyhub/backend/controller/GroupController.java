@@ -128,4 +128,16 @@ public class GroupController {
         UUID userId = principal.getId();
         return ResponseEntity.ok(groupService.getGroupPassword(groupId, userId));
     }
+
+    // 12. Kick thành viên (chỉ Owner mới có quyền, yêu cầu xác thực mật khẩu nhóm)
+    @DeleteMapping("/{groupId}/members/{targetUserId}")
+    public ResponseEntity<Void> kickMember(
+            @PathVariable UUID groupId,
+            @PathVariable UUID targetUserId,
+            @Valid @RequestBody KickMemberRequest request,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID operatorId = principal.getId();
+        groupService.kickMember(groupId, targetUserId, operatorId, request);
+        return ResponseEntity.noContent().build();
+    }
 }
