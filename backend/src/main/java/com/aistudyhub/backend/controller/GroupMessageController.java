@@ -9,6 +9,7 @@ import com.aistudyhub.backend.service.GroupMessageService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -42,6 +43,16 @@ public class GroupMessageController {
         UUID userId = principal.getId();
         GroupMessageResponse response = groupMessageService.sendTextMessage(groupId, userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    // Group Chat History Fetch Logic
+    @GetMapping("/{groupId}/messages")
+    public ResponseEntity<List<GroupMessageResponse>> getGroupMessages(
+            @PathVariable UUID groupId,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+
+        UUID userId = principal.getId();
+        return ResponseEntity.ok(groupMessageService.getGroupMessages(groupId, userId));
     }
 
     @PostMapping("/{groupId}/documents")

@@ -160,6 +160,23 @@ export async function fetchGroupDetailApi(groupId: string): Promise<GroupChat> {
   return mapGroup((await response.json()) as ApiGroup)
 }
 
+/** GET /api/groups/{groupId}/password — owner-only plain-text password. */
+export async function fetchGroupPasswordApi(groupId: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/password`, {
+    headers: authHeaders(),
+  })
+
+  if (!response.ok) {
+    const error = new Error(await parseError(response)) as Error & { status?: number }
+    error.status = response.status
+    throw error
+  }
+
+  const password = (await response.text()).trim()
+  if (!password) throw new Error("GROUP_PASSWORD_NOT_AVAILABLE")
+  return password
+}
+
 /** POST /api/groups — create group. Backend hashes password and checks limits. */
 export async function createGroupApi(input: {
   groupCode?: string
