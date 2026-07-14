@@ -9,5 +9,5 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
 
     java.util.List<Flashcard> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
-    java.util.List<Flashcard> findByUserIdAndDocumentIdAndAiGeneratedTrueOrderByCreatedAtAsc(UUID userId, UUID documentId);
+    java.util.List<Flashcard> findByUserIdAndDocumentIdAndIsAiGeneratedTrueOrderByCreatedAtAsc(UUID userId, UUID documentId);
 }

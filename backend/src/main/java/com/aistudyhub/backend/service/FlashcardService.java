@@ -141,7 +141,7 @@ public class FlashcardService {
         }
 
         List<Flashcard> existingAiCards = flashcardRepository
-                .findByUserIdAndDocumentIdAndAiGeneratedTrueOrderByCreatedAtAsc(userId, request.getDocumentId());
+                .findByUserIdAndDocumentIdAndIsAiGeneratedTrueOrderByCreatedAtAsc(userId, request.getDocumentId());
         if (existingAiCards.size() >= requestedCount) {
             return existingAiCards.stream()
                     .limit(requestedCount)
