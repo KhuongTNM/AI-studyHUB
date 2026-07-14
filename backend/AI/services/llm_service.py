@@ -49,6 +49,25 @@ async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, An
     sources_metadata = json.dumps({"sources": retrieved_chunks}, default=_json_default)
     yield f"\n\n[SOURCES]\n{sources_metadata}\n\n"
 
+import openai
+from tenacity import retry_if_exception
+
+def is_retryable_exception(exception):
+    # Retry on rate limit errors (429) or temporary server errors (5xx/503) or connection errors
+    if isinstance(exception, openai.RateLimitError):
+        return True
+    if isinstance(exception, openai.APIConnectionError):
+        return True
+    if isinstance(exception, openai.APIStatusError):
+        return exception.status_code is not None and exception.status_code >= 500
+    return False
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception(is_retryable_exception),
+    reraise=True
+)
 def generate_flashcards_from_text(text: str, count: int = 5) -> List[dict]:
     system_prompt = (
         f"Generate exactly {count} high-quality educational flashcards based strictly on the text below. "
