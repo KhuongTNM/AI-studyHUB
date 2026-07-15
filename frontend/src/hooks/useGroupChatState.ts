@@ -13,6 +13,7 @@ import {
   fetchGroupsApi,
   fetchGroupSettingsApi,
   joinGroupApi,
+  kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
   sendGroupMessageApi,
@@ -325,6 +326,28 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, reloadGroups])
 
+  const kickGroupMember = useCallback(async (
+    groupId: string,
+    targetUserId: string,
+    groupPassword: string,
+  ): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "Please log in." }
+
+    const group = groups.find(item => item.id === groupId)
+    if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
+    if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+    if (targetUserId === currentUser.id) return { success: false, error: "GROUP_CANNOT_KICK_SELF" }
+    if (!groupPassword.trim()) return { success: false, error: "GROUP_PASSWORD_INVALID" }
+
+    try {
+      await kickGroupMemberApi(groupId, targetUserId, groupPassword)
+      await reloadGroups(groupId, null)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not remove group member.") }
+    }
+  }, [currentUser, groups, reloadGroups])
+
   const deleteGroup = useCallback(async (groupId: string, password: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
@@ -456,6 +479,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     createGroup,
     joinGroup,
     leaveGroup,
+    kickGroupMember,
     deleteGroup,
     getGroupPassword,
     updateGroupMuted,
