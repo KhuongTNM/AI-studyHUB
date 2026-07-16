@@ -144,7 +144,7 @@ public class GoogleAuthService {
 
     private User buildGoogleUser(String email, String rawName) {
         SubscriptionPlan freePlan = subscriptionPlanRepository
-                .findByName(SubscriptionPlan.FREE_PLAN_NAME)
+                .findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "Gói Free chưa được cấu hình trong hệ thống."));

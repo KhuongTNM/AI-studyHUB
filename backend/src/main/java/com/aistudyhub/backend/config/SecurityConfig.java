@@ -56,6 +56,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/**").authenticated()
                         .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers("/api/subscription-purchases/**").authenticated()
+                        .requestMatchers("/api/subscription-plans/**").permitAll()
                         .requestMatchers("/api/documents/**").authenticated()
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()

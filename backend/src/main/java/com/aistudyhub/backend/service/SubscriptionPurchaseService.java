@@ -62,7 +62,7 @@ public class SubscriptionPurchaseService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Tài khoản Admin/Sub-admin không cần mua gói.");
         }
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(request.getPlanName())
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(request.getPlanName())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
         if (SubscriptionPlan.FREE_PLAN_NAME.equals(plan.getName())) {

@@ -22,6 +22,12 @@ public class SubscriptionPlan {
     @Column(name = "name", nullable = false, unique = true, length = 20)
     private String name;
 
+    @Column(name = "description", length = 500)
+    private String description;
+
+    @Column(name = "is_deleted", nullable = false)
+    private boolean isDeleted = false;
+
     @Column(name = "display_name", nullable = false, length = 50)
     private String displayName;
 
@@ -100,6 +106,22 @@ public class SubscriptionPlan {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public boolean isDeleted() {
+        return isDeleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        isDeleted = deleted;
     }
 
     public void setDisplayName(String displayName) {

@@ -77,7 +77,7 @@ public class AdminUserService {
         }
         PasswordPolicyValidator.validate(request.getPassword());
 
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói Free."));
         LocalDateTime now = LocalDateTime.now();
 
@@ -131,7 +131,7 @@ public class AdminUserService {
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ. Chỉ hỗ trợ: FREE, 2-4, 5+.");
         };
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(dbPlanName)
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(dbPlanName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
         target.setSubscriptionPlanId(plan.getId());

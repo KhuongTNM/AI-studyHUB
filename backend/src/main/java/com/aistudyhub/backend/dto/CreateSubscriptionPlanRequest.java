@@ -27,6 +27,9 @@ public class CreateSubscriptionPlanRequest {
 
     @Min(value = 1, message = "Giới hạn tham gia nhóm không hợp lệ.")
     private int joinGroupLimit;
+    
+    @NotBlank(message = "Mật khẩu Admin không được để trống.")
+    private String adminPassword;
 
     public String getDisplayName() {
         return displayName;
@@ -74,5 +77,13 @@ public class CreateSubscriptionPlanRequest {
 
     public void setJoinGroupLimit(int joinGroupLimit) {
         this.joinGroupLimit = joinGroupLimit;
+    }
+
+    public String getAdminPassword() {
+        return adminPassword;
+    }
+
+    public void setAdminPassword(String adminPassword) {
+        this.adminPassword = adminPassword;
     }
 }

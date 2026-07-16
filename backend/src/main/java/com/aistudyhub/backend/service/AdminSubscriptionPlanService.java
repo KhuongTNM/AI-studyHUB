@@ -1,51 +1,51 @@
 package com.aistudyhub.backend.service;
 
+import com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest;
 import com.aistudyhub.backend.dto.SubscriptionPlanResponse;
 import com.aistudyhub.backend.dto.UpdatePackagePriceRequest;
+import com.aistudyhub.backend.dto.UpdatePlanRequest;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
-import com.aistudyhub.backend.entity.User;
+import com.aistudyhub.backend.entity.SubscriptionStatus;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.exception.PlanAlreadyExistsException;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
-import com.aistudyhub.backend.repository.UserRepository;
-import com.aistudyhub.backend.security.AuthUserPrincipal;
-import java.time.LocalDateTime;
-import java.util.List;
+import com.aistudyhub.backend.repository.SubscriptionRepository;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class AdminSubscriptionPlanService {
 
     private final SubscriptionPlanRepository subscriptionPlanRepository;
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final SubscriptionRepository subscriptionRepository;
 
     public AdminSubscriptionPlanService(
             SubscriptionPlanRepository subscriptionPlanRepository,
-            UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            SubscriptionRepository subscriptionRepository) {
         this.subscriptionPlanRepository = subscriptionPlanRepository;
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
+        this.subscriptionRepository = subscriptionRepository;
     }
 
     @Transactional(readOnly = true)
     public List<SubscriptionPlanResponse> getPlans() {
+        // Admin gets all plans, or maybe just all? The user says Admin API returns normal + flag.
+        // We will return all.
         return subscriptionPlanRepository.findAll().stream()
                 .map(SubscriptionPlanResponse::from)
                 .toList();
     }
 
     @Transactional
-    public SubscriptionPlanResponse createPlan(com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest request) {
+    public SubscriptionPlanResponse createPlan(CreateSubscriptionPlanRequest request) {
         String formattedDisplayName = formatDisplayName(request.getDisplayName());
 
         if (subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
+            throw new PlanAlreadyExistsException("Tên gói (hiển thị) đã tồn tại.");
         }
 
         String baseSlug = generateSlug(formattedDisplayName);
@@ -59,7 +59,7 @@ public class AdminSubscriptionPlanService {
 
         String finalSlug = baseSlug;
         int count = 1;
-        while (subscriptionPlanRepository.existsByName(finalSlug)) {
+        while (subscriptionPlanRepository.existsByNameIgnoreCaseAndIsDeletedFalse(finalSlug)) {
             String suffix = "_" + count;
             int remainingLength = 20 - suffix.length();
             if (baseSlug.length() > remainingLength) {
@@ -78,6 +78,7 @@ public class AdminSubscriptionPlanService {
         plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
         plan.setCreateGroupLimit(request.getCreateGroupLimit());
         plan.setJoinGroupLimit(request.getJoinGroupLimit());
+        plan.setDeleted(false);
         plan.setCreatedAt(LocalDateTime.now());
         plan.setUpdatedAt(LocalDateTime.now());
 
@@ -85,21 +86,24 @@ public class AdminSubscriptionPlanService {
     }
 
     @Transactional
-    public SubscriptionPlanResponse updatePlan(String planName, com.aistudyhub.backend.dto.UpdateSubscriptionPlanRequest request) {
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
+    public SubscriptionPlanResponse updatePlan(String planName, UpdatePlanRequest request) {
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
-
-        String formattedDisplayName = formatDisplayName(request.getDisplayName());
-
-        if (!plan.getDisplayName().equalsIgnoreCase(formattedDisplayName) && subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Tên gói đã tồn tại.");
+                
+        if (plan.isDeleted()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
         }
 
-        plan.setDisplayName(formattedDisplayName);
-        plan.setMaxRoomMembers(request.getMaxRoomMembers());
-        plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
-        plan.setCreateGroupLimit(request.getCreateGroupLimit());
-        plan.setJoinGroupLimit(request.getJoinGroupLimit());
+        plan.setDescription(request.getDescription());
+        plan.setPrice(request.getPrice());
+        
+        // Handle maxGroups / createGroupLimit
+        if (request.getCreateGroupLimit() == null || request.getCreateGroupLimit() == -1) {
+            plan.setCreateGroupLimit(-1); // Infinite
+        } else {
+            plan.setCreateGroupLimit(request.getCreateGroupLimit());
+        }
+
         plan.setUpdatedAt(LocalDateTime.now());
 
         return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
@@ -107,48 +111,45 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public void deletePlan(String planName) {
-        if (SubscriptionPlan.FREE_PLAN_NAME.equals(planName) || "plan_2_4".equals(planName) || "plan_5_plus".equals(planName)) {
+        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(planName) || 
+            "plan_2_4".equalsIgnoreCase(planName) || 
+            "plan_5_plus".equalsIgnoreCase(planName)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được xóa các gói mặc định.");
         }
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
-        if (userRepository.existsBySubscriptionPlanId(plan.getId())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa gói dịch vụ đang có người sử dụng.");
+        if (plan.isDeleted()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Gói này đã bị xóa rồi.");
         }
 
-        subscriptionPlanRepository.delete(plan);
+        if (subscriptionRepository.existsByPlanIdAndStatus(plan.getId(), SubscriptionStatus.ACTIVE)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể xóa gói dịch vụ đang có người sử dụng ACTIVE.");
+        }
+
+        plan.setDeleted(true);
+        plan.setName(plan.getName() + "_DELETED_" + UUID.randomUUID().toString().substring(0, 8));
+        plan.setUpdatedAt(LocalDateTime.now());
+        subscriptionPlanRepository.save(plan);
     }
 
     @Transactional
     public SubscriptionPlanResponse updatePrice(String planName, UpdatePackagePriceRequest request) {
-        User admin = getCurrentAdmin();
-        if (!passwordEncoder.matches(request.getAdminPassword(), admin.getPasswordHash())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Mật khẩu Admin không đúng.");
-        }
-        if (SubscriptionPlan.FREE_PLAN_NAME.equals(planName)) {
+        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(planName)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được chỉnh giá gói Free.");
         }
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+                
+        if (plan.isDeleted()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
+        }
+
         plan.setPrice(request.getPrice());
         plan.setUpdatedAt(LocalDateTime.now());
         return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
-    }
-
-    private User getCurrentAdmin() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof AuthUserPrincipal principal)) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Vui lòng đăng nhập bằng tài khoản Admin.");
-        }
-        User user = userRepository.findById(principal.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
-        if (user.getRole() != User.Role.admin) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin mới được chỉnh sửa giá gói.");
-        }
-        return user;
     }
 
     private String generateSlug(String displayName) {

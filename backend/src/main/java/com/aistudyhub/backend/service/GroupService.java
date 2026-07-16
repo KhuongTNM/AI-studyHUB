@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.request.*;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
+import com.aistudyhub.backend.exception.MaxGroupsLimitExceededException;
 import com.aistudyhub.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,39 +30,11 @@ public class GroupService {
     private final GroupMessageRepository groupMessageRepository;
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionService subscriptionService;
 
     // ==========================================
     // 1. UTILITY & SECURITY GUARDS
     // ==========================================
-
-    private record Limits(boolean canCreate, int maxCreated, int maxJoined, int maxCapacity) {}
-
-    private Limits limits(User u) {
-        String role = u.getRole().toString();
-        boolean admin = role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("sub_admin");
-
-        String plan = resolveActivePlanName(u);
-
-        if (admin || "vip_5_plus".equals(plan) || "plan_5_plus".equals(plan)) {
-            return new Limits(true, 50, 60, 99);
-        }
-        if ("pro_2_4".equals(plan) || "plan_2_4".equals(plan)) {
-            return new Limits(true, 20, 30, 4);
-        }
-        return new Limits(false, 0, 5, 0);
-    }
-
-    private String resolveActivePlanName(User user) {
-        if (user.getSubscriptionPlanId() == null || user.getSubscriptionExpiresAt() == null) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        if (user.getSubscriptionExpiresAt().isBefore(LocalDateTime.now())) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        return subscriptionPlanRepository.findById(user.getSubscriptionPlanId())
-                .map(SubscriptionPlan::getName)
-                .orElse(SubscriptionPlan.FREE_PLAN_NAME);
-    }
 
     private void requireUserId(UUID userId) {
         if (userId == null) {
@@ -100,18 +73,32 @@ public class GroupService {
     public GroupResponse createGroup(CreateGroupRequest req, UUID userId) {
         requireUserId(userId);
 
-        User user = userRepository.findById(userId)
+        // 1. Khóa bi quan user để tránh Race Condition khi tạo nhiều group cùng lúc
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Limits lim = limits(user);
 
-        if (!lim.canCreate()) {
-            throw new BusinessException(ErrorCode.GROUP_CREATE_NOT_ALLOWED);
-        }
-        if (groupRepository.countByOwnerId(userId) >= lim.maxCreated()) {
-            throw new BusinessException(ErrorCode.GROUP_CREATE_LIMIT_REACHED);
-        }
-        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= lim.maxJoined()) {
-            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
+        // 2. Lấy thông tin subscription active hiện tại (hoặc Virtual Free Fallback)
+        Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                .orElseThrow(() -> new com.aistudyhub.backend.exception.SystemConfigurationException("Cấu hình gói không hợp lệ."));
+
+        // Nếu admin thì override limit
+        boolean isAdmin = user.getRole() == User.Role.admin || user.getRole() == User.Role.sub_admin;
+
+        int createLimit = plan.getCreateGroupLimit();
+
+        if (!isAdmin) {
+            if (createLimit == 0) {
+                throw new MaxGroupsLimitExceededException("Gói của bạn không được phép tạo nhóm.");
+            }
+
+            // 3. Đếm số group hiện tại của user bằng countByOwnerId
+            long currentGroups = groupRepository.countByOwnerId(userId);
+
+            // 4. Kiểm tra giới hạn (nếu != -1)
+            if (createLimit != -1 && currentGroups >= createLimit) {
+                throw new MaxGroupsLimitExceededException("Bạn đã đạt giới hạn tạo nhóm của gói hiện tại.");
+            }
         }
 
         String code = req.getGroupCode() != null && !req.getGroupCode().isBlank()
@@ -122,9 +109,9 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_CODE_ALREADY_EXISTS);
         }
 
+        // 5. Tiến hành lưu group mới và kết thúc transaction.
         Group g = new Group();
         g.setGroupCode(code);
-        // Lưu plaintext trực tiếp - mật khẩu nhóm là join code, không cần hash.
         g.setPasswordHash(req.getPassword().trim());
         g.setName(req.getName().trim());
         g.setDescription(req.getDescription());
@@ -153,19 +140,27 @@ public class GroupService {
         if (groupMemberRepository.existsByIdGroupIdAndIdUserId(g.getId(), userId)) {
             throw new BusinessException(ErrorCode.GROUP_ALREADY_JOINED);
         }
-        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
+        
         if (!req.getPassword().trim().equals(g.getPasswordHash())) {
             throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         User owner = userRepository.findById(g.getOwnerId()).orElseThrow();
-        Limits ownerLim = limits(owner);
-        if (groupMemberRepository.countByIdGroupId(g.getId()) >= ownerLim.maxCapacity()) {
+        Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(owner.getId());
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId()).orElseThrow();
+
+        // Kiểm tra limit số lượng thành viên của owner
+        int maxMembers = plan.getMaxRoomMembers();
+        if (maxMembers != -1 && groupMemberRepository.countByIdGroupId(g.getId()) >= maxMembers) {
             throw new BusinessException(ErrorCode.GROUP_FULL);
         }
 
-        Limits userLim = limits(userRepository.findById(userId).orElseThrow());
-        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= userLim.maxJoined()) {
+        User user = userRepository.findById(userId).orElseThrow();
+        Subscription userActiveSub = subscriptionService.getActiveSubscriptionOrDefault(user.getId());
+        SubscriptionPlan userPlan = subscriptionPlanRepository.findById(userActiveSub.getPlanId()).orElseThrow();
+        
+        int joinLimit = userPlan.getJoinGroupLimit();
+        if (joinLimit != -1 && groupMemberRepository.countGroupsJoinedByUser(userId) >= joinLimit) {
             throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
         }
 
@@ -187,7 +182,7 @@ public class GroupService {
         if (!g.getOwnerId().equals(userId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
-        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
+        
         if (!req.getPassword().trim().equals(g.getPasswordHash())) {
             throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
@@ -316,10 +311,6 @@ public class GroupService {
         }).toList();
     }
 
-    /**
-     * Trả về mật khẩu nhóm (plaintext) - CHỈ dành cho OWNER.
-     * Fail-fast: check userId -> check group tồn tại -> check quyền owner.
-     */
     @Transactional(readOnly = true)
     public String getGroupPassword(UUID groupId, UUID userId) {
         requireUserId(userId);
@@ -338,11 +329,6 @@ public class GroupService {
     // 5. KICK MEMBER (CHỦ NHÓM XÓA THÀNH VIÊN)
     // ==========================================
 
-    /**
-     * Chủ nhóm xóa (kick) một thành viên ra khỏi nhóm.
-     * Fail-fast: check đăng nhập -> group tồn tại -> quyền owner -> mật khẩu nhóm
-     * -> không tự kick chính mình -> target có phải thành viên hay không -> xóa.
-     */
     @Transactional(rollbackFor = Exception.class)
     public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId, KickMemberRequest req) {
         requireUserId(operatorId);
@@ -354,7 +340,6 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
 
-        // So sánh plaintext trực tiếp - đồng nhất với các hàm join/delete hiện có.
         if (!req.getGroupPassword().trim().equals(g.getPasswordHash())) {
             throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
