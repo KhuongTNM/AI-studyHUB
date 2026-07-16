@@ -21,9 +21,6 @@ public class Group {
     @Column(name = "group_code", length = 32, nullable = false, unique = true)
     private String groupCode;
 
-    @Column(name = "password_hash", length = 255, nullable = false)
-    private String passwordHash;
-
     @Column(name = "name", length = 120, nullable = false)
     private String name;
 

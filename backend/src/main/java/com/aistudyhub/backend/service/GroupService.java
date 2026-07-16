@@ -124,8 +124,6 @@ public class GroupService {
 
         Group g = new Group();
         g.setGroupCode(code);
-        // Lưu plaintext trực tiếp - mật khẩu nhóm là join code, không cần hash.
-        g.setPasswordHash(req.getPassword().trim());
         g.setName(req.getName().trim());
         g.setDescription(req.getDescription());
         g.setOwnerId(userId);
@@ -144,41 +142,7 @@ public class GroupService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void joinGroup(JoinGroupRequest req, UUID userId) {
-        requireUserId(userId);
-
-        Group g = groupRepository.findByGroupCode(req.getGroupCode().trim().toUpperCase())
-                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
-
-        if (groupMemberRepository.existsByIdGroupIdAndIdUserId(g.getId(), userId)) {
-            throw new BusinessException(ErrorCode.GROUP_ALREADY_JOINED);
-        }
-        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
-        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
-        }
-
-        User owner = userRepository.findById(g.getOwnerId()).orElseThrow();
-        Limits ownerLim = limits(owner);
-        if (groupMemberRepository.countByIdGroupId(g.getId()) >= ownerLim.maxCapacity()) {
-            throw new BusinessException(ErrorCode.GROUP_FULL);
-        }
-
-        Limits userLim = limits(userRepository.findById(userId).orElseThrow());
-        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= userLim.maxJoined()) {
-            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
-        }
-
-        GroupMember m = new GroupMember();
-        m.setId(new GroupMemberId(g.getId(), userId));
-        m.setGroup(g);
-        m.setRole("member");
-        m.setJoinedAt(LocalDateTime.now());
-        groupMemberRepository.save(m);
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public void deleteGroup(UUID groupId, DeleteGroupRequest req, UUID userId) {
+    public void deleteGroup(UUID groupId, UUID userId) {
         requireUserId(userId);
 
         Group g = groupRepository.findById(groupId)
@@ -186,10 +150,6 @@ public class GroupService {
 
         if (!g.getOwnerId().equals(userId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-        // So sánh plaintext trực tiếp - không còn dùng passwordEncoder.matches().
-        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         groupRepository.delete(g);
@@ -316,35 +276,17 @@ public class GroupService {
         }).toList();
     }
 
-    /**
-     * Trả về mật khẩu nhóm (plaintext) - CHỈ dành cho OWNER.
-     * Fail-fast: check userId -> check group tồn tại -> check quyền owner.
-     */
-    @Transactional(readOnly = true)
-    public String getGroupPassword(UUID groupId, UUID userId) {
-        requireUserId(userId);
-
-        Group g = groupRepository.findById(groupId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
-
-        if (!g.getOwnerId().equals(userId)) {
-            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-
-        return g.getPasswordHash();
-    }
-
     // ==========================================
     // 5. KICK MEMBER (CHỦ NHÓM XÓA THÀNH VIÊN)
     // ==========================================
 
     /**
      * Chủ nhóm xóa (kick) một thành viên ra khỏi nhóm.
-     * Fail-fast: check đăng nhập -> group tồn tại -> quyền owner -> mật khẩu nhóm
+     * Fail-fast: check đăng nhập -> group tồn tại -> quyền owner
      * -> không tự kick chính mình -> target có phải thành viên hay không -> xóa.
      */
     @Transactional(rollbackFor = Exception.class)
-    public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId, KickMemberRequest req) {
+    public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId) {
         requireUserId(operatorId);
 
         Group g = groupRepository.findById(groupId)
@@ -352,11 +294,6 @@ public class GroupService {
 
         if (!g.getOwnerId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-
-        // So sánh plaintext trực tiếp - đồng nhất với các hàm join/delete hiện có.
-        if (!req.getGroupPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         if (targetUserId.equals(operatorId)) {

@@ -32,16 +32,6 @@ public class GroupController {
         return new ResponseEntity<>(groupService.createGroup(req, userId), HttpStatus.CREATED);
     }
 
-    // 2. Tham gia nhóm
-    @PostMapping("/join")
-    public ResponseEntity<Void> joinGroup(
-            @Valid @RequestBody JoinGroupRequest req,
-            @AuthenticationPrincipal AuthUserPrincipal principal) {
-        UUID userId = principal.getId();
-        groupService.joinGroup(req, userId);
-        return ResponseEntity.ok().build();
-    }
-
     // 3. Danh sách nhóm đang tham gia
     @GetMapping
     public ResponseEntity<List<GroupResponse>> listMyGroups(
@@ -109,35 +99,26 @@ public class GroupController {
         return ResponseEntity.noContent().build();
     }
 
-    // 10. Xóa nhóm (owner)
+    // 10. Xóa nhóm (owner) - chỉ cần JWT hợp lệ + đúng quyền Owner, không còn yêu cầu mật khẩu.
+    // Lưu ý: bước xác nhận "Bạn có chắc muốn xóa nhóm?" nên được xử lý ở Frontend (dialog confirm).
     @DeleteMapping("/{groupId}")
     public ResponseEntity<Void> deleteGroup(
             @PathVariable UUID groupId,
-            @Valid @RequestBody DeleteGroupRequest req,
             @AuthenticationPrincipal AuthUserPrincipal principal) {
         UUID userId = principal.getId();
-        groupService.deleteGroup(groupId, req, userId);
+        groupService.deleteGroup(groupId, userId);
         return ResponseEntity.noContent().build();
     }
 
-    // 11. Xem mật khẩu nhóm (chỉ Owner mới có quyền)
-    @GetMapping("/{groupId}/password")
-    public ResponseEntity<String> getGroupPassword(
-            @PathVariable UUID groupId,
-            @AuthenticationPrincipal AuthUserPrincipal principal) {
-        UUID userId = principal.getId();
-        return ResponseEntity.ok(groupService.getGroupPassword(groupId, userId));
-    }
-
-    // 12. Kick thành viên (chỉ Owner mới có quyền, yêu cầu xác thực mật khẩu nhóm)
+    // 11. Kick thành viên (chỉ Owner mới có quyền) - không còn yêu cầu mật khẩu nhóm.
+    // Lưu ý: bước xác nhận "Bạn có chắc muốn xóa thành viên này?" nên được xử lý ở Frontend (dialog confirm).
     @DeleteMapping("/{groupId}/members/{targetUserId}")
     public ResponseEntity<Void> kickMember(
             @PathVariable UUID groupId,
             @PathVariable UUID targetUserId,
-            @Valid @RequestBody KickMemberRequest request,
             @AuthenticationPrincipal AuthUserPrincipal principal) {
         UUID operatorId = principal.getId();
-        groupService.kickMember(groupId, targetUserId, operatorId, request);
+        groupService.kickMember(groupId, targetUserId, operatorId);
         return ResponseEntity.noContent().build();
     }
 
