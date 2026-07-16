@@ -352,6 +352,15 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
         }
 
+        // Kiểm tra sức chứa tối đa của nhóm theo gói cước của Owner (bao gồm cả các lời mời PENDING
+        // để tránh mời tràn lan vượt quá slot còn trống của nhóm).
+        User owner = userRepository.findById(g.getOwnerId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        Limits ownerLim = limits(owner);
+        if (groupMemberRepository.countByIdGroupId(groupId) >= ownerLim.maxCapacity()) {
+            throw new BusinessException(ErrorCode.GROUP_FULL);
+        }
+
         if (email == null || email.isBlank()) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
