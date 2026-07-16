@@ -22,4 +22,10 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupM
 
     List<GroupMember> findByIdUserId(UUID userId);
     List<GroupMember> findByIdGroupIdOrderByJoinedAtAsc(UUID groupId);
+
+    // Dùng cho tính năng Mời thành viên qua Email: lấy các lời mời đang chờ (PENDING) của 1 User.
+    List<GroupMember> findByIdUserIdAndStatus(UUID userId, String status);
+
+    // Lấy danh sách thành viên chính thức (JOINED) của 1 nhóm - loại trừ các lời mời PENDING chưa được chấp nhận.
+    List<GroupMember> findByIdGroupIdAndStatusOrderByJoinedAtAsc(UUID groupId, String status);
 }
