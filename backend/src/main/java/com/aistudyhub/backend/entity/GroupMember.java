@@ -32,4 +32,9 @@ public class GroupMember {
 
     @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
+
+    // Trạng thái thành viên: "PENDING" (lời mời chờ phản hồi) hoặc "JOINED" (đã chính thức tham gia).
+    // Mặc định là "JOINED" để không ảnh hưởng đến các bản ghi/thành viên cũ (join bằng mã + mật khẩu).
+    @Column(name = "status", length = 20, nullable = false)
+    private String status = "JOINED";
 }

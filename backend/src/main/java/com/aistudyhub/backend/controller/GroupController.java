@@ -140,4 +140,48 @@ public class GroupController {
         groupService.kickMember(groupId, targetUserId, operatorId, request);
         return ResponseEntity.noContent().build();
     }
+
+    // ==========================================
+    // 13-16. MỜI THÀNH VIÊN THAM GIA NHÓM QUA EMAIL
+    // ==========================================
+
+    // 13. Tìm kiếm User theo Email trước khi mời (để xác nhận đúng người)
+    @GetMapping("/{groupId}/invitations/search")
+    public ResponseEntity<GroupMemberResponse> searchUserForInvitation(
+            @PathVariable UUID groupId,
+            @RequestParam String email,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
+        return ResponseEntity.ok(groupService.searchUserForInvitation(groupId, email, userId));
+    }
+
+    // 14. Gửi lời mời tham gia nhóm qua Email (chỉ Chủ nhóm)
+    @PostMapping("/{groupId}/invitations")
+    public ResponseEntity<Void> inviteMemberByEmail(
+            @PathVariable UUID groupId,
+            @RequestParam String email,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID operatorId = principal.getId();
+        groupService.inviteMemberByEmail(groupId, email, operatorId);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    // 15. Danh sách lời mời đang chờ xử lý của chính User hiện tại
+    @GetMapping("/invitations/pending")
+    public ResponseEntity<List<GroupResponse>> getMyPendingInvitations(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
+        return ResponseEntity.ok(groupService.getMyPendingInvitations(userId));
+    }
+
+    // 16. Phản hồi lời mời (Chấp nhận / Từ chối)
+    @PostMapping("/{groupId}/invitations/respond")
+    public ResponseEntity<Void> handleInvitation(
+            @PathVariable UUID groupId,
+            @RequestParam boolean accept,
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        UUID userId = principal.getId();
+        groupService.handleInvitation(groupId, userId, accept);
+        return ResponseEntity.ok().build();
+    }
 }
