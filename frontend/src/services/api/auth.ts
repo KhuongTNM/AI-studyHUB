@@ -1,5 +1,13 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/auth-storage"
 import type { Language, User, UserRole } from "@/lib/store"
+import { MOCK_API } from "@/services/mock/mock-config"
+import {
+  mockLoginRequest,
+  mockRegisterRequest,
+  mockGoogleLoginRequest,
+  mockLogoutRequest,
+  mockFetchCurrentUserRequest,
+} from "@/services/mock/auth.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -97,11 +105,13 @@ async function handleRegisterResponse(
 }
 
 export async function loginApi(email: string, password: string): Promise<{ success: true; user: User } | { success: false; error: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  })
+  const response = MOCK_API
+    ? await mockLoginRequest(email, password)
+    : await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
   return handleAuthResponse(response)
 }
 
@@ -111,11 +121,13 @@ export async function registerApi(
   confirmPassword: string,
   displayName: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, confirmPassword, displayName }),
-  })
+  const response = MOCK_API
+    ? await mockRegisterRequest(email, password, confirmPassword, displayName)
+    : await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, confirmPassword, displayName }),
+      })
   return handleRegisterResponse(response)
 }
 
@@ -127,11 +139,13 @@ export async function registerApi(
 export async function loginWithGoogleApi(
   accessToken: string
 ): Promise<{ success: true; user: User } | { success: false; error: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accessToken }),
-  })
+  const response = MOCK_API
+    ? await mockGoogleLoginRequest(accessToken)
+    : await fetch(`${API_BASE_URL}/api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken }),
+      })
   return handleAuthResponse(response)
 }
 
@@ -139,10 +153,14 @@ export async function logoutApi(): Promise<void> {
   const token = getAccessToken()
   if (token) {
     try {
-      await fetch(`${API_BASE_URL}/api/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (MOCK_API) {
+        await mockLogoutRequest(token)
+      } else {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      }
     } catch {
       // client-side logout still proceeds
     }
@@ -154,9 +172,11 @@ export async function fetchCurrentUserApi(): Promise<User | null> {
   const token = getAccessToken()
   if (!token) return null
 
-  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const response = MOCK_API
+    ? await mockFetchCurrentUserRequest(token)
+    : await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
   if (!response.ok) {
     clearAccessToken()
