@@ -223,17 +223,17 @@ CREATE TABLE group_chat.group_messages (
   document_id  UUID,
   image_url    VARCHAR(1000),
   image_name   VARCHAR(255),
-  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_group_message_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
-);
+
 
 CREATE TABLE group_chat.group_reports (
   id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id    UUID         NOT NULL,
   reporter_id UUID         NOT NULL,
   reason      VARCHAR(500) NOT NULL,
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_group_report_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
 
