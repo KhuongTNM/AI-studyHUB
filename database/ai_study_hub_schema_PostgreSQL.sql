@@ -210,7 +210,7 @@ CREATE TABLE group_chat.group_members (
   pinned    BOOLEAN     NOT NULL DEFAULT FALSE,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   status    VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'JOINED')) DEFAULT 'JOINED',
-  PRIMARY KEY (group_id, user_id)
+  PRIMARY KEY (group_id, user_id),
   CONSTRAINT fk_group_member_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
 
