@@ -413,7 +413,7 @@ public class GroupService {
     /**
      * User phản hồi lời mời tham gia nhóm: Chấp nhận (accept = true) hoặc Từ chối (accept = false).
      * Fail-fast: check đăng nhập -> lấy bản ghi lời mời -> kiểm tra đúng trạng thái PENDING
-     * -> accept: cập nhật JOINED; reject: xóa bản ghi khỏi DB.
+     * -> accept: đối chiếu giới hạn gói cước (BR-090) -> cập nhật JOINED; reject: xóa bản ghi khỏi DB.
      */
     @Transactional(rollbackFor = Exception.class)
     public void handleInvitation(UUID groupId, UUID userId, boolean accept) {
@@ -427,6 +427,17 @@ public class GroupService {
         }
 
         if (accept) {
+            // BR-090: Kiểm tra giới hạn số lượng nhóm tối đa (maxJoined) theo gói cước hiện tại
+            // của chính User đang Accept - chỉ kích hoạt tại thời điểm Chấp nhận, không chặn lúc mời.
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+            Limits lim = limits(user);
+
+            long joinedCount = groupMemberRepository.countGroupsJoinedByUser(userId);
+            if (joinedCount >= lim.maxJoined()) {
+                throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
+            }
+
             invitation.setStatus("JOINED");
             invitation.setJoinedAt(LocalDateTime.now());
             groupMemberRepository.save(invitation);

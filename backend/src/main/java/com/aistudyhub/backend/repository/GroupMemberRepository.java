@@ -17,7 +17,9 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupM
 
     long countByIdGroupId(UUID groupId);
 
-    @Query("SELECT COUNT(m) FROM GroupMember m WHERE m.id.userId = :userId")
+    // BR-090: chỉ đếm số nhóm đã tham gia CHÍNH THỨC (status = JOINED).
+    // Không được tính các lời mời đang PENDING vào hạn mức gói cước.
+    @Query("SELECT COUNT(m) FROM GroupMember m WHERE m.id.userId = :userId AND m.status = 'JOINED'")
     long countGroupsJoinedByUser(@Param("userId") UUID userId);
 
     List<GroupMember> findByIdUserId(UUID userId);
