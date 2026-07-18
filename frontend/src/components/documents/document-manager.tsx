@@ -193,7 +193,17 @@ export function DocumentManager() {
     return matchSearch && matchSubject
   })
 
-  const uploadingDocs = documents.filter(d => d.status === "uploading" || d.status === "scanning")
+  // Chỉ hiển thị "Đang xử lý" cho những doc được upload trong 5 phút gần nhất.
+  // Tránh trường hợp doc cũ bị stuck ở status "uploading" (do server crash / lỗi async)
+  // từ session trước cứ hiện mãi, kể cả khi đã upload thành công rồi.
+  const UPLOAD_STALE_MS = 5 * 60 * 1000 // 5 phút
+  const uploadingDocs = documents.filter(d => {
+    if (d.status !== "uploading" && d.status !== "scanning") return false
+    // Temp docs (chưa có trong DB) luôn hiển thị — id bắt đầu bằng "temp-"
+    if (d.id.startsWith("temp-")) return true
+    // Với doc thật từ DB, chỉ hiển thị nếu uploadedAt < 5 phút trước
+    return Date.now() - d.uploadedAt.getTime() < UPLOAD_STALE_MS
+  })
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const navigateToFolder = useCallback((folder: Folder) => {
