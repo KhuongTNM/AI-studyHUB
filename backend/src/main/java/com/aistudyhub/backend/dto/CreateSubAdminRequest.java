@@ -18,6 +18,9 @@ public class CreateSubAdminRequest {
     @Size(max = 50, message = "Tên hiển thị không được vượt quá 50 ký tự.")
     private String displayName;
 
+    @NotBlank(message = "Mật khẩu Admin không được để trống.")
+    private String adminPassword;
+
     public String getEmail() {
         return email;
     }
@@ -40,6 +43,14 @@ public class CreateSubAdminRequest {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getAdminPassword() {
+        return adminPassword;
+    }
+
+    public void setAdminPassword(String adminPassword) {
+        this.adminPassword = adminPassword;
     }
 
 }

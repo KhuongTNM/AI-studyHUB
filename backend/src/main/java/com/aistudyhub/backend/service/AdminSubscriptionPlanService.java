@@ -42,6 +42,7 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse createPlan(com.aistudyhub.backend.dto.CreateSubscriptionPlanRequest request) {
+        verifyAdminPassword(request.getAdminPassword());
         String formattedDisplayName = formatDisplayName(request.getDisplayName());
 
         if (subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
@@ -86,6 +87,7 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse updatePlan(String planName, com.aistudyhub.backend.dto.UpdateSubscriptionPlanRequest request) {
+        verifyAdminPassword(request.getAdminPassword());
         SubscriptionPlan plan = subscriptionPlanRepository.findByName(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
@@ -106,7 +108,8 @@ public class AdminSubscriptionPlanService {
     }
 
     @Transactional
-    public void deletePlan(String planName) {
+    public void deletePlan(String planName, String adminPassword) {
+        verifyAdminPassword(adminPassword);
         if (SubscriptionPlan.FREE_PLAN_NAME.equals(planName) || "plan_2_4".equals(planName) || "plan_5_plus".equals(planName)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được xóa các gói mặc định.");
         }
@@ -123,10 +126,7 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse updatePrice(String planName, UpdatePackagePriceRequest request) {
-        User admin = getCurrentAdmin();
-        if (!passwordEncoder.matches(request.getAdminPassword(), admin.getPasswordHash())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Mật khẩu Admin không đúng.");
-        }
+        verifyAdminPassword(request.getAdminPassword());
         if (SubscriptionPlan.FREE_PLAN_NAME.equals(planName)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được chỉnh giá gói Free.");
         }
@@ -149,6 +149,14 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin mới được chỉnh sửa giá gói.");
         }
         return user;
+    }
+
+    private User verifyAdminPassword(String password) {
+        User admin = getCurrentAdmin();
+        if (!passwordEncoder.matches(password, admin.getPasswordHash())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Mật khẩu Admin không chính xác.");
+        }
+        return admin;
     }
 
     private String generateSlug(String displayName) {

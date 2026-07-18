@@ -193,14 +193,13 @@ CREATE TABLE ai.document_chunks (
 -- ============================================================
 
 CREATE TABLE group_chat.groups (
-  id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  group_code         VARCHAR(32)  UNIQUE NOT NULL,
-  password_hash      VARCHAR(255) NOT NULL,
-  name               VARCHAR(120) NOT NULL,
-  description        VARCHAR(500),
-  owner_id           UUID         NOT NULL,
-  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_code VARCHAR(32)  UNIQUE NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  description VARCHAR(500),
+  owner_id  UUID NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE group_chat.group_members (
@@ -210,7 +209,9 @@ CREATE TABLE group_chat.group_members (
   muted     BOOLEAN     NOT NULL DEFAULT FALSE,
   pinned    BOOLEAN     NOT NULL DEFAULT FALSE,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (group_id, user_id)
+  status    VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'JOINED')) DEFAULT 'JOINED',
+  PRIMARY KEY (group_id, user_id),
+  CONSTRAINT fk_group_member_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
 
 CREATE TABLE group_chat.group_messages (
@@ -222,15 +223,18 @@ CREATE TABLE group_chat.group_messages (
   document_id  UUID,
   image_url    VARCHAR(1000),
   image_name   VARCHAR(255),
-  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_group_message_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
+
 
 CREATE TABLE group_chat.group_reports (
   id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id    UUID         NOT NULL,
   reporter_id UUID         NOT NULL,
   reason      VARCHAR(500) NOT NULL,
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_group_report_group FOREIGN KEY (group_id) REFERENCES group_chat.groups(id) ON DELETE CASCADE
 );
 
 -- ============================================================

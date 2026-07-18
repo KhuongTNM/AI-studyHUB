@@ -24,13 +24,19 @@ export function UploadModal({
   initialSubject?: string
   hideSubject?: boolean
   onClose: () => void
-  onUpload: (files: File[], subject: string, tags?: string) => void
+  /**
+   * Trả về { success, error }. Nếu success=false (vd 409 trùng tên trong
+   * cùng folder), modal PHẢI giữ nguyên — không clear file/form — để user
+   * tự đổi tên/thư mục rồi bấm Upload lại ngay (mục 3, docx).
+   */
+  onUpload: (files: File[], subject: string, tags?: string) => Promise<{ success: boolean; error?: string } | void>
 }) {
   const [subject, setSubject] = useState(initialSubject)
   const [tags, setTags] = useState("")
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { language } = useApp()
   const text = uploadText[language]
@@ -84,10 +90,23 @@ export function UploadModal({
     })
   }
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!selectedFiles.length || (!hideSubject && !subject.trim())) return
-    onUpload(selectedFiles, subject.trim(), tags.trim() || undefined)
-    onClose()
+    setError(null)
+    setIsUploading(true)
+    try {
+      const result = await onUpload(selectedFiles, subject.trim(), tags.trim() || undefined)
+      // Không có kết quả trả về (luồng cũ) → coi như thành công, giữ hành vi trước đây.
+      if (!result || result.success) {
+        onClose()
+        return
+      }
+      // Thất bại (vd 409 File đã tồn tại trong thư mục này) → GIỮ NGUYÊN form,
+      // file đã chọn, để user tự đổi tên hoặc chọn thư mục khác rồi thử lại ngay.
+      setError(result.error ?? null)
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -203,12 +222,12 @@ export function UploadModal({
           <Button
             className="flex-1 gap-2"
             onClick={handleUpload}
-            disabled={!selectedFiles.length || (!hideSubject && !subject.trim())}
+            disabled={isUploading || !selectedFiles.length || (!hideSubject && !subject.trim())}
           >
             <Upload className="h-4 w-4" />
-            {text.upload} {selectedFiles.length > 0 ? `(${selectedFiles.length} file)` : ""}
+            {isUploading ? text.uploading : `${text.upload} ${selectedFiles.length > 0 ? `(${selectedFiles.length} file)` : ""}`}
           </Button>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isUploading}>
             {text.cancel}
           </Button>
         </div>
@@ -227,6 +246,7 @@ const uploadText = {
     tagsPlaceholder: "toán học, đại số, vi tích phân...",
     dropOrClick: "Kéo thả hoặc click để chọn file",
     upload: "Upload",
+    uploading: "Đang upload...",
     cancel: "Hủy",
   },
   en: {
@@ -238,6 +258,7 @@ const uploadText = {
     tagsPlaceholder: "math, algebra, calculus...",
     dropOrClick: "Drag and drop or click to choose files",
     upload: "Upload",
+    uploading: "Uploading...",
     cancel: "Cancel",
   },
 } as const
