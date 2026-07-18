@@ -16,7 +16,4 @@ public class CreateGroupRequest {
     private String name;
 
     private String description;
-
-    @NotBlank(message = "GROUP_PASSWORD_REQUIRED")
-    private String password;
 }
