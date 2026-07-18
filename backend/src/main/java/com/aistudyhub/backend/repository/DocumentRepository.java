@@ -67,7 +67,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
            "AND ((:folderId IS NULL AND d.folderId IS NULL) OR d.folderId = :folderId) " +
            "AND LOWER(d.originalName) = LOWER(:originalName)")
     long countActiveDuplicateInFolder(@Param("userId") UUID userId,
-                                       @Param("folderId") UUID folderId,
+                                       @Nullable @Param("folderId") UUID folderId,
                                        @Param("originalName") String originalName);
 
        @Modifying
