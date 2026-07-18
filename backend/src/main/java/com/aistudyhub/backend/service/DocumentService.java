@@ -68,6 +68,7 @@ public class DocumentService {
         }
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Document upload(UUID userId, MultipartFile file, String subject, String title,
                            Visibility visibility, String tags, UUID folderId) {
         if (subject == null || subject.isBlank()) {
