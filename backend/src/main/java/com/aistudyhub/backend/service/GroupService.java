@@ -167,12 +167,20 @@ public class GroupService {
         }
 
         GroupMember member = getMembership(groupId, userId);
+
+        // BR-015: Truy vấn display_name của User TRƯỚC khi xóa bản ghi thành viên, để đảm bảo
+        // dữ liệu vẫn nhất quán tại thời điểm lấy tên. Nếu không tìm thấy User (dữ liệu bất nhất,
+        // tài khoản đã bị xóa vật lý khỏi core.users) -> USER_NOT_FOUND, rollback toàn bộ,
+        // không xóa thành viên.
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.delete(member);
 
         GroupMessage sys = new GroupMessage();
         sys.setGroup(g);
         sys.setSenderId(null);
-        sys.setContent(userId + " đã rời nhóm.");
+        sys.setContent(user.getDisplayName() + " đã rời nhóm.");
         sys.setMessageType("system");
         sys.setCreatedAt(LocalDateTime.now());
         groupMessageRepository.save(sys);
@@ -304,7 +312,26 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND);
         }
 
+        // BR-016: Truy vấn display_name của cả người bị kick (target) và Chủ nhóm (operator) TRƯỚC
+        // khi xóa bản ghi thành viên, đảm bảo dữ liệu nhất quán tại thời điểm lấy tên. Nếu không
+        // tìm thấy 1 trong 2 -> USER_NOT_FOUND, rollback, không xóa thành viên.
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User operatorUser = userRepository.findById(operatorId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.deleteByIdGroupIdAndIdUserId(groupId, targetUserId);
+
+        // Theo convention UX của các app chat phổ biến (Zalo/Messenger/Telegram): tin nhắn hệ
+        // thống khi bị kick phải nêu rõ AI thực hiện hành động, để phân biệt với trường hợp tự rời
+        // nhóm (leaveGroup) và tránh gây hiểu lầm/tranh chấp trách nhiệm.
+        GroupMessage sys = new GroupMessage();
+        sys.setGroup(g);
+        sys.setSenderId(null);
+        sys.setContent(targetUser.getDisplayName() + " đã bị " + operatorUser.getDisplayName() + " xóa khỏi nhóm.");
+        sys.setMessageType("system");
+        sys.setCreatedAt(LocalDateTime.now());
+        groupMessageRepository.save(sys);
     }
 
     // ==========================================
@@ -441,6 +468,20 @@ public class GroupService {
             invitation.setStatus("JOINED");
             invitation.setJoinedAt(LocalDateTime.now());
             groupMemberRepository.save(invitation);
+
+            // BR-090: Ngay sau khi chuyển trạng thái JOINED thành công (cùng transaction), tạo
+            // tin nhắn hệ thống thông báo thành viên mới. Tái sử dụng đối tượng User đã truy vấn
+            // ở bước kiểm tra hạn mức phía trên, không query lại core.users lần nữa.
+            Group g = groupRepository.findById(groupId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+            GroupMessage sys = new GroupMessage();
+            sys.setGroup(g);
+            sys.setSenderId(null);
+            sys.setContent(user.getDisplayName() + " đã tham gia vào nhóm chat.");
+            sys.setMessageType("system");
+            sys.setCreatedAt(LocalDateTime.now());
+            groupMessageRepository.save(sys);
         } else {
             groupMemberRepository.delete(invitation);
         }

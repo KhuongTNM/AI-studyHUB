@@ -9,6 +9,7 @@ import com.aistudyhub.backend.entity.DocumentStatus;
 import com.aistudyhub.backend.entity.Group;
 import com.aistudyhub.backend.entity.GroupMessage;
 import com.aistudyhub.backend.entity.GroupReport;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
@@ -17,10 +18,13 @@ import com.aistudyhub.backend.repository.GroupMemberRepository;
 import com.aistudyhub.backend.repository.GroupMessageRepository;
 import com.aistudyhub.backend.repository.GroupReportRepository;
 import com.aistudyhub.backend.repository.GroupRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +49,7 @@ public class GroupMessageService {
     private final GroupRepository groupRepository;
     private final DocumentRepository documentRepository;
     private final GroupReportRepository groupReportRepository;
+    private final UserRepository userRepository;
     private final StorageService storageService;
 
     @Transactional
@@ -105,8 +110,21 @@ public class GroupMessageService {
 
         List<GroupMessage> messages = groupMessageRepository.findByGroup_IdOrderByCreatedAtAsc(groupId);
 
+        // GAP FIX: senderName trước đây luôn null vì toResponse() không map trường này.
+        // Batch-fetch display_name của tất cả senderId khác null (loại trừ tin nhắn hệ thống)
+        // trong 1 lần truy vấn duy nhất, tránh N+1 query khi lặp qua danh sách tin nhắn.
+        List<UUID> senderIds = messages.stream()
+                .map(GroupMessage::getSenderId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        Map<UUID, String> senderNames = senderIds.isEmpty()
+                ? Collections.emptyMap()
+                : userRepository.findAllById(senderIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getDisplayName));
+
         return messages.stream()
-                .map(this::toResponse)
+                .map(msg -> toResponse(msg, senderNames))
                 .collect(Collectors.toList());
     }
 
@@ -127,11 +145,25 @@ public class GroupMessageService {
     // annotation sẽ không có tác dụng thật. Khi triển khai hàm getHistory (public) ở Phần sau,
     // hãy đánh dấu @Transactional(readOnly = true) ngay trên hàm public đó để Hibernate áp
     // dụng read-only flush mode cho toàn bộ luồng gọi xuống toResponse.
+    // Overload tiện dụng: dùng ngay sau khi tạo 1 tin nhắn đơn lẻ (sendTextMessage, shareDocument,
+    // uploadImage) - chỉ cần 1 lượt tra cứu display_name của chính sender đó (nếu có).
     private GroupMessageResponse toResponse(GroupMessage msg) {
+        Map<UUID, String> senderNames = msg.getSenderId() == null
+                ? Collections.emptyMap()
+                : userRepository.findById(msg.getSenderId())
+                .map(u -> Map.of(msg.getSenderId(), u.getDisplayName()))
+                .orElse(Collections.emptyMap());
+        return toResponse(msg, senderNames);
+    }
+
+    // GAP FIX: bổ sung tham số senderNames để populate trường senderName của DTO.
+    // Tin nhắn hệ thống (senderId == null) giữ nguyên senderName = null.
+    private GroupMessageResponse toResponse(GroupMessage msg, Map<UUID, String> senderNames) {
         GroupMessageResponse.GroupMessageResponseBuilder builder = GroupMessageResponse.builder()
                 .id(msg.getId())
                 .groupId(msg.getGroup().getId())
                 .senderId(msg.getSenderId())
+                .senderName(msg.getSenderId() != null ? senderNames.get(msg.getSenderId()) : null)
                 .content(msg.getContent())
                 .messageType(msg.getMessageType())
                 .imageUrl(msg.getImageUrl())
