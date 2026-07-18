@@ -147,13 +147,8 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
           prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),
         )
 
-        // FR-23: Persist folderId lên backend sau khi upload thành công.
-        // uploadDocumentApi không nhận folderId, nên phải gọi PATCH riêng.
-        if (folderId) {
-          updateDocumentFolderApi(realDoc.id, folderId).catch(() => {
-            // Không throw — folderId vẫn đúng trong memory session này.
-          })
-        }
+        // uploadDocumentApi đã gửi kèm folderId ngay trong request upload
+        // (formData) — KHÔNG cần gọi PATCH riêng để persist folderId nữa.
         void refreshStorageUsage()
 
         let attempts = 0

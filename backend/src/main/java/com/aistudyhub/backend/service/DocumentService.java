@@ -69,7 +69,7 @@ public class DocumentService {
     }
 
     public Document upload(UUID userId, MultipartFile file, String subject, String title,
-                           Visibility visibility, String tags) {
+                           Visibility visibility, String tags, UUID folderId) {
         if (subject == null || subject.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Môn học không được để trống.");
         }
@@ -85,6 +85,22 @@ public class DocumentService {
         String ext = getExtension(originalName);
         if (!List.of("pdf", "docx", "pptx").contains(ext)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ hỗ trợ file PDF, DOCX, PPTX.");
+        }
+
+        // Nếu có chỉ định folder, xác thực folder tồn tại và thuộc về chính user này (BR-080).
+        if (folderId != null) {
+            Folder folder = folderRepository.findById(folderId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."));
+            if (!folder.getUser().getId().equals(userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Bạn không có quyền upload vào thư mục này.");
+            }
+        }
+
+        // BR mới (mục 3, docx): chặn trùng originalName trong CÙNG 1 folder
+        // (kể cả cả 2 đều root/null) — KHÔNG auto-rename, trả 409 để FE giữ nguyên form.
+        if (documentRepository.countActiveDuplicateInFolder(userId, folderId, originalName) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "File đã tồn tại trong thư mục này.");
         }
 
         Set<Tag> resolvedTags = resolveTags(tags);
@@ -107,6 +123,7 @@ public class DocumentService {
         Document doc = new Document();
         doc.setId(UUID.randomUUID());
         doc.setUserId(userId);
+        doc.setFolderId(folderId);
         doc.setOriginalName(originalName);
         doc.setTitle(title != null && !title.isBlank() ? title : originalName);
         doc.setFileUrl(fileUrl);
@@ -372,6 +389,30 @@ public class DocumentService {
     public Path getFilePath(Document doc) {
         String filename = Paths.get(doc.getFileUrl()).getFileName().toString();
         return uploadDir.resolve(filename);
+    }
+
+    /**
+     * Trả về 1 Path LOCAL để đọc bytes trực tiếp, dùng cho preview/download.
+     * - fileUrl là Supabase public URL (trường hợp thật, luôn xảy ra với file mới)
+     *   -> tải về cache tại uploadDir/remote-cache/{id}.{ext}, tái sử dụng lần sau.
+     * - fileUrl là path local (tương thích ngược, file cũ) -> dùng trực tiếp.
+     *
+     * Trước đây controller redirect (302) thẳng ra Supabase nên KHÔNG kiểm soát
+     * được Content-Type/Content-Disposition/convert PDF — đây là chỗ sửa gốc.
+     */
+    public Path getLocalFileForServing(Document doc) {
+        String fileUrl = doc.getFileUrl();
+        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
+            Path cacheDir = uploadDir.resolve("remote-cache");
+            Path cacheFile = cacheDir.resolve(doc.getId() + "." + doc.getFileType());
+            return storageService.fetchRemoteFileToCache(fileUrl, cacheFile);
+        }
+        return getFilePath(doc);
+    }
+
+    /** Dùng bởi PdfPreviewService để đặt cache PDF cùng gốc với thư mục upload. */
+    public Path getUploadDir() {
+        return uploadDir;
     }
 
     /** Xóa những tag trong danh sách không còn được gắn với bất kỳ document active nào */
