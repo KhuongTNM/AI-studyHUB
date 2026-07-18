@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
-import { searchDocumentsApi } from "@/services/api/documents"
+import { searchDocumentsApi, updateDocumentApi } from "@/services/api/documents"
 import type { Document, Folder } from "@/lib/store"
 import { UploadProgress } from "./upload-progress"
 import { DocumentPreviewModal } from "./document-preview-modal"
@@ -30,7 +30,7 @@ import type { ContextMenuState, ContextMenuTarget } from "./context-menu-portal"
 // ─── Main Document Manager ────────────────────────────────────────────────────
 export function DocumentManager() {
   const {
-    documents, categories, deleteDocument,
+    documents, categories, deleteDocument, updateDocument,
     uploadDocument, downloadDocument, changeDocumentVisibility,
     currentUser, setCurrentPage, setFlashcardSelectedDocumentId, language,
     folders, createFolder, renameFolder, deleteFolder,
@@ -97,6 +97,7 @@ export function DocumentManager() {
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [showCreateSubject, setShowCreateSubject] = useState(false)
   const [customSubjects, setCustomSubjects] = useState<string[]>([])
+  const [renameSubjectTarget, setRenameSubjectTarget] = useState<string | null>(null)
 
   // Load custom subjects from localStorage on mount/user change
   useEffect(() => {
@@ -310,6 +311,113 @@ const handleSelectSubject = useCallback((subject: string) => {
     })
     setSelectedSubject(trimmed)
   }, [currentUser])
+
+  const handleDeleteSubject = useCallback((subjectName: string) => {
+    const isVi = language === "vi"
+    const confirmMsg = isVi 
+      ? `Bạn có muốn xóa môn học này không?` 
+      : `Do you want to delete this subject?`
+    if (window.confirm(confirmMsg)) {
+      const targetSubject = subjectName.trim().toLowerCase()
+      // 1. Delete all documents in this subject
+      const docsToDelete = documents.filter(
+        d => d.subject?.trim().toLowerCase() === targetSubject && d.status !== "deleted"
+      )
+      docsToDelete.forEach(doc => {
+        deleteDocument(doc.id)
+      })
+
+      // 2. Clear from customSubjects
+      setCustomSubjects(prev => {
+        const next = prev.filter(s => s.trim().toLowerCase() !== targetSubject)
+        if (typeof window !== "undefined") {
+          const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+          try {
+            window.localStorage.setItem(key, JSON.stringify(next))
+          } catch (e) {
+            console.error("Failed to save custom subjects", e)
+          }
+        }
+        return next
+      })
+
+      // 3. Clear subject for any folders that had this subject
+      const foldersToUpdate = folders.filter(
+        f => f.subject?.trim().toLowerCase() === targetSubject
+      )
+      foldersToUpdate.forEach(f => {
+        void renameFolder(f.id, f.name, "")
+      })
+
+      // Reset selectedSubject back to "all" if the deleted one was selected
+      if (selectedSubject.toLowerCase() === targetSubject) {
+        setSelectedSubject("all")
+      }
+    }
+  }, [documents, folders, deleteDocument, renameFolder, selectedSubject, currentUser, language])
+
+  const handleRenameSubjectConfirm = useCallback(async (newName: string) => {
+    if (!renameSubjectTarget) return
+    const oldSubject = renameSubjectTarget.trim().toLowerCase()
+    const targetSubject = newName.trim().toLowerCase()
+    if (!targetSubject || oldSubject === targetSubject) {
+      setRenameSubjectTarget(null)
+      return
+    }
+
+    // 1. Update customSubjects (local state and localStorage)
+    setCustomSubjects(prev => {
+      const next = prev.map(s => s.trim().toLowerCase() === oldSubject ? targetSubject : s)
+      if (typeof window !== "undefined") {
+        const key = currentUser ? `customSubjects_${currentUser.id}` : "customSubjects_guest"
+        try {
+          window.localStorage.setItem(key, JSON.stringify(next))
+        } catch (e) {
+          console.error("Failed to save custom subjects", e)
+        }
+      }
+      return next
+    })
+
+    // 2. Update documents with this subject (API and state)
+    const docsToUpdate = documents.filter(
+      d => d.subject?.trim().toLowerCase() === oldSubject
+    )
+    for (const doc of docsToUpdate) {
+      try {
+        const updated = await updateDocumentApi(doc.id, {
+          title: doc.name,
+          description: doc.description || undefined,
+          subject: targetSubject,
+          tags: doc.tags.join(", ") || undefined,
+        })
+        updateDocument(doc.id, {
+          subject: updated.subject,
+        })
+      } catch (err) {
+        console.error(`Failed to update subject for document ${doc.id}`, err)
+      }
+    }
+
+    // 3. Update folders with this subject (API and state)
+    const foldersToUpdate = folders.filter(
+      f => f.subject?.trim().toLowerCase() === oldSubject
+    )
+    for (const folder of foldersToUpdate) {
+      try {
+        await renameFolder(folder.id, folder.name, targetSubject)
+      } catch (err) {
+        console.error(`Failed to update subject for folder ${folder.id}`, err)
+      }
+    }
+
+    // Update selectedSubject if it was the renamed one
+    if (selectedSubject.toLowerCase() === oldSubject) {
+      setSelectedSubject(targetSubject)
+    }
+
+    setRenameSubjectTarget(null)
+  }, [renameSubjectTarget, documents, folders, updateDocument, renameFolder, selectedSubject, currentUser])
 
   /**
    * FR-23: Đổi tên thư mục (+ tùy chọn cập nhật môn học).
@@ -532,6 +640,7 @@ const handleSelectSubject = useCallback((subject: string) => {
                 <button
                   key={subject}
                   onClick={() => handleSelectSubject(subject)}
+                  onContextMenu={e => openContextMenu(e, { type: "subject", subject })}
                   className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all",
                     selectedSubject === subject ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/40"
                   )}
@@ -712,6 +821,8 @@ const handleSelectSubject = useCallback((subject: string) => {
           onToggleVisibility={doc => handleToggleVisibility(doc.id, !doc.isPublic)}
           onMoveFile={doc => setMoveTarget(doc)}
           isSubjectSelected={selectedSubject !== "all" || currentFolderId !== null}
+          onRenameSubject={subject => setRenameSubjectTarget(subject)}
+          onDeleteSubject={handleDeleteSubject}
         />
       )}
 
@@ -734,6 +845,15 @@ const handleSelectSubject = useCallback((subject: string) => {
           language={language}
           onConfirm={handleCreateSubject}
           onClose={() => setShowCreateSubject(false)}
+        />
+      )}
+      {renameSubjectTarget && (
+        <CreateSubjectModal
+          language={language}
+          initialName={renameSubjectTarget}
+          isEdit={true}
+          onConfirm={handleRenameSubjectConfirm}
+          onClose={() => setRenameSubjectTarget(null)}
         />
       )}
 
