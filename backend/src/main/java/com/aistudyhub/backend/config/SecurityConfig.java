@@ -48,6 +48,7 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**

@@ -26,6 +26,16 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.net.URL;
+import java.nio.file.StandardCopyOption;
+import java.io.InputStream;
+import java.io.File;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -58,6 +68,22 @@ public class DocumentService {
 
     private Path uploadDir;
 
+    private final ConcurrentHashMap<String, ReentrantLock> uploadLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, ReentrantLock> previewLocks = new ConcurrentHashMap<>();
+    private Semaphore libreOfficeSemaphore;
+
+    @Value("${app.preview.cache-dir:./uploads/preview_cache}")
+    private String cacheDirConfig;
+
+    @Value("${app.preview.conversion-timeout:30}")
+    private int conversionTimeout;
+
+    @Value("${app.libreoffice.command:soffice}")
+    private String libreOfficeCmd;
+
+    @Value("${app.preview.max-concurrent-conversions:3}")
+    private int maxConcurrentConversions;
+
     @PostConstruct
     private void init() {
         uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
@@ -66,9 +92,11 @@ public class DocumentService {
         } catch (IOException e) {
             throw new RuntimeException("Could not create upload directory: " + uploadDir, e);
         }
+        this.libreOfficeSemaphore = new Semaphore(maxConcurrentConversions);
     }
 
-    public Document upload(UUID userId, MultipartFile file, String subject, String title,
+    @Transactional(rollbackFor = Exception.class)
+    public Document upload(UUID userId, UUID folderId, MultipartFile file, String subject, String title,
                            Visibility visibility, String tags) {
         if (subject == null || subject.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Môn học không được để trống.");
@@ -96,37 +124,78 @@ public class DocumentService {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");
         }
 
-        String storedName = UUID.randomUUID() + "_" + sanitizeFileName(originalName);
+        String lockKey = userId + "_" + (folderId != null ? folderId : "root");
+        ReentrantLock lock = uploadLocks.computeIfAbsent(lockKey, k -> new ReentrantLock());
+        lock.lock();
 
-        // Upload lên Supabase Storage TRƯỚC khi tạo bản ghi DB.
-        // Nếu lỗi thì chưa đụng gì tới DB, không cần rollback thủ công.
-        String fileUrl = storageService.uploadToSupabase(file, storedName);
+        String fileUrl = null;
+        try {
+            int dotIdx = originalName.lastIndexOf('.');
+            String baseName = dotIdx > 0 ? originalName.substring(0, dotIdx) : originalName;
+            String extension = dotIdx > 0 ? originalName.substring(dotIdx) : "";
+            String finalName = originalName;
+            int counter = 0;
+            while (true) {
+                boolean exists = folderId != null ?
+                    documentRepository.existsByUserIdAndFolderIdAndOriginalNameIgnoreCaseAndDeletedAtIsNull(userId, folderId, finalName) :
+                    documentRepository.existsByUserIdAndFolderIdIsNullAndOriginalNameIgnoreCaseAndDeletedAtIsNull(userId, finalName);
+                if (!exists) break;
+                counter++;
+                finalName = baseName + " (" + counter + ")" + extension;
+            }
 
-        LocalDateTime now = LocalDateTime.now();
+            String storedName = UUID.randomUUID() + "_" + sanitizeFileName(finalName);
+            fileUrl = storageService.uploadToSupabase(file, storedName);
 
-        Document doc = new Document();
-        doc.setId(UUID.randomUUID());
-        doc.setUserId(userId);
-        doc.setOriginalName(originalName);
-        doc.setTitle(title != null && !title.isBlank() ? title : originalName);
-        doc.setFileUrl(fileUrl);
-        doc.setFileSizeBytes(file.getSize());
-        doc.setFileType(ext);
-        doc.setSubject(subject != null ? subject.trim().toLowerCase() : null);
-        doc.setTags(resolvedTags);
-        doc.setStatus(DocumentStatus.UPLOADING);
-        doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
-        doc.setDownloadCount(0);
-        doc.setCreatedAt(now);
-        doc.setUpdatedAt(now);
+            LocalDateTime now = LocalDateTime.now();
 
-        user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
-        user.setUpdatedAt(LocalDateTime.now());
-        userRepository.save(user);
-        Document saved = documentRepository.save(doc);
+            Document doc = new Document();
+            doc.setId(UUID.randomUUID());
+            doc.setUserId(userId);
+            doc.setFolderId(folderId);
+            doc.setOriginalName(finalName);
+            boolean titleIsSameAsOriginal = title != null && title.equals(originalName);
+            doc.setTitle(title != null && !title.isBlank() && !titleIsSameAsOriginal ? title : finalName);
+            doc.setFileUrl(fileUrl);
+            doc.setFileSizeBytes(file.getSize());
+            doc.setFileType(ext);
+            doc.setSubject(subject.trim().toLowerCase());
+            doc.setTags(resolvedTags);
+            doc.setStatus(DocumentStatus.UPLOADING);
+            doc.setVisibility(visibility != null ? visibility : Visibility.PRIVATE);
+            doc.setDownloadCount(0);
+            doc.setCreatedAt(now);
+            doc.setUpdatedAt(now);
 
-        scanProcessor.simulateScan(saved.getId());
-        return saved;
+            user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
+            Document saved = documentRepository.save(doc);
+
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        scanProcessor.simulateScan(saved.getId());
+                    }
+                }
+            );
+            return saved;
+        } catch (Exception e) {
+            if (fileUrl != null) {
+                try {
+                    storageService.delete(fileUrl);
+                } catch (Exception ex) {
+                    log.error("Lỗi xóa file mồ côi trên Supabase: ", ex);
+                }
+            }
+            throw e;
+        } finally {
+            lock.unlock();
+            if (!lock.hasQueuedThreads()) {
+                uploadLocks.remove(lockKey, lock);
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -228,7 +297,9 @@ public class DocumentService {
         String base = (dot > 0) ? originalName.substring(0, dot) : originalName;
         String ext = (dot > 0) ? originalName.substring(dot) : "";
 
-        List<Document> existing = documentRepository.findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(userId, base);
+        List<Document> existing = doc.getFolderId() != null
+                ? documentRepository.findByUserIdAndFolderIdAndDeletedAtIsNullAndOriginalNameStartingWith(userId, doc.getFolderId(), base)
+                : documentRepository.findByUserIdAndFolderIdIsNullAndDeletedAtIsNullAndOriginalNameStartingWith(userId, base);
         int maxN = 0;
         Pattern pattern = Pattern.compile(Pattern.quote(base) + " \\((\\d+)\\)" + Pattern.quote(ext));
         for (Document d : existing) {
@@ -238,12 +309,16 @@ public class DocumentService {
                 if (n > maxN) maxN = n;
             }
         }
+        boolean exists = doc.getFolderId() != null
+                ? documentRepository.existsByUserIdAndFolderIdAndOriginalNameIgnoreCaseAndDeletedAtIsNull(userId, doc.getFolderId(), originalName)
+                : documentRepository.existsByUserIdAndFolderIdIsNullAndOriginalNameIgnoreCaseAndDeletedAtIsNull(userId, originalName);
+
         if (maxN > 0) {
             String newName = base + " (" + (maxN + 1) + ")" + ext;
             doc.setOriginalName(newName);
             doc.setTitle(newName);
-        } else if (documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, originalName) > 0) {
-            String newName = base + " (2)" + ext;
+        } else if (exists) {
+            String newName = base + " (1)" + ext;
             doc.setOriginalName(newName);
             doc.setTitle(newName);
         }
@@ -374,6 +449,108 @@ public class DocumentService {
         return uploadDir.resolve(filename);
     }
 
+    public String getOrCreatePreviewCachePath(Document doc) {
+        if (doc.getDeletedAt() != null || doc.getStatus() != DocumentStatus.READY) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu chưa sẵn sàng hoặc đã bị xóa.");
+        }
+
+        if (doc.getOriginalName().toLowerCase().endsWith(".pdf")) {
+            return null;
+        }
+
+        File cacheDir = new File(cacheDirConfig);
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+
+        File cacheFile = new File(cacheDir, doc.getId().toString() + ".pdf");
+        if (cacheFile.exists() && cacheFile.length() > 0) {
+            return cacheFile.getAbsolutePath();
+        }
+
+        ReentrantLock lock = previewLocks.computeIfAbsent(doc.getId(), k -> new ReentrantLock());
+        lock.lock();
+
+        File tempOriginFile = new File(cacheDir, doc.getId().toString() + "." + doc.getFileType());
+        try {
+            if (cacheFile.exists() && cacheFile.length() > 0) return cacheFile.getAbsolutePath();
+
+            boolean acquired = libreOfficeSemaphore.tryAcquire(10, TimeUnit.SECONDS);
+            if (!acquired) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Hệ thống đang quá tải xử lý xem trước, vui lòng thử lại sau.");
+            }
+
+            File profileDir = new File(cacheDir, "soffice_profile_" + doc.getId());
+            try {
+                downloadFileFromUrl(doc.getFileUrl(), tempOriginFile);
+
+                if (!profileDir.exists()) profileDir.mkdirs();
+                String uniqueUserFolder = profileDir.toURI().toString().replace("file:/", "file:///");
+
+                ProcessBuilder pb = new ProcessBuilder(
+                    libreOfficeCmd, "--headless", "--invisible", "--nodefault", "--nofirststartwizard",
+                    "-env:UserInstallation=" + uniqueUserFolder,
+                    "--convert-to", "pdf", "--outdir", cacheDir.getAbsolutePath(),
+                    tempOriginFile.getAbsolutePath()
+                );
+                pb.redirectErrorStream(true);
+
+                Process process;
+                try {
+                    process = pb.start();
+                } catch (IOException ex) {
+                    if (cacheFile.exists()) cacheFile.delete();
+                    throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "Tính năng xem trước chưa khả dụng (Thiếu cấu hình LibreOffice trên server).");
+                }
+                boolean finished = process.waitFor(conversionTimeout, TimeUnit.SECONDS);
+
+                if (!finished || process.exitValue() != 0) {
+                    if (process.isAlive()) process.destroyForcibly();
+                    if (cacheFile.exists()) cacheFile.delete();
+                    
+                    if (process.exitValue() != 0) {
+                        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                            String line;
+                            StringBuilder sb = new StringBuilder();
+                            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+                            log.error("LibreOffice error for doc {}: {}", doc.getId(), sb.toString());
+                        }
+                    }
+                    throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Không thể tạo bản xem trước cho file này.");
+                }
+
+                if (!cacheFile.exists() || cacheFile.length() == 0) {
+                    if (cacheFile.exists()) cacheFile.delete();
+                    throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Tệp PDF kết quả bị lỗi hoặc trống.");
+                }
+
+                return cacheFile.getAbsolutePath();
+            } finally {
+                if (tempOriginFile.exists()) tempOriginFile.delete();
+                deleteDirectoryRecursive(profileDir);
+                libreOfficeSemaphore.release();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (cacheFile.exists()) cacheFile.delete();
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Tiến trình xử lý bị gián đoạn.");
+        } catch (Exception e) {
+            if (cacheFile.exists()) cacheFile.delete();
+            log.error("Lỗi xử lý tạo bản xem trước cho tài liệu ID: " + doc.getId(), e);
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Không thể tạo bản xem trước cho file này.");
+        } finally {
+            if (tempOriginFile.exists()) tempOriginFile.delete();
+            lock.unlock();
+            if (!lock.hasQueuedThreads()) {
+                previewLocks.remove(doc.getId(), lock);
+            }
+        }
+    }
+
+    private void downloadFileFromUrl(String fileUrl, File dest) throws IOException {
+        try (InputStream in = new URL(fileUrl).openStream()) {
+            java.nio.file.Files.copy(in, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     /** Xóa những tag trong danh sách không còn được gắn với bất kỳ document active nào */
     private void deleteOrphanTags(Set<Tag> candidates) {
         if (candidates == null || candidates.isEmpty()) return;
@@ -493,5 +670,18 @@ public class DocumentService {
             page++;
         }
         log.info("Finished scheduled cleanup. Cleaned {} documents.", cleanedCount);
+    }
+
+    private void deleteDirectoryRecursive(File path) {
+        if (path == null || !path.exists()) return;
+        if (path.isDirectory()) {
+            File[] files = path.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    deleteDirectoryRecursive(f);
+                }
+            }
+        }
+        path.delete();
     }
 }

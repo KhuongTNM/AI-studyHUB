@@ -32,7 +32,15 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     long countByUserIdAndDeletedAtIsNullAndOriginalName(UUID userId, String originalName);
 
+    boolean existsByUserIdAndFolderIdAndOriginalNameIgnoreCaseAndDeletedAtIsNull(UUID userId, UUID folderId, String originalName);
+
+    boolean existsByUserIdAndFolderIdIsNullAndOriginalNameIgnoreCaseAndDeletedAtIsNull(UUID userId, String originalName);
+
     List<Document> findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, String prefix);
+
+    List<Document> findByUserIdAndFolderIdAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, UUID folderId, String prefix);
+
+    List<Document> findByUserIdAndFolderIdIsNullAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, String prefix);
 
     @Query("SELECT d FROM Document d JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL AND t.name = :tagName ORDER BY d.createdAt DESC")
     List<Document> findByUserIdAndTagName(@Param("userId") UUID userId, @Param("tagName") String tagName);

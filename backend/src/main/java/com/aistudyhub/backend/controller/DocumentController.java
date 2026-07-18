@@ -47,6 +47,7 @@ public class DocumentController {
     @PostMapping("/upload")
     public ResponseEntity<DocumentResponse> upload(
             @AuthenticationPrincipal AuthUserPrincipal principal,
+            @RequestParam(value = "folderId", required = false) UUID folderId,
             @RequestParam("file") MultipartFile file,
             @RequestParam("subject") String subject,
             @RequestParam(value = "title", required = false) String title,
@@ -58,7 +59,7 @@ public class DocumentController {
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
         }
-        Document doc = documentService.upload(principal.getId(), file, subject, title, visibility, tags);
+        Document doc = documentService.upload(principal.getId(), folderId, file, subject, title, visibility, tags);
         return ResponseEntity.status(201).body(DocumentResponse.from(doc));
     }
 
@@ -139,66 +140,110 @@ public class DocumentController {
     }
 
     @GetMapping("/{id}/preview")
-    public ResponseEntity<?> preview(
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> preview(
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
         Document doc = documentService.getDocumentForPreview(id, principal.getId(), principal.getRole());
-        String fileUrl = doc.getFileUrl();
+        String cachePdfPath = documentService.getOrCreatePreviewCachePath(doc);
 
-        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.LOCATION, fileUrl)
-                    .build();
+        String fileName = doc.getOriginalName();
+        if (!fileName.toLowerCase().endsWith(".pdf")) {
+            fileName += ".pdf";
         }
+        String asciiName = java.text.Normalizer.normalize(fileName, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "").replaceAll("Đ", "D").replaceAll("đ", "d");
+        String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        String contentDisposition = "inline; filename=\"" + asciiName + "\"; filename*=UTF-8''" + encodedFileName;
 
-        Path filePath = documentService.getFilePath(doc);
-        if (!Files.exists(filePath)) {
-            return ResponseEntity.notFound().build();
-        }
-        try {
-            InputStream is = Files.newInputStream(filePath);
-            String mimeType = URLConnection.guessContentTypeFromName(doc.getOriginalName());
-            if (mimeType == null) mimeType = "application/octet-stream";
-            Resource resource = new InputStreamResource(is);
+        if (cachePdfPath == null) {
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(10000);
+            factory.setReadTimeout(10000);
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate(factory);
+            
+            org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody = outputStream -> {
+                restTemplate.execute(java.net.URI.create(doc.getFileUrl()), org.springframework.http.HttpMethod.GET, null, response -> {
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        throw new ApiException(HttpStatus.NOT_FOUND, "Không thể tải file từ cloud.");
+                    }
+                    try (java.io.InputStream inputStream = response.getBody()) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, bytesRead);
+                        }
+                        outputStream.flush();
+                    }
+                    return null;
+                });
+            };
             return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(mimeType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + doc.getOriginalName() + "\"")
-                    .body(resource);
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().build();
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(responseBody);
+        } else {
+            java.io.File pdfFile = new java.io.File(cachePdfPath);
+            if (!pdfFile.exists()) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "File xem trước không tồn tại.");
+            }
+            org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody = outputStream -> {
+                try (java.io.InputStream inputStream = new java.io.FileInputStream(pdfFile)) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                    outputStream.flush();
+                }
+            };
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(responseBody);
         }
     }
 
     @PostMapping("/{id}/download")
-    public ResponseEntity<Resource> download(
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> download(
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
-        Document doc = documentService.incrementDownloadCount(id, principal.getId());
-        String fileUrl = doc.getFileUrl();
+        Document doc = documentService.getDocumentIfAccessible(id, principal.getId());
+        
+        String asciiName = java.text.Normalizer.normalize(doc.getOriginalName(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "").replaceAll("Đ", "D").replaceAll("đ", "d");
+        String encodedName = java.net.URLEncoder.encode(doc.getOriginalName(), java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        String contentDisposition = "attachment; filename=\"" + asciiName + "\"; filename*=UTF-8''" + encodedName;
 
-        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.LOCATION, fileUrl)
-                    .build();
-        }
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);
+        factory.setReadTimeout(10000);
+        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate(factory);
 
-        Path filePath = documentService.getFilePath(doc);
-        if (!Files.exists(filePath)) {
-            return ResponseEntity.notFound().build();
-        }
-        try {
-            InputStream is = Files.newInputStream(filePath);
-            String mimeType = URLConnection.guessContentTypeFromName(doc.getOriginalName());
-            if (mimeType == null) mimeType = "application/octet-stream";
-            Resource resource = new InputStreamResource(is);
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(mimeType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + doc.getOriginalName() + "\"")
-                    .body(resource);
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().build();
-        }
+        org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody = outputStream -> {
+            restTemplate.execute(java.net.URI.create(doc.getFileUrl()), org.springframework.http.HttpMethod.GET, null, response -> {
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    throw new ApiException(HttpStatus.NOT_FOUND, "Không thể tải file từ hệ thống lưu trữ.");
+                }
+                try (java.io.InputStream inputStream = response.getBody()) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                    outputStream.flush();
+                    documentService.incrementDownloadCount(id, principal.getId());
+                }
+                return null;
+            });
+        };
+
+        String mimeType = java.net.URLConnection.guessContentTypeFromName(doc.getOriginalName());
+        if (mimeType == null) mimeType = "application/octet-stream";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .contentType(MediaType.parseMediaType(mimeType))
+                .body(responseBody);
     }
 
     @PutMapping("/{id}")
