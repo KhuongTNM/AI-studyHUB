@@ -43,6 +43,9 @@ import { useGroupChatState } from "./useGroupChatState"
 export interface AppState {
   // ── Auth ──────────────────────────────────────────────────────────────────
   currentUser: User | null
+  /** true while the initial session-restore call is in flight — use this to
+   *  avoid flashing a redirect before we know whether the user is logged in */
+  authLoading: boolean
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
@@ -320,6 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         // Auth
         currentUser: auth.currentUser,
+        authLoading: auth.authLoading,
         showAuthModal: ui.showAuthModal,
         authModalTab: ui.authModalTab,
         login: auth.login,

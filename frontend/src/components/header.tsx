@@ -1,7 +1,7 @@
 "use client"
 
 // Đã loại bỏ Settings và Bell khỏi danh sách import
-import { CreditCard, Moon, Sun, ChevronDown, LogOut, User, LayoutDashboard } from "lucide-react"
+import { CreditCard, Moon, Sun, ChevronDown, LogOut, User, LayoutDashboard, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -19,7 +19,7 @@ interface HeaderProps {
 }
 
 export function Header({ onLogin, onRegister }: HeaderProps) {
-  const { currentUser, logout, openAuthModal, setCurrentPage, toggleDarkMode, isDarkMode, language, setLanguage } = useApp()
+  const { currentUser, authLoading, logout, openAuthModal, setCurrentPage, toggleDarkMode, isDarkMode, language, setLanguage } = useApp()
 
   const text = language === "vi" ? {
     description: "Hệ thống quản lý tài liệu học tập AI",
@@ -63,10 +63,24 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-background px-4 sticky top-0 z-20">
-      {/* Description Text */}
-      <div className="hidden text-sm text-muted-foreground md:block">
-        {text.description}
-      </div>
+      {/* Left slot: logo for guests (sidebar hidden), description for logged-in users */}
+      {!authLoading && !currentUser ? (
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+            <svg viewBox="0 0 48 48" aria-hidden="true" className="h-7 w-7 text-primary-foreground">
+              <path
+                fill="currentColor"
+                d="M14.4 5.5h19.2L43.2 24l-9.6 18.5H14.4L4.8 24 14.4 5.5Zm3.5 6.1L11.8 24l6.1 12.4h12.8l-4.1-6.2h-5.1L18.2 24l3.3-6.2h10.8l5.4 10.6L40.1 24l-6.5-12.4H17.9Zm5 10.4-1.1 2 2 3.8h7.7l-3-5.8h-5.6Z"
+              />
+            </svg>
+          </div>
+          <span className="text-lg font-bold text-foreground">StudyHub</span>
+        </div>
+      ) : (
+        <div className="hidden text-sm text-muted-foreground md:block">
+          {text.description}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         {/* Dark mode toggle */}
