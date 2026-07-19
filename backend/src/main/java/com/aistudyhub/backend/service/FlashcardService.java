@@ -107,6 +107,21 @@ public class FlashcardService {
         flashcardRepository.delete(flashcard);
     }
 
+    /**
+     * Xoá toàn bộ flashcard thuộc về một tài liệu, chỉ xoá những thẻ của user hiện tại.
+     * Dùng cho endpoint DELETE /api/flashcards?documentId={id} (nút "Làm mới" phía FE).
+     */
+    @Transactional
+    public int deleteAllFlashcardsForDocument(UUID documentId) {
+        UUID currentUserId = getCurrentUserId();
+        List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
+        List<Flashcard> ownedCards = cards.stream()
+                .filter(c -> c.getUserId().equals(currentUserId))
+                .toList();
+        flashcardRepository.deleteAll(ownedCards);
+        return ownedCards.size();
+    }
+
     @Transactional
     public FlashcardResponse updateFlashcard(UUID id, UpdateFlashcardRequest request) {
         Flashcard flashcard = flashcardRepository.findById(id)
