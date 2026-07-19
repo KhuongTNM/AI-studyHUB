@@ -36,6 +36,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final int maxLoginAttempts;
     private final GoogleAuthService googleAuthService;
+    private final SubscriptionService subscriptionService;
 
     public AuthService(
             UserRepository userRepository,
@@ -43,13 +44,15 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             @Value("${app.auth.max-login-attempts}") int maxLoginAttempts,
-            GoogleAuthService googleAuthService) {
+            GoogleAuthService googleAuthService,
+            SubscriptionService subscriptionService) {
         this.userRepository = userRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.maxLoginAttempts = maxLoginAttempts;
         this.googleAuthService = googleAuthService;
+        this.subscriptionService = subscriptionService;
     }
 
     @Transactional
@@ -132,16 +135,22 @@ public class AuthService {
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
 
-        UserResponse userResponse = UserResponse.from(user);
+        // Đồng bộ gói cước thực tế khi đăng nhập
+        subscriptionService.getActiveSubscriptionOrDefault(user.getId());
+        User updatedUser = userRepository.findById(user.getId()).orElse(user);
+
+        UserResponse userResponse = UserResponse.from(updatedUser);
         // FIX: dùng user.getRole().name() ("sub_admin") thay vì userResponse.getRole() ("sub-admin")
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        String token = jwtService.generateToken(updatedUser.getId(), updatedUser.getEmail(), updatedUser.getRole().name());
         return new AuthResponse(token, userResponse);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserResponse getCurrentUser() {
         User user = getAuthenticatedUser();
-        return UserResponse.from(user);
+        subscriptionService.getActiveSubscriptionOrDefault(user.getId());
+        User updatedUser = userRepository.findById(user.getId()).orElse(user);
+        return UserResponse.from(updatedUser);
     }
 
     @Transactional

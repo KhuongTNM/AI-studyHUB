@@ -33,8 +33,9 @@ public class SubscriptionService {
 
     /**
      * Lấy Subscription Active hiện tại của User. Nếu không có, fallback về gói Free ảo.
+     * Tự động kiểm tra, cập nhật trạng thái EXPIRED và đồng bộ về core.users nếu gói cước hết hạn.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public Subscription getActiveSubscriptionOrDefault(UUID userId) {
         LocalDateTime now = LocalDateTime.now();
         // 1. Check if there is an active subscription record in the database.
@@ -44,29 +45,69 @@ public class SubscriptionService {
             return activeSubOpt.get();
         }
 
-        // 2. If not, check if the user has an active subscription plan set in core.users (legacy/seed data fallback)
+        // 2. If no active record, check if there are any ACTIVE subscription records that have expired (endDate < now)
+        // and need to be marked as EXPIRED and synced to the user.
+        List<Subscription> activeSubs = subscriptionRepository.findAllByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE);
+        boolean expiredAny = false;
+        for (Subscription sub : activeSubs) {
+            if (sub.getEndDate().isBefore(now)) {
+                sub.setStatus(SubscriptionStatus.EXPIRED);
+                sub.setUpdatedAt(now);
+                subscriptionRepository.save(sub);
+                expiredAny = true;
+            }
+        }
+
+        if (expiredAny) {
+            // Reset the user's fields to Free plan
+            userRepository.findById(userId).ifPresent(user -> {
+                boolean hasNewerActiveSub = subscriptionRepository.existsByUserIdAndStatusAndEndDateAfter(
+                        userId, SubscriptionStatus.ACTIVE, now);
+                if (!hasNewerActiveSub) {
+                    SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
+                            .orElseThrow(() -> new SystemConfigurationException("Hệ thống chưa được cấu hình gói Free mặc định."));
+                    user.setSubscriptionPlanId(freePlan.getId());
+                    user.setSubscriptionExpiresAt(null);
+                    user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
+                    userRepository.save(user);
+                }
+            });
+        }
+
+        // 3. Check if the user has an active legacy subscription plan set in core.users (legacy/seed data fallback)
         Optional<User> userOpt = userRepository.findById(userId);
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            if (user.getSubscriptionPlanId() != null && user.getSubscriptionExpiresAt() != null 
-                    && user.getSubscriptionExpiresAt().isAfter(now)) {
-                // Return a virtual subscription matching the user's plan in core.users
-                Optional<SubscriptionPlan> planOpt = subscriptionPlanRepository.findById(user.getSubscriptionPlanId());
-                if (planOpt.isPresent()) {
-                    SubscriptionPlan plan = planOpt.get();
-                    Subscription virtualSub = new Subscription();
-                    virtualSub.setUserId(userId);
-                    virtualSub.setPlanId(plan.getId());
-                    virtualSub.setStatus(SubscriptionStatus.ACTIVE);
-                    virtualSub.setStartDate(user.getCreatedAt() != null ? user.getCreatedAt() : now);
-                    virtualSub.setEndDate(user.getSubscriptionExpiresAt());
-                    virtualSub.setPricePaid(plan.getPrice());
-                    return virtualSub;
+            if (user.getSubscriptionPlanId() != null && user.getSubscriptionExpiresAt() != null) {
+                if (user.getSubscriptionExpiresAt().isAfter(now)) {
+                    // Return a virtual subscription matching the user's plan in core.users
+                    Optional<SubscriptionPlan> planOpt = subscriptionPlanRepository.findById(user.getSubscriptionPlanId());
+                    if (planOpt.isPresent()) {
+                        SubscriptionPlan plan = planOpt.get();
+                        Subscription virtualSub = new Subscription();
+                        virtualSub.setUserId(userId);
+                        virtualSub.setPlanId(plan.getId());
+                        virtualSub.setStatus(SubscriptionStatus.ACTIVE);
+                        virtualSub.setStartDate(user.getCreatedAt() != null ? user.getCreatedAt() : now);
+                        virtualSub.setEndDate(user.getSubscriptionExpiresAt());
+                        virtualSub.setPricePaid(plan.getPrice());
+                        return virtualSub;
+                    }
+                } else {
+                    // Legacy plan is expired! Sync back to free plan immediately.
+                    SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
+                            .orElseThrow(() -> new SystemConfigurationException("Hệ thống chưa được cấu hình gói Free mặc định."));
+                    if (!freePlan.getId().equals(user.getSubscriptionPlanId())) {
+                        user.setSubscriptionPlanId(freePlan.getId());
+                        user.setSubscriptionExpiresAt(null);
+                        user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
+                        userRepository.save(user);
+                    }
                 }
             }
         }
 
-        // 3. Fallback to free package
+        // 4. Fallback to free package
         return getVirtualFreeSubscription(userId);
     }
 
