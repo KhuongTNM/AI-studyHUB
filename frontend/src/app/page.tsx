@@ -216,11 +216,9 @@ const PROTECTED_PAGES: AppState["currentPage"][] = [
 // ─── Root Component ───────────────────────────────────────────────────────────
 export default function AIStudyHub() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const {
-    currentPage, setCurrentPage,
-    currentUser, authLoading,
-    openAuthModal, language,
-  } = useApp()
+const appStore = useApp()
+const { currentPage, setCurrentPage, currentUser, openAuthModal, language } = appStore
+const authLoading = appStore.authLoading   // ← khai báo riêng, tránh bug Turbopack
 
   // ── Route guard ────────────────────────────────────────────────────────────
   // Wait until the initial session-restore call finishes (authLoading = false)
