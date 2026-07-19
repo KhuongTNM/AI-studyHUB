@@ -164,19 +164,24 @@ public class SubscriptionPurchaseService {
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
             LocalDateTime now = LocalDateTime.now();
-            LocalDateTime startDate = (user.getSubscriptionExpiresAt() != null
-                    && user.getSubscriptionExpiresAt().isAfter(now))
-                    ? user.getSubscriptionExpiresAt() : now;
+            LocalDateTime startDate = now;
+            LocalDateTime endDate;
+            if (user.getSubscriptionExpiresAt() != null && user.getSubscriptionExpiresAt().isAfter(now)) {
+                long remainingSeconds = java.time.Duration.between(now, user.getSubscriptionExpiresAt()).getSeconds();
+                endDate = now.plusDays(SUBSCRIPTION_DAYS).plusSeconds(remainingSeconds);
+            } else {
+                endDate = now.plusDays(SUBSCRIPTION_DAYS);
+            }
 
             user.setSubscriptionPlanId(purchase.getPlanId());
-            user.setSubscriptionExpiresAt(startDate.plusDays(SUBSCRIPTION_DAYS));
+            user.setSubscriptionExpiresAt(endDate);
             user.setStorageLimitBytes(purchase.getStorageLimitBytes());
             user.setUpdatedAt(now);
             userRepository.save(user);
 
             SubscriptionPlan plan = subscriptionPlanRepository.findById(purchase.getPlanId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói."));
-            subscriptionService.activateNewSubscription(user.getId(), plan, startDate, startDate.plusDays(SUBSCRIPTION_DAYS));
+            subscriptionService.activateNewSubscription(user.getId(), plan, startDate, endDate);
 
         } catch (Exception e) {
             // Im lặng để báo nhận thành công HTTP 200
@@ -200,19 +205,24 @@ public class SubscriptionPurchaseService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime startDate = (user.getSubscriptionExpiresAt() != null
-                && user.getSubscriptionExpiresAt().isAfter(now))
-                ? user.getSubscriptionExpiresAt() : now;
+        LocalDateTime startDate = now;
+        LocalDateTime endDate;
+        if (user.getSubscriptionExpiresAt() != null && user.getSubscriptionExpiresAt().isAfter(now)) {
+            long remainingSeconds = java.time.Duration.between(now, user.getSubscriptionExpiresAt()).getSeconds();
+            endDate = now.plusDays(SUBSCRIPTION_DAYS).plusSeconds(remainingSeconds);
+        } else {
+            endDate = now.plusDays(SUBSCRIPTION_DAYS);
+        }
 
         user.setSubscriptionPlanId(purchase.getPlanId());
-        user.setSubscriptionExpiresAt(startDate.plusDays(SUBSCRIPTION_DAYS));
+        user.setSubscriptionExpiresAt(endDate);
         user.setStorageLimitBytes(purchase.getStorageLimitBytes());
         user.setUpdatedAt(now);
         User savedUser = userRepository.save(user);
 
         SubscriptionPlan plan = subscriptionPlanRepository.findById(purchase.getPlanId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói."));
-        subscriptionService.activateNewSubscription(user.getId(), plan, startDate, startDate.plusDays(SUBSCRIPTION_DAYS));
+        subscriptionService.activateNewSubscription(user.getId(), plan, startDate, endDate);
 
         return toResponseWithUser(purchase, UserResponse.from(savedUser));
     }
