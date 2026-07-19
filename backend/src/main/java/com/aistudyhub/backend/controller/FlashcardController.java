@@ -42,6 +42,12 @@ public class FlashcardController {
         return ResponseEntity.ok(Map.of("message", "Flashcard đã được xóa."));
     }
 
+    @DeleteMapping
+    public ResponseEntity<Map<String, String>> deleteByDocument(@RequestParam UUID documentId) {
+        int count = flashcardService.deleteAllFlashcardsForDocument(documentId);
+        return ResponseEntity.ok(Map.of("message", "Đã xóa " + count + " flashcard."));
+    }
+
     @PatchMapping("/{id}")
     public ResponseEntity<FlashcardResponse> update(
             @PathVariable UUID id,
