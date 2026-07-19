@@ -222,7 +222,7 @@ export function AdminDashboard() {
     setAdminPassword("")
   }
 
-  const updateStorageLimit = async (user: User, value: string) => {
+  const updateStorageLimit = (user: User, value: string) => {
     const gb = Number(value)
     if (!Number.isFinite(gb) || gb <= 0) {
       setMessage(text.storagePositive)
@@ -230,14 +230,26 @@ export function AdminDashboard() {
     }
     const currentGb = user.storageLimit / (1024 * 1024 * 1024)
     if (Math.abs(gb - currentGb) < 0.001) return
-    const result = await updateUserStorageLimit(user.id, gb)
-    runAccountAction(result, formatAdminText(text.storageUpdated, { email: user.email }))
+    requirePassword(
+      formatAdminText(text.storageUpdated, { email: user.email }),
+      async (adminPassword) => {
+        const result = await updateUserStorageLimit(user.id, gb, adminPassword)
+        runAccountAction(result, formatAdminText(text.storageUpdated, { email: user.email }))
+      },
+    )
   }
 
-  const createSubAdmin = async () => {
-    const result = await createSubAdminAccount(subAdminForm.email, subAdminForm.password, subAdminForm.displayName)
-    runAccountAction(result, text.createSubAdminSuccess)
-    if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
+  const createSubAdmin = () => {
+    requirePassword(text.createSubAdmin, async (adminPassword) => {
+      const result = await createSubAdminAccount(
+        subAdminForm.email,
+        subAdminForm.password,
+        subAdminForm.displayName,
+        adminPassword,
+      )
+      runAccountAction(result, text.createSubAdminSuccess)
+      if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
+    })
   }
 
   const renderOverview = () => (
@@ -359,9 +371,9 @@ export function AdminDashboard() {
       onLock={(user) =>
         requirePassword(
           user.isLocked ? text.unlock : text.lock,
-          async () =>
+          async (adminPassword) =>
             runAccountAction(
-              await toggleUserLock(user.id),
+              await toggleUserLock(user.id, adminPassword),
               user.isLocked ? text.accountUnlocked : text.accountLocked
             )
         )
@@ -370,9 +382,9 @@ export function AdminDashboard() {
       onDelete={(user) =>
         requirePassword(
           `${text.delete}: ${user.email}`,
-          async () =>
+          async (adminPassword) =>
             runAccountAction(
-              await deleteUserAccount(user.id),
+              await deleteUserAccount(user.id, adminPassword),
               text.accountDeleted,
             ),
         )
@@ -454,11 +466,13 @@ export function AdminDashboard() {
       return
     }
 
-    const runSave = async (password?: string) => {
+    const runSave = async (adminPassword: string) => {
       try {
-        let savedPlan = pkgFromPlan(await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload))
+        let savedPlan = pkgFromPlan(
+          await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword),
+        )
         if (updated.price !== pkg.price) {
-          const pricedPlan = await updatePackagePriceApi(pkg.planName, updated.price, password ?? "")
+          const pricedPlan = await updatePackagePriceApi(pkg.planName, updated.price, adminPassword)
           savedPlan = pkgFromPlan(pricedPlan)
         }
         setEditablePackages(prev => prev.map(p => p.id === pkg.id ? savedPlan : p))
@@ -471,25 +485,22 @@ export function AdminDashboard() {
       }
     }
 
-    if (updated.price !== pkg.price) {
-      requirePassword(formatAdminText(text.updatePrice, { name: updated.name }), runSave)
-      return
-    }
-
-    await runSave()
+    requirePassword(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
   }
 
-  const deletePkg = async (pkg: EditablePkg) => {
-    try {
-      await deleteSubscriptionPlanApi(pkg.planName)
-      setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
-      setMessage(`Đã xóa gói "${pkg.name}".`)
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : text.actionFailed)
-    }
+  const deletePkg = (pkg: EditablePkg) => {
+    requirePassword(formatAdminText(text.deletePackage, { name: pkg.name }), async (adminPassword) => {
+      try {
+        await deleteSubscriptionPlanApi(pkg.planName, adminPassword)
+        setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
+        setMessage(`Đã xóa gói "${pkg.name}".`)
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : text.actionFailed)
+      }
+    })
   }
 
-  const addNewPkg = async () => {
+  const addNewPkg = () => {
     if (!newPkgForm.name.trim()) return
     const defaultStorageBytes = parseStorageBytes(newPkgForm.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) {
@@ -497,23 +508,25 @@ export function AdminDashboard() {
       return
     }
 
-    try {
-      const created = await createSubscriptionPlanApi({
-        displayName: newPkgForm.name.trim(),
-        price: newPkgForm.price,
-        defaultStorageBytes,
-        maxRoomMembers: newPkgForm.joinGroupLimit,
-        createGroupLimit: newPkgForm.createGroupLimit,
-        joinGroupLimit: newPkgForm.joinGroupLimit,
-      })
-      const newPkg = pkgFromPlan(created)
-      setEditablePackages(prev => [...prev, newPkg])
-      setShowAddPkgModal(false)
-      setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
-      setMessage(`Đã thêm gói "${newPkg.name}".`)
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : text.actionFailed)
-    }
+    requirePassword(text.addPackage, async (adminPassword) => {
+      try {
+        const created = await createSubscriptionPlanApi({
+          displayName: newPkgForm.name.trim(),
+          price: newPkgForm.price,
+          defaultStorageBytes,
+          maxRoomMembers: newPkgForm.joinGroupLimit,
+          createGroupLimit: newPkgForm.createGroupLimit,
+          joinGroupLimit: newPkgForm.joinGroupLimit,
+        }, adminPassword)
+        const newPkg = pkgFromPlan(created)
+        setEditablePackages(prev => [...prev, newPkg])
+        setShowAddPkgModal(false)
+        setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
+        setMessage(`Đã thêm gói "${newPkg.name}".`)
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : text.actionFailed)
+      }
+    })
   }
 
   const renderPackages = () => (
@@ -879,16 +892,18 @@ export function AdminDashboard() {
           text={text}
           onCancel={() => { setResetTarget(null); setNewPassword("Reset1234") }}
           onSave={async () => {
-            setResetLoading(true)
-            const result = await resetUserPassword(resetTarget.id, newPassword)
-            setResetLoading(false)
-            if (result.success) {
-              setMessage(text.resetSuccess)
-              setResetTarget(null)
-              setNewPassword("Reset1234")
-            } else {
-              setMessage(result.error ?? text.resetFailed)
-            }
+            requirePassword(text.reset, async (adminPassword) => {
+              setResetLoading(true)
+              const result = await resetUserPassword(resetTarget.id, newPassword, adminPassword)
+              setResetLoading(false)
+              if (result.success) {
+                setMessage(text.resetSuccess)
+                setResetTarget(null)
+                setNewPassword("Reset1234")
+              } else {
+                setMessage(result.error ?? text.resetFailed)
+              }
+            })
           }}
         />
       )}
@@ -905,8 +920,8 @@ export function AdminDashboard() {
           onCancel={() => setGrantTarget(null)}
           onConfirm={() => {
             const planLabel = grantTier === "free" ? "Free" : grantTier === "2-4" ? text.plan2To4 : text.plan5Plus
-            requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async () => {
-              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration)
+            requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async (adminPassword) => {
+              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration, adminPassword)
               runAccountAction(res, text.grantSuccess)
               if (res.success) {
                 const storageLimit = grantTier === "free" ? 1024 * 1024 * 512 : grantTier === "2-4" ? 1024 * 1024 * 1024 : 1024 * 1024 * 1024 * 5

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { Document, GroupChat, GroupChatMessage, PackageTier, User } from "@/states/types"
+import type { Document, GroupChat, GroupChatMessage, GroupInvitationCandidate, PackageTier, User } from "@/states/types"
 import {
   createGroupApi,
   deleteGroupApi,
@@ -16,6 +16,8 @@ import {
   kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
+  inviteGroupMemberApi,
+  searchGroupInvitationUserApi,
   sendGroupMessageApi,
   shareGroupDocumentApi,
   updateGroupMuteApi,
@@ -314,6 +316,45 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, reloadGroups])
 
+  const searchGroupInvitationUser = useCallback(async (
+    groupId: string,
+    email: string,
+  ): Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    const group = groups.find(item => item.id === groupId)
+    if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
+    if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+
+    try {
+      const user = await searchGroupInvitationUserApi(groupId, email.trim().toLowerCase())
+      if (user.userId === currentUser.id || email.trim().toLowerCase() === currentUser.email.toLowerCase()) {
+        return { success: false, error: "GROUP_CANNOT_INVITE_SELF" }
+      }
+      return { success: true, user }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "USER_NOT_FOUND") }
+    }
+  }, [currentUser, groups])
+
+  const inviteGroupMemberByEmail = useCallback(async (groupId: string, email: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    const group = groups.find(item => item.id === groupId)
+    if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
+    if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+    if (email.trim().toLowerCase() === currentUser.email.toLowerCase()) {
+      return { success: false, error: "GROUP_CANNOT_INVITE_SELF" }
+    }
+
+    try {
+      await inviteGroupMemberApi(groupId, email.trim().toLowerCase())
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not invite group member.") }
+    }
+  }, [currentUser, groups])
+
   const leaveGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
@@ -478,6 +519,8 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     loadGroups,
     createGroup,
     joinGroup,
+    searchGroupInvitationUser,
+    inviteGroupMemberByEmail,
     leaveGroup,
     kickGroupMember,
     deleteGroup,

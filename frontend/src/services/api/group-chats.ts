@@ -1,7 +1,9 @@
 import { getAccessToken } from "@/lib/auth-storage"
-import type { GroupChat, GroupChatMember, GroupChatMessage } from "@/states/types"
+import { MOCK_USERS } from "@/states/mock-data"
+import type { GroupChat, GroupChatMember, GroupChatMessage, GroupInvitationCandidate } from "@/states/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+const USE_GROUP_INVITATION_MOCK = process.env.NEXT_PUBLIC_GROUP_INVITATIONS_MOCK === "true"
 
 // Group core and message history are API-backed. File/image helpers use the
 // corresponding endpoints when those actions are available.
@@ -14,6 +16,14 @@ interface ApiGroupMember {
   avatar?: string | null
   role: string
   joinedAt: string
+}
+
+interface ApiInvitationCandidate {
+  userId: string
+  displayName?: string | null
+  avatar?: string | null
+  role?: string | null
+  joinedAt?: string | null
 }
 
 interface ApiGroupMessage {
@@ -100,6 +110,27 @@ function mapMember(api: ApiGroupMember): GroupChatMember {
   }
 }
 
+function mapInvitationCandidate(api: ApiInvitationCandidate): GroupInvitationCandidate {
+  return {
+    userId: api.userId,
+    displayName: api.displayName ?? "Member",
+    avatar: api.avatar ?? null,
+  }
+}
+
+function mockInvitationCandidate(email: string): GroupInvitationCandidate {
+  const normalizedEmail = email.trim().toLowerCase()
+  const mockUser = MOCK_USERS.find(user => user.email.toLowerCase() === normalizedEmail)
+
+  if (!mockUser) throw new Error("USER_NOT_FOUND")
+
+  return {
+    userId: mockUser.id,
+    displayName: mockUser.displayName,
+    avatar: mockUser.avatar ?? null,
+  }
+}
+
 function mapMessage(api: ApiGroupMessage): GroupChatMessage {
   const documentVisibility = api.documentVisibility?.toLowerCase()
 
@@ -136,6 +167,39 @@ export function mapGroup(api: ApiGroup): GroupChat {
     createdAt: new Date(api.createdAt),
     updatedAt: new Date(api.updatedAt),
   }
+}
+
+/** GET /api/groups/{groupId}/invitations/search — find an invitee by email. */
+export async function searchGroupInvitationUserApi(
+  groupId: string,
+  email: string,
+): Promise<GroupInvitationCandidate> {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (USE_GROUP_INVITATION_MOCK) return mockInvitationCandidate(normalizedEmail)
+
+  const query = new URLSearchParams({ email: normalizedEmail })
+  const response = await fetch(
+    `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/invitations/search?${query.toString()}`,
+    { headers: authHeaders() },
+  )
+  if (!response.ok) throw new Error(await parseError(response))
+  return mapInvitationCandidate((await response.json()) as ApiInvitationCandidate)
+}
+
+/** POST /api/groups/{groupId}/invitations — invite a user by email. */
+export async function inviteGroupMemberApi(groupId: string, email: string): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (USE_GROUP_INVITATION_MOCK) return
+
+  const query = new URLSearchParams({ email: normalizedEmail })
+  const response = await fetch(
+    `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/invitations?${query.toString()}`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+    },
+  )
+  if (!response.ok) throw new Error(await parseError(response))
 }
 
 // ─── API calls ───────────────────────────────────────────────────────────────
