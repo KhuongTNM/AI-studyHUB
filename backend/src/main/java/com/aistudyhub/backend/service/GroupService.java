@@ -7,6 +7,7 @@ import com.aistudyhub.backend.dto.request.*;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
+import com.aistudyhub.backend.exception.MaxGroupsLimitExceededException;
 import com.aistudyhub.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,39 +30,11 @@ public class GroupService {
     private final GroupMessageRepository groupMessageRepository;
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionService subscriptionService;
 
     // ==========================================
     // 1. UTILITY & SECURITY GUARDS
     // ==========================================
-
-    private record Limits(boolean canCreate, int maxCreated, int maxJoined, int maxCapacity) {}
-
-    private Limits limits(User u) {
-        String role = u.getRole().toString();
-        boolean admin = role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("sub_admin");
-
-        String plan = resolveActivePlanName(u);
-
-        if (admin || "vip_5_plus".equals(plan) || "plan_5_plus".equals(plan)) {
-            return new Limits(true, 50, 60, 99);
-        }
-        if ("pro_2_4".equals(plan) || "plan_2_4".equals(plan)) {
-            return new Limits(true, 20, 30, 4);
-        }
-        return new Limits(false, 0, 5, 0);
-    }
-
-    private String resolveActivePlanName(User user) {
-        if (user.getSubscriptionPlanId() == null || user.getSubscriptionExpiresAt() == null) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        if (user.getSubscriptionExpiresAt().isBefore(LocalDateTime.now())) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        return subscriptionPlanRepository.findById(user.getSubscriptionPlanId())
-                .map(SubscriptionPlan::getName)
-                .orElse(SubscriptionPlan.FREE_PLAN_NAME);
-    }
 
     private void requireUserId(UUID userId) {
         if (userId == null) {
@@ -100,18 +73,32 @@ public class GroupService {
     public GroupResponse createGroup(CreateGroupRequest req, UUID userId) {
         requireUserId(userId);
 
-        User user = userRepository.findById(userId)
+        // 1. Khóa bi quan user để tránh Race Condition khi tạo nhiều group cùng lúc
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Limits lim = limits(user);
 
-        if (!lim.canCreate()) {
-            throw new BusinessException(ErrorCode.GROUP_CREATE_NOT_ALLOWED);
-        }
-        if (groupRepository.countByOwnerId(userId) >= lim.maxCreated()) {
-            throw new BusinessException(ErrorCode.GROUP_CREATE_LIMIT_REACHED);
-        }
-        if (groupMemberRepository.countGroupsJoinedByUser(userId) >= lim.maxJoined()) {
-            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
+        // 2. Lấy thông tin subscription active hiện tại (hoặc Virtual Free Fallback)
+        Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                .orElseThrow(() -> new com.aistudyhub.backend.exception.SystemConfigurationException("Cấu hình gói không hợp lệ."));
+
+        // Nếu admin thì override limit
+        boolean isAdmin = user.getRole() == User.Role.admin || user.getRole() == User.Role.sub_admin;
+
+        int createLimit = plan.getCreateGroupLimit();
+
+        if (!isAdmin) {
+            if (createLimit == 0) {
+                throw new MaxGroupsLimitExceededException("Gói của bạn không được phép tạo nhóm.");
+            }
+
+            // 3. Đếm số group hiện tại của user bằng countByOwnerId
+            long currentGroups = groupRepository.countByOwnerId(userId);
+
+            // 4. Kiểm tra giới hạn (nếu != -1)
+            if (createLimit != -1 && currentGroups >= createLimit) {
+                throw new MaxGroupsLimitExceededException("Bạn đã đạt giới hạn tạo nhóm của gói hiện tại.");
+            }
         }
 
         String code = req.getGroupCode() != null && !req.getGroupCode().isBlank()
@@ -122,6 +109,7 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_CODE_ALREADY_EXISTS);
         }
 
+        // 5. Tiến hành lưu group mới và kết thúc transaction.
         Group g = new Group();
         g.setGroupCode(code);
         g.setName(req.getName().trim());
@@ -140,6 +128,8 @@ public class GroupService {
 
         return buildResponse(g);
     }
+
+
 
     @Transactional(rollbackFor = Exception.class)
     public void deleteGroup(UUID groupId, UUID userId) {
@@ -167,12 +157,20 @@ public class GroupService {
         }
 
         GroupMember member = getMembership(groupId, userId);
+
+        // BR-015: Truy vấn display_name của User TRƯỚC khi xóa bản ghi thành viên, để đảm bảo
+        // dữ liệu vẫn nhất quán tại thời điểm lấy tên. Nếu không tìm thấy User (dữ liệu bất nhất,
+        // tài khoản đã bị xóa vật lý khỏi core.users) -> USER_NOT_FOUND, rollback toàn bộ,
+        // không xóa thành viên.
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.delete(member);
 
         GroupMessage sys = new GroupMessage();
         sys.setGroup(g);
         sys.setSenderId(null);
-        sys.setContent(userId + " đã rời nhóm.");
+        sys.setContent(user.getDisplayName() + " đã rời nhóm.");
         sys.setMessageType("system");
         sys.setCreatedAt(LocalDateTime.now());
         groupMessageRepository.save(sys);
@@ -276,6 +274,8 @@ public class GroupService {
         }).toList();
     }
 
+
+
     // ==========================================
     // 5. KICK MEMBER (CHỦ NHÓM XÓA THÀNH VIÊN)
     // ==========================================
@@ -304,7 +304,26 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND);
         }
 
+        // BR-016: Truy vấn display_name của cả người bị kick (target) và Chủ nhóm (operator) TRƯỚC
+        // khi xóa bản ghi thành viên, đảm bảo dữ liệu nhất quán tại thời điểm lấy tên. Nếu không
+        // tìm thấy 1 trong 2 -> USER_NOT_FOUND, rollback, không xóa thành viên.
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User operatorUser = userRepository.findById(operatorId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.deleteByIdGroupIdAndIdUserId(groupId, targetUserId);
+
+        // Theo convention UX của các app chat phổ biến (Zalo/Messenger/Telegram): tin nhắn hệ
+        // thống khi bị kick phải nêu rõ AI thực hiện hành động, để phân biệt với trường hợp tự rời
+        // nhóm (leaveGroup) và tránh gây hiểu lầm/tranh chấp trách nhiệm.
+        GroupMessage sys = new GroupMessage();
+        sys.setGroup(g);
+        sys.setSenderId(null);
+        sys.setContent(targetUser.getDisplayName() + " đã bị " + operatorUser.getDisplayName() + " xóa khỏi nhóm.");
+        sys.setMessageType("system");
+        sys.setCreatedAt(LocalDateTime.now());
+        groupMessageRepository.save(sys);
     }
 
     // ==========================================
@@ -441,8 +460,51 @@ public class GroupService {
             invitation.setStatus("JOINED");
             invitation.setJoinedAt(LocalDateTime.now());
             groupMemberRepository.save(invitation);
+
+            // BR-090: Ngay sau khi chuyển trạng thái JOINED thành công (cùng transaction), tạo
+            // tin nhắn hệ thống thông báo thành viên mới. Tái sử dụng đối tượng User đã truy vấn
+            // ở bước kiểm tra hạn mức phía trên, không query lại core.users lần nữa.
+            Group g = groupRepository.findById(groupId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+            GroupMessage sys = new GroupMessage();
+            sys.setGroup(g);
+            sys.setSenderId(null);
+            sys.setContent(user.getDisplayName() + " đã tham gia vào nhóm chat.");
+            sys.setMessageType("system");
+            sys.setCreatedAt(LocalDateTime.now());
+            groupMessageRepository.save(sys);
         } else {
             groupMemberRepository.delete(invitation);
         }
+    }
+
+    private record Limits(boolean canCreate, int maxCreated, int maxJoined, int maxCapacity) {}
+
+    private Limits limits(User u) {
+        String role = u.getRole().toString();
+        boolean admin = role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("sub_admin");
+
+        String plan = resolveActivePlanName(u);
+
+        if (admin || "vip_5_plus".equals(plan) || "plan_5_plus".equals(plan)) {
+            return new Limits(true, 50, 60, 99);
+        }
+        if ("pro_2_4".equals(plan) || "plan_2_4".equals(plan)) {
+            return new Limits(true, 20, 30, 4);
+        }
+        return new Limits(false, 0, 5, 0);
+    }
+
+    private String resolveActivePlanName(User user) {
+        if (user.getSubscriptionPlanId() == null || user.getSubscriptionExpiresAt() == null) {
+            return SubscriptionPlan.FREE_PLAN_NAME;
+        }
+        if (user.getSubscriptionExpiresAt().isBefore(LocalDateTime.now())) {
+            return SubscriptionPlan.FREE_PLAN_NAME;
+        }
+        return subscriptionPlanRepository.findById(user.getSubscriptionPlanId())
+                .map(SubscriptionPlan::getName)
+                .orElse(SubscriptionPlan.FREE_PLAN_NAME);
     }
 }

@@ -35,7 +35,7 @@ public class AuthDataSeeder implements ApplicationRunner {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new IllegalStateException("Free subscription plan is not configured."));
         List<SeedUser> seeds = List.of(
                 new SeedUser("admin@gmail.com", "Admin123", "System Admin", User.Role.admin),

@@ -110,44 +110,14 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
-      // ── Xử lý trùng tên file (giống logic backend restoreDocument) ─────────
-      const lastDot = file.name.lastIndexOf(".")
-      const base    = lastDot > 0 ? file.name.slice(0, lastDot) : file.name
-      const dotExt  = lastDot > 0 ? file.name.slice(lastDot) : ""
-
-      // Dùng documentsRef.current để tránh stale closure trong useCallback
-      const activeNames = new Set(
-        documentsRef.current
-          .filter(d => d.status !== "deleted")
-          .map(d => d.name)
-      )
-
-      const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      const escapedExt  = dotExt.replace(".", "\\.")
-      const suffixRe    = new RegExp(`^${escapedBase} \\((\\d+)\\)${escapedExt}$`)
-      let maxN = 0
-      for (const name of activeNames) {
-        const m = name.match(suffixRe)
-        if (m) {
-          const n = parseInt(m[1], 10)
-          if (n > maxN) maxN = n
-        }
-      }
-
-      let resolvedFile = file
-      if (activeNames.has(file.name)) {
-        const newName = maxN > 0
-          ? `${base} (${maxN + 1})${dotExt}`
-          : `${base} (2)${dotExt}`
-        resolvedFile = new File([file], newName, { type: file.type })
-      }
-      // ── Hết xử lý trùng tên ───────────────────────────────────────────────
-
+      // BR mới (mục 3, docx): KHÔNG tự đổi tên khi trùng — BE/mock từ chối
+      // upload và trả 409 nếu originalName trùng trong cùng folder. FE chỉ
+      // hiển thị lỗi và giữ nguyên form để user tự đổi tên/thư mục rồi thử lại.
       const tempId = `temp-${Date.now()}-${Math.random()}`
-      const ext = (resolvedFile.name.split(".").pop() ?? "pdf").toLowerCase() as "pdf" | "docx" | "pptx"
+      const ext = (file.name.split(".").pop() ?? "pdf").toLowerCase() as "pdf" | "docx" | "pptx"
       const tempDoc: Document = {
         id: tempId,
-        name: resolvedFile.name,
+        name: file.name,
         type: ext,
         size: "",
         sizeBytes: file.size,
@@ -167,23 +137,18 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
       setDocuments(prev => [tempDoc, ...prev])
 
       try {
-        const realDoc = await uploadDocumentApi(resolvedFile, subject, undefined, visibility, progress => {
+        const realDoc = await uploadDocumentApi(file, subject, undefined, visibility, progress => {
           setDocuments(prev =>
             prev.map(d => d.id === tempId ? { ...d, uploadProgress: progress } : d),
           )
-        }, tags)
+        }, tags, folderId)
 
         setDocuments(prev =>
           prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),
         )
 
-        // FR-23: Persist folderId lên backend sau khi upload thành công.
-        // uploadDocumentApi không nhận folderId, nên phải gọi PATCH riêng.
-        if (folderId) {
-          updateDocumentFolderApi(realDoc.id, folderId).catch(() => {
-            // Không throw — folderId vẫn đúng trong memory session này.
-          })
-        }
+        // uploadDocumentApi đã gửi kèm folderId ngay trong request upload
+        // (formData) — KHÔNG cần gọi PATCH riêng để persist folderId nữa.
         void refreshStorageUsage()
 
         let attempts = 0

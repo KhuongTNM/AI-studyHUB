@@ -43,6 +43,9 @@ import { useGroupChatState } from "./useGroupChatState"
 export interface AppState {
   // ── Auth ──────────────────────────────────────────────────────────────────
   currentUser: User | null
+  /** true while the initial session-restore call is in flight — use this to
+   *  avoid flashing a redirect before we know whether the user is logged in */
+  authLoading: boolean
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
@@ -196,6 +199,8 @@ export interface AppState {
   loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
   loadAllFlashcards: () => Promise<{ success: boolean; message?: string }>
+  /** Xoá TOÀN BỘ flashcard của một tài liệu cụ thể (nút "Làm mới") */
+  deleteAllFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -325,6 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         // Auth
         currentUser: auth.currentUser,
+        authLoading: auth.authLoading,
         showAuthModal: ui.showAuthModal,
         authModalTab: ui.authModalTab,
         login: auth.login,
@@ -421,6 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
         loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
         loadAllFlashcards: flashcards.loadAllFlashcards,
+        deleteAllFlashcardsForDocument: flashcards.deleteAllFlashcardsForDocument,
         setFlashcardSelectedDocumentId: flashcards.setFlashcardSelectedDocumentId,
 
         // Admin

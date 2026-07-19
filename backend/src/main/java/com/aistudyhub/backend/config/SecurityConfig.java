@@ -50,26 +50,37 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
-                        // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
+                        // /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
+                        // Public pricing info — intentionally open
+                        .requestMatchers(HttpMethod.GET, "/api/subscription-plans/**").permitAll()
+                        // PayOS webhook — không gửi JWT, xác thực bằng HMAC checksum riêng
+                        .requestMatchers("/api/payos/webhook").permitAll()
+                        // Bank sync — no JWT, authenticated at network level
+                        .requestMatchers("/bank/api/transaction-sync").permitAll()
+
+                        // ── Authenticated user endpoints ───────────────────────────────────────
                         .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/users/**").authenticated()
-                        .requestMatchers("/api/admin/**").authenticated()
-                        .requestMatchers("/api/subscription-purchases/**").authenticated()
                         .requestMatchers("/api/documents/**").authenticated()
-                        .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
-                        // FIX: thiếu rule cho /api/groups/** khiến nó rơi vào anyRequest().permitAll()
-                        // phía dưới -> Security không bắt buộc xác thực cho nhóm endpoint này.
                         .requestMatchers("/api/groups/**").authenticated()
-
-                        // FIX CHUẨN: PayOS không gửi JWT — webhook phải permitAll, xác thực bằng HMAC checksum riêng
-                        .requestMatchers("/api/payos/webhook").permitAll()
-
+                        .requestMatchers("/api/study-rooms/**").authenticated()
+                        .requestMatchers("/api/subscription-purchases/**").authenticated()
                         .requestMatchers("/api/v1/chat/**").authenticated()
-                        .requestMatchers("/bank/api/transaction-sync").permitAll()
-                        .anyRequest().permitAll())
+                        // Vector search has @PreAuthorize but also needs filter-level guard
+                        .requestMatchers("/api/v1/vector/**").authenticated()
+
+                        // ── Admin/Sub-admin only endpoints ────────────────────────────────────
+                        // Defense-in-depth: block at filter level BEFORE reaching service layer.
+                        // Service layer has its own requireAdminOrSubAdmin() checks as well.
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUB_ADMIN")
+
+                        // ── Secure default ────────────────────────────────────────────────────
+                        // Any new endpoint NOT listed above is denied by default.
+                        // Developers must explicitly whitelist new routes here.
+                        .anyRequest().denyAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

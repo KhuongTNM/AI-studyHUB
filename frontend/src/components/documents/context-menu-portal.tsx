@@ -13,6 +13,7 @@ export type ContextMenuTarget =
   | { type: "background" }
   | { type: "folder"; folder: Folder }
   | { type: "file"; doc: Document }
+  | { type: "subject"; subject: string }
 
 export interface ContextMenuState {
   x: number
@@ -42,6 +43,9 @@ interface Props {
   onToggleVisibility: (doc: Document) => void
   onMoveFile: (doc: Document) => void
   isSubjectSelected?: boolean
+  // Subject actions
+  onRenameSubject?: (subject: string) => void
+  onDeleteSubject?: (subject: string) => void
 }
 
 const t = {
@@ -126,6 +130,8 @@ export function ContextMenuPortal({
   onToggleVisibility,
   onMoveFile,
   isSubjectSelected,
+  onRenameSubject,
+  onDeleteSubject,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const text = t[language]
@@ -180,6 +186,17 @@ export function ContextMenuPortal({
           <MenuItem icon={Move} label={text.move} onClick={wrap(() => onMoveFolder(folder))} />
           <Divider />
           <MenuItem icon={Trash2} label={text.delete} danger onClick={wrap(() => onDeleteFolder(folder))} />
+        </div>
+      )
+    }
+
+    if (menu.target.type === "subject") {
+      const { subject } = menu.target
+      return (
+        <div className="py-1">
+          <MenuItem icon={Pencil} label={text.rename} onClick={wrap(() => onRenameSubject?.(subject))} />
+          <Divider />
+          <MenuItem icon={Trash2} label={text.delete} danger onClick={wrap(() => onDeleteSubject?.(subject))} />
         </div>
       )
     }

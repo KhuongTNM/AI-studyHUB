@@ -103,7 +103,7 @@ public class AuthService {
     }
 
     private SubscriptionPlan getFreePlan() {
-        return subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+        return subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Gói Free chưa được cấu hình."));
     }
 

@@ -24,6 +24,13 @@ interface AuthStateDeps {
 
 export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated }: AuthStateDeps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  /**
+   * true while the initial session-restore API call is in flight.
+   * Guards in page.tsx wait for this to become false before deciding
+   * whether to redirect a guest away from a protected page — prevents
+   * incorrectly bouncing a logged-in user on first load.
+   */
+  const [authLoading, setAuthLoading] = useState(true)
 
   // Restore session on mount
   useEffect(() => {
@@ -38,6 +45,9 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
       })
       .catch(() => {
         // ignore restore errors on initial load
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false)
       })
     return () => {
       cancelled = true
@@ -186,6 +196,8 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
     currentUser,
     /** Exposed so sibling hooks and AppProvider can update the current user */
     setCurrentUser,
+    /** true while the first session-restore call is in flight */
+    authLoading,
     login,
     register,
     loginWithGoogle,

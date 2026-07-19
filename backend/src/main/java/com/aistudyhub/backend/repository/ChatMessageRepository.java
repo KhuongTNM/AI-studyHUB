@@ -11,4 +11,14 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
     List<ChatMessage> findBySessionIdOrderByCreatedAtAsc(UUID sessionId);
 
     void deleteBySessionId(UUID sessionId);
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT COUNT(m) FROM ChatMessage m, ChatSession s " +
+        "WHERE m.sessionId = s.id AND s.userId = :userId AND m.role = :role AND m.createdAt >= :since"
+    )
+    long countUserMessagesSince(
+        @org.springframework.data.repository.query.Param("userId") UUID userId, 
+        @org.springframework.data.repository.query.Param("role") String role, 
+        @org.springframework.data.repository.query.Param("since") java.time.LocalDateTime since
+    );
 }
