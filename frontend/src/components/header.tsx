@@ -21,6 +21,7 @@ interface HeaderProps {
 export function Header({ onLogin, onRegister }: HeaderProps) {
   const {
     currentUser,
+    authLoading,
     logout,
     openAuthModal,
     setCurrentPage,
