@@ -106,9 +106,10 @@ public class AdminUserServiceTest {
         targetUser.setRole(User.Role.user);
 
         when(userRepository.findById(targetUserId)).thenReturn(Optional.of(targetUser));
+        when(passwordEncoder.matches("Admin123", "hash")).thenReturn(true);
 
         // Act
-        adminUserService.deleteUser(targetUserId);
+        adminUserService.deleteUser(targetUserId, "Admin123");
 
         // Assert
         verify(userRepository, times(1)).save(targetUser);

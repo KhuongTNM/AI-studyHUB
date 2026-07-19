@@ -134,6 +134,37 @@ public class StorageService {
         }
     }
 
+    /**
+     * Tải file (từ Supabase public URL) về 1 file local cache, để backend có thể
+     * TỰ đọc bytes và set Content-Type/Content-Disposition/convert PDF theo ý mình,
+     * thay vì redirect (302) thẳng ra Supabase — cách redirect cũ khiến FE nhận
+     * nguyên response gốc của Supabase, bỏ qua mọi header/contract mà BE định trả.
+     */
+    public Path fetchRemoteFileToCache(String fileUrl, Path cacheFile) {
+        try {
+            if (Files.exists(cacheFile)) {
+                return cacheFile;
+            }
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(fileUrl))
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.error("Fetch file from Supabase Storage failed [{}]: {}", response.statusCode(), fileUrl);
+                throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file trên storage.");
+            }
+            Files.createDirectories(cacheFile.getParent());
+            Files.write(cacheFile, response.body());
+            return cacheFile;
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error fetching file from Supabase Storage: {}", fileUrl, e);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể tải file từ storage.");
+        }
+    }
+
     // Load File As Resource — chỉ dùng cho file cũ lưu local (tương thích ngược)
     public Resource loadAsResource(String fileUrl) {
         if (fileUrl == null || fileUrl.isBlank()) {

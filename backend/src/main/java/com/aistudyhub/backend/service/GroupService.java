@@ -112,7 +112,6 @@ public class GroupService {
         // 5. Tiến hành lưu group mới và kết thúc transaction.
         Group g = new Group();
         g.setGroupCode(code);
-        g.setPasswordHash(req.getPassword().trim());
         g.setName(req.getName().trim());
         g.setDescription(req.getDescription());
         g.setOwnerId(userId);
@@ -130,50 +129,10 @@ public class GroupService {
         return buildResponse(g);
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public void joinGroup(JoinGroupRequest req, UUID userId) {
-        requireUserId(userId);
 
-        Group g = groupRepository.findByGroupCode(req.getGroupCode().trim().toUpperCase())
-                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
-
-        if (groupMemberRepository.existsByIdGroupIdAndIdUserId(g.getId(), userId)) {
-            throw new BusinessException(ErrorCode.GROUP_ALREADY_JOINED);
-        }
-        
-        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
-        }
-
-        User owner = userRepository.findById(g.getOwnerId()).orElseThrow();
-        Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(owner.getId());
-        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId()).orElseThrow();
-
-        // Kiểm tra limit số lượng thành viên của owner
-        int maxMembers = plan.getMaxRoomMembers();
-        if (maxMembers != -1 && groupMemberRepository.countByIdGroupId(g.getId()) >= maxMembers) {
-            throw new BusinessException(ErrorCode.GROUP_FULL);
-        }
-
-        User user = userRepository.findById(userId).orElseThrow();
-        Subscription userActiveSub = subscriptionService.getActiveSubscriptionOrDefault(user.getId());
-        SubscriptionPlan userPlan = subscriptionPlanRepository.findById(userActiveSub.getPlanId()).orElseThrow();
-        
-        int joinLimit = userPlan.getJoinGroupLimit();
-        if (joinLimit != -1 && groupMemberRepository.countGroupsJoinedByUser(userId) >= joinLimit) {
-            throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
-        }
-
-        GroupMember m = new GroupMember();
-        m.setId(new GroupMemberId(g.getId(), userId));
-        m.setGroup(g);
-        m.setRole("member");
-        m.setJoinedAt(LocalDateTime.now());
-        groupMemberRepository.save(m);
-    }
 
     @Transactional(rollbackFor = Exception.class)
-    public void deleteGroup(UUID groupId, DeleteGroupRequest req, UUID userId) {
+    public void deleteGroup(UUID groupId, UUID userId) {
         requireUserId(userId);
 
         Group g = groupRepository.findById(groupId)
@@ -181,10 +140,6 @@ public class GroupService {
 
         if (!g.getOwnerId().equals(userId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-        
-        if (!req.getPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         groupRepository.delete(g);
@@ -202,12 +157,20 @@ public class GroupService {
         }
 
         GroupMember member = getMembership(groupId, userId);
+
+        // BR-015: Truy vấn display_name của User TRƯỚC khi xóa bản ghi thành viên, để đảm bảo
+        // dữ liệu vẫn nhất quán tại thời điểm lấy tên. Nếu không tìm thấy User (dữ liệu bất nhất,
+        // tài khoản đã bị xóa vật lý khỏi core.users) -> USER_NOT_FOUND, rollback toàn bộ,
+        // không xóa thành viên.
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.delete(member);
 
         GroupMessage sys = new GroupMessage();
         sys.setGroup(g);
         sys.setSenderId(null);
-        sys.setContent(userId + " đã rời nhóm.");
+        sys.setContent(user.getDisplayName() + " đã rời nhóm.");
         sys.setMessageType("system");
         sys.setCreatedAt(LocalDateTime.now());
         groupMessageRepository.save(sys);
@@ -263,7 +226,7 @@ public class GroupService {
     public List<GroupResponse> listMyGroups(UUID userId) {
         requireUserId(userId);
 
-        List<GroupMember> memberships = groupMemberRepository.findByIdUserId(userId);
+        List<GroupMember> memberships = groupMemberRepository.findByIdUserIdAndStatus(userId, "JOINED");
         if (memberships.isEmpty()) {
             return List.of();
         }
@@ -286,7 +249,7 @@ public class GroupService {
         requireUserId(userId);
         requireMembership(groupId, userId);
 
-        List<GroupMember> members = groupMemberRepository.findByIdGroupIdOrderByJoinedAtAsc(groupId);
+        List<GroupMember> members = groupMemberRepository.findByIdGroupIdAndStatusOrderByJoinedAtAsc(groupId, "JOINED");
         if (members.isEmpty()) {
             return List.of();
         }
@@ -311,26 +274,19 @@ public class GroupService {
         }).toList();
     }
 
-    @Transactional(readOnly = true)
-    public String getGroupPassword(UUID groupId, UUID userId) {
-        requireUserId(userId);
 
-        Group g = groupRepository.findById(groupId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
-
-        if (!g.getOwnerId().equals(userId)) {
-            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-
-        return g.getPasswordHash();
-    }
 
     // ==========================================
     // 5. KICK MEMBER (CHỦ NHÓM XÓA THÀNH VIÊN)
     // ==========================================
 
+    /**
+     * Chủ nhóm xóa (kick) một thành viên ra khỏi nhóm.
+     * Fail-fast: check đăng nhập -> group tồn tại -> quyền owner
+     * -> không tự kick chính mình -> target có phải thành viên hay không -> xóa.
+     */
     @Transactional(rollbackFor = Exception.class)
-    public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId, KickMemberRequest req) {
+    public void kickMember(UUID groupId, UUID targetUserId, UUID operatorId) {
         requireUserId(operatorId);
 
         Group g = groupRepository.findById(groupId)
@@ -338,10 +294,6 @@ public class GroupService {
 
         if (!g.getOwnerId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-
-        if (!req.getGroupPassword().trim().equals(g.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.GROUP_PASSWORD_INVALID);
         }
 
         if (targetUserId.equals(operatorId)) {
@@ -352,6 +304,207 @@ public class GroupService {
             throw new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND);
         }
 
+        // BR-016: Truy vấn display_name của cả người bị kick (target) và Chủ nhóm (operator) TRƯỚC
+        // khi xóa bản ghi thành viên, đảm bảo dữ liệu nhất quán tại thời điểm lấy tên. Nếu không
+        // tìm thấy 1 trong 2 -> USER_NOT_FOUND, rollback, không xóa thành viên.
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User operatorUser = userRepository.findById(operatorId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
         groupMemberRepository.deleteByIdGroupIdAndIdUserId(groupId, targetUserId);
+
+        // Theo convention UX của các app chat phổ biến (Zalo/Messenger/Telegram): tin nhắn hệ
+        // thống khi bị kick phải nêu rõ AI thực hiện hành động, để phân biệt với trường hợp tự rời
+        // nhóm (leaveGroup) và tránh gây hiểu lầm/tranh chấp trách nhiệm.
+        GroupMessage sys = new GroupMessage();
+        sys.setGroup(g);
+        sys.setSenderId(null);
+        sys.setContent(targetUser.getDisplayName() + " đã bị " + operatorUser.getDisplayName() + " xóa khỏi nhóm.");
+        sys.setMessageType("system");
+        sys.setCreatedAt(LocalDateTime.now());
+        groupMessageRepository.save(sys);
+    }
+
+    // ==========================================
+    // 6. MỜI THÀNH VIÊN THAM GIA NHÓM QUA EMAIL
+    // ==========================================
+
+    /**
+     * Tìm kiếm User theo Email trước khi gửi lời mời, để Chủ nhóm xác nhận đúng người.
+     * Fail-fast: check đăng nhập -> check người gọi là thành viên nhóm -> tìm User theo email.
+     */
+    @Transactional(readOnly = true)
+    public GroupMemberResponse searchUserForInvitation(UUID groupId, String email, UUID userId) {
+        requireUserId(userId);
+        requireMembership(groupId, userId);
+
+        if (email == null || email.isBlank()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        User targetUser = userRepository.findByEmailIgnoreCase(email.trim())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return GroupMemberResponse.builder()
+                .userId(targetUser.getId())
+                .displayName(targetUser.getDisplayName())
+                .avatar(null)
+                .role(null)
+                .joinedAt(null)
+                .build();
+    }
+
+    /**
+     * Chủ nhóm gửi lời mời tham gia nhóm cho 1 User thông qua Email.
+     * Fail-fast: check đăng nhập -> group tồn tại -> quyền Chủ nhóm -> email hợp lệ -> tìm targetUser
+     * -> chống tự mời chính mình -> chống mời trùng (đã là thành viên/đã được mời) -> tạo bản ghi PENDING.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void inviteMemberByEmail(UUID groupId, String email, UUID operatorId) {
+        requireUserId(operatorId);
+
+        Group g = groupRepository.findById(groupId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+        if (!g.getOwnerId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
+        }
+
+        // Kiểm tra sức chứa tối đa của nhóm theo gói cước của Owner (bao gồm cả các lời mời PENDING
+        // để tránh mời tràn lan vượt quá slot còn trống của nhóm).
+        User owner = userRepository.findById(g.getOwnerId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        Limits ownerLim = limits(owner);
+        if (groupMemberRepository.countByIdGroupId(groupId) >= ownerLim.maxCapacity()) {
+            throw new BusinessException(ErrorCode.GROUP_FULL);
+        }
+
+        if (email == null || email.isBlank()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        User targetUser = userRepository.findByEmailIgnoreCase(email.trim())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        if (targetUser.getId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.GROUP_CANNOT_INVITE_SELF);
+        }
+
+        if (groupMemberRepository.existsByIdGroupIdAndIdUserId(groupId, targetUser.getId())) {
+            throw new BusinessException(ErrorCode.GROUP_MEMBER_ALREADY_JOINED_OR_INVITED);
+        }
+
+        GroupMember invitation = new GroupMember();
+        invitation.setId(new GroupMemberId(groupId, targetUser.getId()));
+        invitation.setGroup(g);
+        invitation.setRole("member");
+        invitation.setStatus("PENDING");
+        invitation.setJoinedAt(LocalDateTime.now());
+        groupMemberRepository.save(invitation);
+    }
+
+    /**
+     * Lấy danh sách các lời mời (PENDING) đang chờ chính User hiện tại phản hồi.
+     */
+    @Transactional(readOnly = true)
+    public List<GroupResponse> getMyPendingInvitations(UUID userId) {
+        requireUserId(userId);
+
+        List<GroupMember> pendingInvitations = groupMemberRepository.findByIdUserIdAndStatus(userId, "PENDING");
+        if (pendingInvitations.isEmpty()) {
+            return List.of();
+        }
+
+        List<GroupResponse> responses = new ArrayList<>();
+        for (GroupMember invitation : pendingInvitations) {
+            UUID groupId = invitation.getId().getGroupId();
+            Group group = groupRepository.findById(groupId).orElse(null);
+            if (group != null) {
+                responses.add(buildResponse(group));
+            }
+        }
+
+        responses.sort(Comparator.comparing(GroupResponse::getUpdatedAt).reversed());
+        return responses;
+    }
+
+    /**
+     * User phản hồi lời mời tham gia nhóm: Chấp nhận (accept = true) hoặc Từ chối (accept = false).
+     * Fail-fast: check đăng nhập -> lấy bản ghi lời mời -> kiểm tra đúng trạng thái PENDING
+     * -> accept: đối chiếu giới hạn gói cước (BR-090) -> cập nhật JOINED; reject: xóa bản ghi khỏi DB.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void handleInvitation(UUID groupId, UUID userId, boolean accept) {
+        requireUserId(userId);
+
+        GroupMember invitation = groupMemberRepository.findById(new GroupMemberId(groupId, userId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_INVITATION_NOT_FOUND));
+
+        if (!"PENDING".equals(invitation.getStatus())) {
+            throw new BusinessException(ErrorCode.GROUP_INVITATION_NOT_PENDING);
+        }
+
+        if (accept) {
+            // BR-090: Kiểm tra giới hạn số lượng nhóm tối đa (maxJoined) theo gói cước hiện tại
+            // của chính User đang Accept - chỉ kích hoạt tại thời điểm Chấp nhận, không chặn lúc mời.
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+            Limits lim = limits(user);
+
+            long joinedCount = groupMemberRepository.countGroupsJoinedByUser(userId);
+            if (joinedCount >= lim.maxJoined()) {
+                throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
+            }
+
+            invitation.setStatus("JOINED");
+            invitation.setJoinedAt(LocalDateTime.now());
+            groupMemberRepository.save(invitation);
+
+            // BR-090: Ngay sau khi chuyển trạng thái JOINED thành công (cùng transaction), tạo
+            // tin nhắn hệ thống thông báo thành viên mới. Tái sử dụng đối tượng User đã truy vấn
+            // ở bước kiểm tra hạn mức phía trên, không query lại core.users lần nữa.
+            Group g = groupRepository.findById(groupId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+            GroupMessage sys = new GroupMessage();
+            sys.setGroup(g);
+            sys.setSenderId(null);
+            sys.setContent(user.getDisplayName() + " đã tham gia vào nhóm chat.");
+            sys.setMessageType("system");
+            sys.setCreatedAt(LocalDateTime.now());
+            groupMessageRepository.save(sys);
+        } else {
+            groupMemberRepository.delete(invitation);
+        }
+    }
+
+    private record Limits(boolean canCreate, int maxCreated, int maxJoined, int maxCapacity) {}
+
+    private Limits limits(User u) {
+        String role = u.getRole().toString();
+        boolean admin = role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("sub_admin");
+
+        String plan = resolveActivePlanName(u);
+
+        if (admin || "vip_5_plus".equals(plan) || "plan_5_plus".equals(plan)) {
+            return new Limits(true, 50, 60, 99);
+        }
+        if ("pro_2_4".equals(plan) || "plan_2_4".equals(plan)) {
+            return new Limits(true, 20, 30, 4);
+        }
+        return new Limits(false, 0, 5, 0);
+    }
+
+    private String resolveActivePlanName(User user) {
+        if (user.getSubscriptionPlanId() == null || user.getSubscriptionExpiresAt() == null) {
+            return SubscriptionPlan.FREE_PLAN_NAME;
+        }
+        if (user.getSubscriptionExpiresAt().isBefore(LocalDateTime.now())) {
+            return SubscriptionPlan.FREE_PLAN_NAME;
+        }
+        return subscriptionPlanRepository.findById(user.getSubscriptionPlanId())
+                .map(SubscriptionPlan::getName)
+                .orElse(SubscriptionPlan.FREE_PLAN_NAME);
     }
 }

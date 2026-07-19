@@ -1,6 +1,8 @@
 import { getAccessToken } from "@/lib/auth-storage"
 import { formatBytes } from "@/utils/format"
 import type { Document, DocStatus } from "@/states/types"
+import { MOCK_API } from "@/services/mock/mock-config"
+import { mockPreviewRequest, mockDownloadRequest, mockUploadRequest } from "@/services/mock/documents.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -62,6 +64,25 @@ function mapStatus(status: string): DocStatus {
     case "deleted":   return "deleted"
     default:          return "ready"
   }
+}
+
+/**
+ * Parse Content-Disposition theo RFC 5987 (mục 2, docx):
+ * ưu tiên filename* (UTF-8, đã encode) trước, chỉ fallback sang filename
+ * thường nếu filename* không tồn tại. KHÔNG encodeURIComponent lại sau khi decode.
+ */
+function parseDownloadFilename(contentDisposition: string | null): string {
+  if (!contentDisposition) return "document"
+  const starMatch = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
+  if (starMatch?.[1]) {
+    try {
+      return decodeURIComponent(starMatch[1].trim())
+    } catch {
+      // fall through to plain filename below if decode fails
+    }
+  }
+  const plainMatch = contentDisposition.match(/filename\s*=\s*"?([^";\n]+)"?/i)
+  return plainMatch?.[1]?.trim() ?? "document"
 }
 
 function mapEmbeddingStatus(status: string | null | undefined): Document["embeddingStatus"] {
@@ -165,6 +186,7 @@ export async function uploadDocumentApi(
   visibility: "private" | "public" = "private",
   onProgress?: (progress: number) => void,
   tags?: string,
+  folderId?: string | null,
 ): Promise<Document> {
   const formData = new FormData()
   formData.append("file", file)
@@ -172,6 +194,8 @@ export async function uploadDocumentApi(
   if (title) formData.append("title", title)
   formData.append("visibility", visibility)
   if (tags?.trim()) formData.append("tags", tags.trim())
+  // Cần gửi kèm folderId để BE check trùng tên ĐÚNG trong phạm vi 1 folder (mục 3, docx).
+  if (folderId) formData.append("folderId", folderId)
 
   let fakeProgress = 0
   const progressInterval = setInterval(() => {
@@ -180,14 +204,17 @@ export async function uploadDocumentApi(
   }, 350)
 
   try {
-    const token = getAccessToken()
-    const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    })
+    const response = MOCK_API
+      ? await mockUploadRequest(formData)
+      : await fetch(`${API_BASE_URL}/api/documents/upload`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: formData,
+        })
     clearInterval(progressInterval)
     onProgress?.(100)
+    // 409 Conflict = trùng tên trong cùng folder (BR mới) — KHÔNG auto-rename,
+    // ném lỗi kèm message để FE giữ nguyên form cho user tự sửa tên & thử lại.
     if (!response.ok) throw new Error(await parseError(response))
     return mapApiDocumentToDocument((await response.json()) as ApiDocument)
   } catch (e) {
@@ -261,19 +288,16 @@ export async function restoreDocumentApi(id: string): Promise<Document> {
  * POST /api/documents/{id}/download — tăng downloadCount và tải file (BR-021).
  */
 export async function downloadDocumentApi(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}/download`, {
-    method: "POST",
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockDownloadRequest(id)
+    : await fetch(`${API_BASE_URL}/api/documents/${id}/download`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
 
   const blob = await response.blob()
-  const contentDisposition = response.headers.get("Content-Disposition")
-  let filename = "document"
-  if (contentDisposition) {
-    const match = contentDisposition.match(/filename="?([^";\n]+)"?/)
-    if (match?.[1]) filename = match[1].trim()
-  }
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition"))
 
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
@@ -287,10 +311,12 @@ export async function downloadDocumentApi(id: string): Promise<void> {
 
 /** GET /api/documents/{id}/preview — stream file inline for preview before download. */
 export async function previewDocumentApi(id: string): Promise<{ url: string; contentType: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}/preview`, {
-    method: "GET",
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockPreviewRequest(id)
+    : await fetch(`${API_BASE_URL}/api/documents/${id}/preview`, {
+        method: "GET",
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
 
   const blob = await response.blob()

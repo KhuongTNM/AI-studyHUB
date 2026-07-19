@@ -58,6 +58,18 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
                                        @Nullable @Param("subject") String subject,
                                        @Nullable @Param("tag") String tag);
 
+    /**
+     * BR mới (mục 3, AI-studyHUB_API_File.docx): check trùng originalName
+     * TRONG CÙNG 1 folder (folderId có thể NULL = root). So sánh không phân
+     * biệt hoa/thường. Dùng để chặn upload trùng tên -> trả 409, KHÔNG auto-rename.
+     */
+    @Query("SELECT COUNT(d) FROM Document d WHERE d.userId = :userId AND d.deletedAt IS NULL " +
+           "AND ((:folderId IS NULL AND d.folderId IS NULL) OR d.folderId = :folderId) " +
+           "AND LOWER(d.originalName) = LOWER(:originalName)")
+    long countActiveDuplicateInFolder(@Param("userId") UUID userId,
+                                       @Nullable @Param("folderId") UUID folderId,
+                                       @Param("originalName") String originalName);
+
        @Modifying
        @Transactional
        @Query(value = """

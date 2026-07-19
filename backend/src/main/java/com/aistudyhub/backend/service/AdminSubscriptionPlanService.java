@@ -33,8 +33,6 @@ public class AdminSubscriptionPlanService {
 
     @Transactional(readOnly = true)
     public List<SubscriptionPlanResponse> getPlans() {
-        // Admin gets all plans, or maybe just all? The user says Admin API returns normal + flag.
-        // We will return all.
         return subscriptionPlanRepository.findAll().stream()
                 .map(SubscriptionPlanResponse::from)
                 .toList();

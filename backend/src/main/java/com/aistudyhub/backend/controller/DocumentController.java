@@ -9,6 +9,7 @@ import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.service.DocumentService;
+import com.aistudyhub.backend.service.PdfPreviewService;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,6 +44,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final PdfPreviewService pdfPreviewService;
 
     @PostMapping("/upload")
     public ResponseEntity<DocumentResponse> upload(
@@ -51,14 +53,15 @@ public class DocumentController {
             @RequestParam("subject") String subject,
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "visibility", required = false, defaultValue = "private") String visibilityStr,
-            @RequestParam(value = "tags", required = false) String tags) {
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "folderId", required = false) UUID folderId) {
         Visibility visibility;
         try {
             visibility = Visibility.valueOf(visibilityStr.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
         }
-        Document doc = documentService.upload(principal.getId(), file, subject, title, visibility, tags);
+        Document doc = documentService.upload(principal.getId(), file, subject, title, visibility, tags, folderId);
         return ResponseEntity.status(201).body(DocumentResponse.from(doc));
     }
 
@@ -143,30 +146,33 @@ public class DocumentController {
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
         Document doc = documentService.getDocumentForPreview(id, principal.getId(), principal.getRole());
-        String fileUrl = doc.getFileUrl();
 
-        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.LOCATION, fileUrl)
-                    .build();
-        }
-
-        Path filePath = documentService.getFilePath(doc);
-        if (!Files.exists(filePath)) {
+        // CONTRACT MỚI: KHÔNG redirect ra Supabase nữa — BE tự tải file (có cache)
+        // rồi convert sang PDF nếu cần, để LUÔN trả về application/pdf cho FE,
+        // bất kể file gốc là pdf/docx/pptx (mục 1, docx).
+        Path sourceFile = documentService.getLocalFileForServing(doc);
+        if (!Files.exists(sourceFile)) {
             return ResponseEntity.notFound().build();
         }
+
+        Path pdfPath = pdfPreviewService.getPreviewPdfPath(doc, sourceFile, documentService.getUploadDir());
+
         try {
-            InputStream is = Files.newInputStream(filePath);
-            String mimeType = URLConnection.guessContentTypeFromName(doc.getOriginalName());
-            if (mimeType == null) mimeType = "application/octet-stream";
+            InputStream is = Files.newInputStream(pdfPath);
             Resource resource = new InputStreamResource(is);
+            String pdfFileName = stripExtension(doc.getOriginalName()) + ".pdf";
             return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(mimeType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + doc.getOriginalName() + "\"")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition("inline", pdfFileName))
                     .body(resource);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    private String stripExtension(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot > 0 ? filename.substring(0, dot) : filename;
     }
 
     @PostMapping("/{id}/download")
@@ -174,15 +180,11 @@ public class DocumentController {
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @PathVariable UUID id) {
         Document doc = documentService.incrementDownloadCount(id, principal.getId());
-        String fileUrl = doc.getFileUrl();
 
-        if (fileUrl != null && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.LOCATION, fileUrl)
-                    .build();
-        }
-
-        Path filePath = documentService.getFilePath(doc);
+        // CONTRACT MỚI: không redirect ra Supabase nữa — proxy để tự set đúng
+        // Content-Disposition (filename* UTF-8, mục 2 docx). Redirect cũ khiến
+        // FE nhận thẳng response gốc từ Supabase, bỏ qua header BE định trả.
+        Path filePath = documentService.getLocalFileForServing(doc);
         if (!Files.exists(filePath)) {
             return ResponseEntity.notFound().build();
         }
@@ -194,11 +196,28 @@ public class DocumentController {
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(mimeType))
                     .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + doc.getOriginalName() + "\"")
+                            buildContentDisposition("attachment", doc.getOriginalName()))
                     .body(resource);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    /**
+     * Build Content-Disposition đúng chuẩn RFC 6266 / RFC 5987: luôn kèm cả
+     * filename (ASCII fallback, browser cũ) và filename* (UTF-8 percent-encoded,
+     * giữ đúng tên có dấu tiếng Việt). Trước đây chỉ có filename="..." nên tên
+     * tiếng Việt bị BE gửi thẳng byte UTF-8 không encode -> FE/browser đọc sai.
+     */
+    private String buildContentDisposition(String dispositionType, String originalFileName) {
+        String asciiFallback = java.text.Normalizer.normalize(originalFileName, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .replaceAll("[đĐ]", "d")
+                .replaceAll("[^\\x20-\\x7E]", "_")
+                .replace("\"", "'");
+        String encoded = java.net.URLEncoder.encode(originalFileName, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return dispositionType + "; filename=\"" + asciiFallback + "\"; filename*=UTF-8''" + encoded;
     }
 
     @PutMapping("/{id}")

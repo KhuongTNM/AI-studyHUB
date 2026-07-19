@@ -21,6 +21,7 @@ public class CorsConfig {
         }
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
+        config.addExposedHeader("Content-Disposition");
         config.setAllowCredentials(true);
         config.addExposedHeader("X-Admin-Password");
 
