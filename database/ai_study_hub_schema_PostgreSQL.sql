@@ -454,4 +454,36 @@ SET daily_ai_chat_limit = -1,
     max_flashcards = -1 
 WHERE name = 'plan_5_plus';
 
+-- ============================================================
+-- Migration: Xác thực Email bằng mã OTP khi Đăng ký tài khoản
+-- (BR-095 -> BR-098). Chạy tay trên DB hiện có (ddl-auto=none,
+-- không dùng Flyway/Liquibase trong project này).
+-- ============================================================
 
+-- 1) Cột mới trên core.users
+ALTER TABLE core.users
+  ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Backfill: các tài khoản đã tồn tại trước migration này (đăng ký form, Google,
+-- sub-admin do Admin tạo, seed data...) đều coi như đã hợp lệ, tránh bị BR-097
+-- khoá đăng nhập hàng loạt ngay khi deploy tính năng OTP.
+UPDATE core.users SET email_verified = TRUE;
+
+-- 2) Bảng mới core.email_otp_tokens (theo đúng pattern core.password_reset_tokens)
+CREATE TABLE core.email_otp_tokens (
+  id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID         NOT NULL,
+  email         VARCHAR(255) NOT NULL,
+  otp_code_hash VARCHAR(255) NOT NULL,
+  expiry        TIMESTAMPTZ  NOT NULL,
+  attempt_count INT          NOT NULL DEFAULT 0,
+  used          BOOLEAN      NOT NULL DEFAULT FALSE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE core.email_otp_tokens ADD FOREIGN KEY (user_id)
+  REFERENCES core.users (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
+
+CREATE INDEX idx_eot_user_id   ON core.email_otp_tokens (user_id);
+CREATE INDEX idx_eot_email     ON core.email_otp_tokens (email);
+CREATE INDEX idx_eot_user_used ON core.email_otp_tokens (user_id, used);
