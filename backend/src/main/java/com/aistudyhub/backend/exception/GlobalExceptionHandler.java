@@ -59,13 +59,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
     }
 
-    @ExceptionHandler(MissingRequestHeaderException.class)
-    public ResponseEntity<Map<String, String>> handleMissingHeader(MissingRequestHeaderException ex) {
-        if ("X-Admin-Password".equals(ex.getHeaderName())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Thiếu Header xác thực X-Admin-Password."));
-        }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Thiếu Header yêu cầu: " + ex.getHeaderName()));
-    }
+
 
     // FIX: Bắt AccessDeniedException từ Spring Security trong controller (nếu có)
     @ExceptionHandler(AccessDeniedException.class)
