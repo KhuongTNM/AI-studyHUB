@@ -17,4 +17,6 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     boolean existsByPlanIdAndStatus(Integer planId, SubscriptionStatus status);
     
     List<Subscription> findAllByUserIdAndStatus(UUID userId, SubscriptionStatus status);
+    
+    boolean existsByUserIdAndStatusAndEndDateAfter(UUID userId, SubscriptionStatus status, LocalDateTime dateTime);
 }
