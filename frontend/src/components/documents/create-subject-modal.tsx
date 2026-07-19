@@ -8,25 +8,31 @@ interface Props {
   language: "vi" | "en"
   onConfirm: (name: string) => void
   onClose: () => void
+  initialName?: string
+  isEdit?: boolean
 }
 
 const t = {
   vi: {
     titleCreate: "Tạo môn học mới",
+    titleEdit: "Chỉnh sửa môn học",
     placeholder: "Tên môn học (ví dụ: Toán học, Lịch sử)",
     create: "Tạo",
+    save: "Lưu",
     cancel: "Hủy",
   },
   en: {
     titleCreate: "New subject",
+    titleEdit: "Edit subject",
     placeholder: "Subject name (e.g. Mathematics, History)",
     create: "Create",
+    save: "Save",
     cancel: "Cancel",
   },
 } as const
 
-export function CreateSubjectModal({ language, onConfirm, onClose }: Props) {
-  const [name, setName] = useState("")
+export function CreateSubjectModal({ language, onConfirm, onClose, initialName = "", isEdit = false }: Props) {
+  const [name, setName] = useState(initialName)
   const inputRef = useRef<HTMLInputElement>(null)
   const text = t[language]
 
@@ -44,6 +50,9 @@ export function CreateSubjectModal({ language, onConfirm, onClose }: Props) {
     onClose()
   }
 
+  const title = isEdit ? text.titleEdit : text.titleCreate
+  const confirmBtnText = isEdit ? text.save : text.create
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -53,7 +62,7 @@ export function CreateSubjectModal({ language, onConfirm, onClose }: Props) {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
             <BookOpen className="h-4 w-4 text-primary" />
           </div>
-          <h3 className="font-semibold text-foreground">{text.titleCreate}</h3>
+          <h3 className="font-semibold text-foreground">{title}</h3>
           <Button variant="ghost" size="icon" onClick={onClose} className="ml-auto h-7 w-7">
             <X className="h-4 w-4" />
           </Button>
@@ -81,7 +90,7 @@ export function CreateSubjectModal({ language, onConfirm, onClose }: Props) {
             onClick={handleConfirm}
             disabled={!name.trim()}
           >
-            {text.create}
+            {confirmBtnText}
           </Button>
           <Button variant="outline" onClick={onClose}>
             {text.cancel}
