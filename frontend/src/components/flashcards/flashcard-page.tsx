@@ -29,6 +29,7 @@ export function FlashcardPage() {
     updateFlashcardStatus,
     loadFlashcardsForDocument,
     loadAllFlashcards,
+    deleteAllFlashcardsForDocument,
     flashcardSelectedDocumentId,
     setFlashcardSelectedDocumentId,
     language,
@@ -44,7 +45,8 @@ export function FlashcardPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
 
   const text = language === "vi" ? {
     title: "Flashcards học tập",
@@ -63,6 +65,12 @@ export function FlashcardPage() {
     creating: "Đang tạo...",
     saving: "Đang lưu...",
     resetButton: "Làm mới",
+    resetConfirmTitle: "Xoá toàn bộ flashcard?",
+    resetConfirmDesc: (name: string) => `Tất cả flashcard trong tài liệu "${name}" sẽ bị xoá vĩnh viễn. Hành động này không thể hoàn tác.`,
+    resetConfirmButton: "Xoá tất cả",
+    resetSuccess: "Đã xoá toàn bộ flashcard.",
+    resetError: "Không thể xoá flashcard.",
+    resetting: "Đang xoá...",
     viewAnswer: "Xem đáp án",
     hideAnswer: "Ẩn đáp án",
     copy: "Sao chép",
@@ -112,6 +120,12 @@ export function FlashcardPage() {
     creating: "Creating...",
     saving: "Saving...",
     resetButton: "Reset",
+    resetConfirmTitle: "Delete all flashcards?",
+    resetConfirmDesc: (name: string) => `All flashcards in "${name}" will be permanently deleted. This action cannot be undone.`,
+    resetConfirmButton: "Delete all",
+    resetSuccess: "All flashcards deleted.",
+    resetError: "Could not delete flashcards.",
+    resetting: "Deleting...",
     viewAnswer: "Show answer",
     hideAnswer: "Hide answer",
     copy: "Copy",
@@ -237,26 +251,34 @@ export function FlashcardPage() {
     }
   }
 
-  // Nút "Làm mới": nếu đang sửa thẻ, huỷ sửa (như trước). Nếu không, đây chính
-  // là hành động refresh mà tên nút mô tả — tải lại danh sách flashcard từ
-  // server (trước đây nút này chỉ resetForm() nên KHÔNG có tác dụng gì với danh
-  // sách thẻ, kể cả khi thẻ bị "biến mất" trên UI do lỗi state ở client).
-  const handleReset = async () => {
+  // Nút "Làm mới":
+  // - Nếu đang sửa thẻ → huỷ sửa
+  // - Nếu chọn tài liệu cụ thể → mở dialog xác nhận XOÁ toàn bộ thẻ của tài liệu đó
+  // - Nếu "Tất cả tài liệu" → nút bị ẩn (không cho xoá hàng loạt khi chưa chọn tài liệu)
+  const handleReset = () => {
     if (editingId) {
       resetForm()
       return
     }
-    setIsRefreshing(true)
+    if (selectedDocId !== "all") {
+      setResetConfirmOpen(true)
+    }
+  }
+
+  const handleConfirmReset = async () => {
+    setIsResetting(true)
     try {
-      const result = selectedDocId === "all"
-        ? await loadAllFlashcards()
-        : await loadFlashcardsForDocument(selectedDocId)
-      if (!result.success) {
-        toast.error(result.message ?? text.refreshError)
+      const result = await deleteAllFlashcardsForDocument(selectedDocId)
+      if (result.success) {
+        toast.success(text.resetSuccess)
+        setActiveIndex(0)
+        setFlipped(false)
+      } else {
+        toast.error(result.message ?? text.resetError)
       }
-      setFlipped(false)
     } finally {
-      setIsRefreshing(false)
+      setIsResetting(false)
+      setResetConfirmOpen(false)
     }
   }
 
@@ -388,24 +410,66 @@ export function FlashcardPage() {
                   </span>
                 </div>
 
-                <button
-                  type="button"
+                {/* 3D Flip Card */}
+                <div
+                  className="relative mt-6 w-full cursor-pointer"
+                  style={{ perspective: "1200px", minHeight: "220px" }}
                   onClick={() => setFlipped(prev => !prev)}
-                  className="relative mt-6 w-full overflow-hidden rounded-[1.75rem] border border-border bg-background p-8 text-left shadow-lg transition-transform duration-300 hover:-translate-y-1"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setFlipped(prev => !prev) }}
+                  aria-label={flipped ? (language === "vi" ? "Ẩn đáp án" : "Hide answer") : (language === "vi" ? "Xem đáp án" : "Show answer")}
                 >
-                  <div className="absolute inset-x-6 top-6 h-px bg-border opacity-50" />
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">{flipped ? "B" : "A"}</span>
-                    <span>{flipped ? (language === "vi" ? "Mặt sau" : "Back") : (language === "vi" ? "Mặt trước" : "Front")}</span>
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      minHeight: "220px",
+                      transformStyle: "preserve-3d",
+                      transition: "transform 0.55s cubic-bezier(0.4, 0, 0.2, 1)",
+                      transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                    }}
+                  >
+                    {/* Mặt trước — xanh lá */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                      }}
+                      className="flex flex-col rounded-[1.75rem] border border-green-200 bg-gradient-to-br from-green-50 to-emerald-100 p-8 shadow-lg"
+                    >
+                      <div className="flex items-center gap-2 text-xs text-green-700">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-green-200 font-bold text-green-800">A</span>
+                        <span className="font-medium">{language === "vi" ? "Mặt trước" : "Front"}</span>
+                      </div>
+                      <div className="mt-5 flex min-h-[140px] items-center">
+                        <p className="text-2xl font-semibold leading-snug text-green-900">{activeCard.question}</p>
+                      </div>
+                    </div>
+
+                    {/* Mặt sau — đỏ */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                        transform: "rotateY(180deg)",
+                      }}
+                      className="flex flex-col rounded-[1.75rem] border border-red-200 bg-gradient-to-br from-red-50 to-rose-100 p-8 shadow-lg"
+                    >
+                      <div className="flex items-center gap-2 text-xs text-red-700">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-red-200 font-bold text-red-800">B</span>
+                        <span className="font-medium">{language === "vi" ? "Mặt sau" : "Back"}</span>
+                      </div>
+                      <div className="mt-5 flex min-h-[140px] items-center">
+                        <p className="text-lg leading-8 text-red-900">{activeCard.answer}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-5 min-h-[180px]">
-                    {flipped ? (
-                      <p className="text-lg leading-8 text-foreground">{activeCard.answer}</p>
-                    ) : (
-                      <p className="text-2xl font-semibold leading-snug text-foreground">{activeCard.question}</p>
-                    )}
-                  </div>
-                </button>
+                </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span>{activeCard.documentId ? documents.find(doc => doc.id === activeCard.documentId)?.name : (language === "vi" ? "Tổng quát" : "General")}</span>
@@ -552,18 +616,54 @@ export function FlashcardPage() {
               {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {isSaving ? (editingId ? text.saving : text.creating) : (editingId ? text.saveButton : text.addButton)}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => void handleReset()}
-              disabled={!editingId && isRefreshing}
-              className="gap-2"
-            >
-              <RotateCcw className={cn("h-4 w-4", !editingId && isRefreshing && "animate-spin")} />
-              {editingId ? text.cancelEdit : (isRefreshing ? text.refreshing : text.resetButton)}
-            </Button>
+            {(editingId || selectedDocId !== "all") && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                disabled={isResetting}
+                className={cn("gap-2", !editingId && "text-destructive hover:border-destructive/50 hover:bg-destructive/5 hover:text-destructive")}
+              >
+                {editingId ? (
+                  <>
+                    <X className="h-4 w-4" />
+                    {text.cancelEdit}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className={cn("h-4 w-4", isResetting && "animate-spin")} />
+                    {isResetting ? text.resetting : text.resetButton}
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </aside>
       </div>
+
+      {/* Dialog xác nhận xoá toàn bộ flashcard của tài liệu đang chọn */}
+      <AlertDialog open={resetConfirmOpen} onOpenChange={open => !open && !isResetting && setResetConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{text.resetConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {text.resetConfirmDesc(selectedDocName)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResetting}>{text.deleteCancel}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isResetting}
+              onClick={event => {
+                event.preventDefault()
+                void handleConfirmReset()
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isResetting ? text.resetting : text.resetConfirmButton}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteTargetId !== null} onOpenChange={open => !open && setDeleteTargetId(null)}>
         <AlertDialogContent>
