@@ -13,6 +13,8 @@ export type {
   GroupChat,
   GroupChatMember,
   GroupChatMessage,
+  GroupInvitation,
+  GroupInvitationCandidate,
   Language,
   PackagePrice,
   PackageTier,
