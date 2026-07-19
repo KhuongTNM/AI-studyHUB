@@ -9,5 +9,7 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
 
     java.util.List<Flashcard> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    long countByUserId(UUID userId);
+
     long deleteByDocumentId(UUID documentId);
 }

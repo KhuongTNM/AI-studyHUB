@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -12,8 +13,8 @@ public class CreateSubscriptionPlanRequest {
     @Size(max = 50, message = "Tên gói không được vượt quá 50 ký tự.")
     private String displayName;
 
-    @NotNull(message = "Giá không hợp lệ.")
-    @Min(value = 0, message = "Giá gói phải lớn hơn hoặc bằng 0.")
+    @NotNull(message = "Giá không được để trống.")
+    @DecimalMin(value = "0.0", inclusive = true, message = "Giá không được âm.")
     private BigDecimal price;
 
     @Min(value = 1, message = "Số lượng thành viên tối đa không hợp lệ.")
@@ -27,6 +28,12 @@ public class CreateSubscriptionPlanRequest {
 
     @Min(value = 1, message = "Giới hạn tham gia nhóm không hợp lệ.")
     private int joinGroupLimit;
+
+    @Min(value = -1, message = "Giới hạn AI chat ngày không hợp lệ.")
+    private int dailyAiChatLimit = 5;
+
+    @Min(value = -1, message = "Giới hạn flashcards không hợp lệ.")
+    private int maxFlashcards = 5;
 
     @NotBlank(message = "Mật khẩu Admin không được để trống.")
     private String adminPassword;
@@ -77,6 +84,22 @@ public class CreateSubscriptionPlanRequest {
 
     public void setJoinGroupLimit(int joinGroupLimit) {
         this.joinGroupLimit = joinGroupLimit;
+    }
+
+    public int getDailyAiChatLimit() {
+        return dailyAiChatLimit;
+    }
+
+    public void setDailyAiChatLimit(int dailyAiChatLimit) {
+        this.dailyAiChatLimit = dailyAiChatLimit;
+    }
+
+    public int getMaxFlashcards() {
+        return maxFlashcards;
+    }
+
+    public void setMaxFlashcards(int maxFlashcards) {
+        this.maxFlashcards = maxFlashcards;
     }
 
     public String getAdminPassword() {
