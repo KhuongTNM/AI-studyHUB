@@ -1,6 +1,6 @@
 import { getAccessToken } from "@/lib/auth-storage"
 import { MOCK_USERS } from "@/states/mock-data"
-import type { GroupChat, GroupChatMember, GroupChatMessage, GroupInvitationCandidate } from "@/states/types"
+import type { GroupChat, GroupChatMember, GroupChatMessage, GroupInvitation, GroupInvitationCandidate } from "@/states/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 const USE_GROUP_INVITATION_MOCK = process.env.NEXT_PUBLIC_GROUP_INVITATIONS_MOCK === "true"
@@ -169,6 +169,18 @@ export function mapGroup(api: ApiGroup): GroupChat {
   }
 }
 
+function mapGroupInvitation(api: ApiGroup): GroupInvitation {
+  return {
+    id: api.id,
+    groupCode: api.groupCode,
+    name: api.name,
+    description: api.description ?? undefined,
+    ownerId: api.ownerId,
+    createdAt: new Date(api.createdAt),
+    updatedAt: new Date(api.updatedAt),
+  }
+}
+
 /** GET /api/groups/{groupId}/invitations/search — find an invitee by email. */
 export async function searchGroupInvitationUserApi(
   groupId: string,
@@ -194,6 +206,29 @@ export async function inviteGroupMemberApi(groupId: string, email: string): Prom
   const query = new URLSearchParams({ email: normalizedEmail })
   const response = await fetch(
     `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/invitations?${query.toString()}`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+    },
+  )
+  if (!response.ok) throw new Error(await parseError(response))
+}
+
+/** GET /api/groups/invitations/pending — invitations awaiting the current user. */
+export async function fetchPendingGroupInvitationsApi(): Promise<GroupInvitation[]> {
+  const response = await fetch(`${API_BASE_URL}/api/groups/invitations/pending`, {
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  const invitations = (await response.json()) as ApiGroup[]
+  return invitations.map(mapGroupInvitation)
+}
+
+/** POST /api/groups/{groupId}/invitations/respond?accept=true|false — accept or decline. */
+export async function respondGroupInvitationApi(groupId: string, accept: boolean): Promise<void> {
+  const query = new URLSearchParams({ accept: String(accept) })
+  const response = await fetch(
+    `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/invitations/respond?${query.toString()}`,
     {
       method: "POST",
       headers: authHeaders(),

@@ -25,7 +25,7 @@ import React, { createContext, useCallback, useContext, useState, type ReactNode
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
 import type {
   Language, PackagePrice, PackageTier, User,
-  Category, ChatSession, ChatMessage, Document, Folder, Flashcard, ActivityLog, GroupChat, GroupInvitationCandidate,
+  Category, ChatSession, ChatMessage, Document, Folder, Flashcard, ActivityLog, GroupChat, GroupInvitation, GroupInvitationCandidate,
 } from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
@@ -144,10 +144,15 @@ export interface AppState {
   activeGroupId: string | null
   groupsLoading: boolean
   groupLoadError: string | null
+  pendingGroupInvitations: GroupInvitation[]
+  groupInvitationsLoading: boolean
+  groupInvitationsError: string | null
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
   loadGroups: () => Promise<{ success: boolean; error?: string }>
+  loadPendingGroupInvitations: () => Promise<{ success: boolean; error?: string }>
+  respondGroupInvitation: (groupId: string, accept: boolean) => Promise<{ success: boolean; error?: string }>
   createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
   searchGroupInvitationUser: (groupId: string, email: string) => Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }>
@@ -379,10 +384,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         activeGroupId: groupChat.activeGroupId,
         groupsLoading: groupChat.groupsLoading,
         groupLoadError: groupChat.groupLoadError,
+        pendingGroupInvitations: groupChat.pendingGroupInvitations,
+        groupInvitationsLoading: groupChat.groupInvitationsLoading,
+        groupInvitationsError: groupChat.groupInvitationsError,
         groupCreateLimit: groupChat.groupCreateLimit,
         groupJoinLimit: groupChat.groupJoinLimit,
         setActiveGroupId: groupChat.setActiveGroupId,
         loadGroups: groupChat.loadGroups,
+        loadPendingGroupInvitations: groupChat.loadPendingGroupInvitations,
+        respondGroupInvitation: groupChat.respondGroupInvitation,
         createGroup: groupChat.createGroup,
         joinGroup: groupChat.joinGroup,
         searchGroupInvitationUser: groupChat.searchGroupInvitationUser,
