@@ -68,6 +68,7 @@ public class DocumentService {
         }
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Document upload(UUID userId, MultipartFile file, String subject, String title,
                            Visibility visibility, String tags, UUID folderId) {
         if (subject == null || subject.isBlank()) {
@@ -140,9 +141,20 @@ public class DocumentService {
         user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
-        Document saved = documentRepository.save(doc);
+        final Document saved = documentRepository.save(doc);
 
-        scanProcessor.simulateScan(saved.getId());
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        scanProcessor.simulateScan(saved.getId());
+                    }
+                }
+            );
+        } else {
+            scanProcessor.simulateScan(saved.getId());
+        }
         return saved;
     }
 

@@ -10,6 +10,9 @@ RUN mvn clean package -DskipTests -B
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
+# Cài đặt LibreOffice và font tiếng Việt/phổ thông để hỗ trợ render preview docx/pptx sang pdf
+RUN apk add --no-cache libreoffice fontconfig ttf-dejavu
+
 RUN mkdir -p /app/uploads
 
 COPY --from=build /app/target/backend-0.1.0.jar app.jar

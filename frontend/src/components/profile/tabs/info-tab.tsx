@@ -86,7 +86,7 @@ export function InfoTab({
 const infoText = {
   vi: {
     displayName: "Tên hiển thị",
-    emailLocked: "Không thể thay đổi (BR-20)",
+    emailLocked: "Không thể thay đổi",
     storage: "Dung lượng lưu trữ",
     used: "đã dùng",
     total: "tổng",
@@ -96,7 +96,7 @@ const infoText = {
   },
   en: {
     displayName: "Display name",
-    emailLocked: "Cannot be changed (BR-20)",
+    emailLocked: "Cannot be changed",
     storage: "Storage",
     used: "used",
     total: "total",

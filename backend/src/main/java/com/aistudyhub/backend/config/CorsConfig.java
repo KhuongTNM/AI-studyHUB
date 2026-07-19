@@ -21,6 +21,7 @@ public class CorsConfig {
         }
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
+        config.addExposedHeader("Content-Disposition");
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
