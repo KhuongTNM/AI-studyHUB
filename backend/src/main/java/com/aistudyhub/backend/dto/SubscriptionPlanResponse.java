@@ -13,6 +13,8 @@ public class SubscriptionPlanResponse {
     private long defaultStorageBytes;
     private int createGroupLimit;
     private int joinGroupLimit;
+    private int dailyAiChatLimit;
+    private int maxFlashcards;
 
     public static SubscriptionPlanResponse from(SubscriptionPlan plan) {
         SubscriptionPlanResponse response = new SubscriptionPlanResponse();
@@ -24,6 +26,8 @@ public class SubscriptionPlanResponse {
         response.defaultStorageBytes = plan.getDefaultStorageBytes();
         response.createGroupLimit = plan.getCreateGroupLimit();
         response.joinGroupLimit = plan.getJoinGroupLimit();
+        response.dailyAiChatLimit = plan.getDailyAiChatLimit();
+        response.maxFlashcards = plan.getMaxFlashcards();
         return response;
     }
 
@@ -57,5 +61,13 @@ public class SubscriptionPlanResponse {
 
     public int getJoinGroupLimit() {
         return joinGroupLimit;
+    }
+
+    public int getDailyAiChatLimit() {
+        return dailyAiChatLimit;
+    }
+
+    public int getMaxFlashcards() {
+        return maxFlashcards;
     }
 }

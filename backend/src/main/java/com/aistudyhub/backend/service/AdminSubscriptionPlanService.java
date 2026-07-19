@@ -78,6 +78,8 @@ public class AdminSubscriptionPlanService {
         plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
         plan.setCreateGroupLimit(request.getCreateGroupLimit());
         plan.setJoinGroupLimit(request.getJoinGroupLimit());
+        plan.setDailyAiChatLimit(request.getDailyAiChatLimit());
+        plan.setMaxFlashcards(request.getMaxFlashcards());
         plan.setDeleted(false);
         plan.setCreatedAt(LocalDateTime.now());
         plan.setUpdatedAt(LocalDateTime.now());
@@ -102,6 +104,13 @@ public class AdminSubscriptionPlanService {
             plan.setCreateGroupLimit(-1); // Infinite
         } else {
             plan.setCreateGroupLimit(request.getCreateGroupLimit());
+        }
+
+        if (request.getDailyAiChatLimit() != null) {
+            plan.setDailyAiChatLimit(request.getDailyAiChatLimit());
+        }
+        if (request.getMaxFlashcards() != null) {
+            plan.setMaxFlashcards(request.getMaxFlashcards());
         }
 
         plan.setUpdatedAt(LocalDateTime.now());

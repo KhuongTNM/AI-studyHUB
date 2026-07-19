@@ -12,6 +12,10 @@ public class UpdatePlanRequest {
     private BigDecimal price;
     
     private Integer createGroupLimit; // maxGroups
+
+    private Integer dailyAiChatLimit;
+
+    private Integer maxFlashcards;
     
     @NotBlank(message = "Mật khẩu Admin không được để trống.")
     private String adminPassword;

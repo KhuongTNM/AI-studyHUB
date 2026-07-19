@@ -41,6 +41,15 @@ public class FlashcardServiceTest {
     @Mock
     private RestTemplate aiServiceRestTemplate;
 
+    @Mock
+    private SubscriptionService subscriptionService;
+
+    @Mock
+    private com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
+
+    @Mock
+    private com.aistudyhub.backend.repository.UserRepository userRepository;
+
     private FlashcardService flashcardService;
 
     private UUID userId;
@@ -53,7 +62,10 @@ public class FlashcardServiceTest {
                 flashcardRepository,
                 documentRepository,
                 aiServiceRestTemplate,
-                "http://localhost:8000"
+                "http://localhost:8000",
+                subscriptionService,
+                subscriptionPlanRepository,
+                userRepository
         );
 
         userId = UUID.randomUUID();
@@ -64,15 +76,20 @@ public class FlashcardServiceTest {
         document.setUserId(userId);
         document.setEmbeddingStatus("done");
 
+        com.aistudyhub.backend.entity.User currentUser = new com.aistudyhub.backend.entity.User();
+        currentUser.setId(userId);
+        currentUser.setRole(com.aistudyhub.backend.entity.User.Role.admin);
+        lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(currentUser));
+
         // Mock SecurityContext for getCurrentUserId()
         AuthUserPrincipal principal = mock(AuthUserPrincipal.class);
-        when(principal.getId()).thenReturn(userId);
+        lenient().when(principal.getId()).thenReturn(userId);
         
         Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(principal);
+        lenient().when(authentication.getPrincipal()).thenReturn(principal);
         
         SecurityContext securityContext = mock(SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(authentication);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
     }
 

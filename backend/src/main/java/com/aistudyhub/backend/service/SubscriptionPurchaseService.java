@@ -46,6 +46,7 @@ public class SubscriptionPurchaseService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final UserRepository userRepository;
     private final PayOS payOS;
+    private final SubscriptionService subscriptionService;
 
     @Value("${payos.return-url}")
     private String returnUrl;
@@ -173,6 +174,10 @@ public class SubscriptionPurchaseService {
             user.setUpdatedAt(now);
             userRepository.save(user);
 
+            SubscriptionPlan plan = subscriptionPlanRepository.findById(purchase.getPlanId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói."));
+            subscriptionService.activateNewSubscription(user.getId(), plan, startDate, startDate.plusDays(SUBSCRIPTION_DAYS));
+
         } catch (Exception e) {
             // Im lặng để báo nhận thành công HTTP 200
         }
@@ -204,6 +209,10 @@ public class SubscriptionPurchaseService {
         user.setStorageLimitBytes(purchase.getStorageLimitBytes());
         user.setUpdatedAt(now);
         User savedUser = userRepository.save(user);
+
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(purchase.getPlanId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói."));
+        subscriptionService.activateNewSubscription(user.getId(), plan, startDate, startDate.plusDays(SUBSCRIPTION_DAYS));
 
         return toResponseWithUser(purchase, UserResponse.from(savedUser));
     }

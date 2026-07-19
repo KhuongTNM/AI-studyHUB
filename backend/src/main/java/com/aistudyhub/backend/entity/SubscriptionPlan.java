@@ -52,6 +52,12 @@ public class SubscriptionPlan {
     @Column(name = "join_group_limit", nullable = false)
     private int joinGroupLimit = 5;
 
+    @Column(name = "daily_ai_chat_limit", nullable = false)
+    private int dailyAiChatLimit = 5;
+
+    @Column(name = "max_flashcards", nullable = false)
+    private int maxFlashcards = 5;
+
     public Integer getId() {
         return id;
     }
@@ -142,5 +148,21 @@ public class SubscriptionPlan {
 
     public void setJoinGroupLimit(int joinGroupLimit) {
         this.joinGroupLimit = joinGroupLimit;
+    }
+
+    public int getDailyAiChatLimit() {
+        return dailyAiChatLimit;
+    }
+
+    public void setDailyAiChatLimit(int dailyAiChatLimit) {
+        this.dailyAiChatLimit = dailyAiChatLimit;
+    }
+
+    public int getMaxFlashcards() {
+        return maxFlashcards;
+    }
+
+    public void setMaxFlashcards(int maxFlashcards) {
+        this.maxFlashcards = maxFlashcards;
     }
 }

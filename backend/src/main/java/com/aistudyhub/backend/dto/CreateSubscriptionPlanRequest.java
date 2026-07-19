@@ -27,6 +27,12 @@ public class CreateSubscriptionPlanRequest {
 
     @Min(value = 1, message = "Giới hạn tham gia nhóm không hợp lệ.")
     private int joinGroupLimit;
+
+    @Min(value = -1, message = "Giới hạn AI chat ngày không hợp lệ.")
+    private int dailyAiChatLimit = 5;
+
+    @Min(value = -1, message = "Giới hạn flashcards không hợp lệ.")
+    private int maxFlashcards = 5;
     
     @NotBlank(message = "Mật khẩu Admin không được để trống.")
     private String adminPassword;
@@ -77,6 +83,22 @@ public class CreateSubscriptionPlanRequest {
 
     public void setJoinGroupLimit(int joinGroupLimit) {
         this.joinGroupLimit = joinGroupLimit;
+    }
+
+    public int getDailyAiChatLimit() {
+        return dailyAiChatLimit;
+    }
+
+    public void setDailyAiChatLimit(int dailyAiChatLimit) {
+        this.dailyAiChatLimit = dailyAiChatLimit;
+    }
+
+    public int getMaxFlashcards() {
+        return maxFlashcards;
+    }
+
+    public void setMaxFlashcards(int maxFlashcards) {
+        this.maxFlashcards = maxFlashcards;
     }
 
     public String getAdminPassword() {
