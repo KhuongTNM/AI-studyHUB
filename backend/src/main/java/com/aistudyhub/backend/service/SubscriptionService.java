@@ -3,14 +3,17 @@ package com.aistudyhub.backend.service;
 import com.aistudyhub.backend.entity.Subscription;
 import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.entity.SubscriptionStatus;
+import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.exception.SystemConfigurationException;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.SubscriptionRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -18,11 +21,14 @@ public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final UserRepository userRepository;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
-                               SubscriptionPlanRepository subscriptionPlanRepository) {
+                               SubscriptionPlanRepository subscriptionPlanRepository,
+                               UserRepository userRepository) {
         this.subscriptionRepository = subscriptionRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -31,9 +37,37 @@ public class SubscriptionService {
     @Transactional(readOnly = true)
     public Subscription getActiveSubscriptionOrDefault(UUID userId) {
         LocalDateTime now = LocalDateTime.now();
-        return subscriptionRepository.findFirstByUserIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByCreatedAtDesc(
-                userId, SubscriptionStatus.ACTIVE, now, now)
-                .orElseGet(() -> getVirtualFreeSubscription(userId));
+        // 1. Check if there is an active subscription record in the database.
+        Optional<Subscription> activeSubOpt = subscriptionRepository.findFirstByUserIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByCreatedAtDesc(
+                userId, SubscriptionStatus.ACTIVE, now, now);
+        if (activeSubOpt.isPresent()) {
+            return activeSubOpt.get();
+        }
+
+        // 2. If not, check if the user has an active subscription plan set in core.users (legacy/seed data fallback)
+        Optional<User> userOpt = userRepository.findById(userId);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            if (user.getSubscriptionPlanId() != null && user.getSubscriptionExpiresAt() != null 
+                    && user.getSubscriptionExpiresAt().isAfter(now)) {
+                // Return a virtual subscription matching the user's plan in core.users
+                Optional<SubscriptionPlan> planOpt = subscriptionPlanRepository.findById(user.getSubscriptionPlanId());
+                if (planOpt.isPresent()) {
+                    SubscriptionPlan plan = planOpt.get();
+                    Subscription virtualSub = new Subscription();
+                    virtualSub.setUserId(userId);
+                    virtualSub.setPlanId(plan.getId());
+                    virtualSub.setStatus(SubscriptionStatus.ACTIVE);
+                    virtualSub.setStartDate(user.getCreatedAt() != null ? user.getCreatedAt() : now);
+                    virtualSub.setEndDate(user.getSubscriptionExpiresAt());
+                    virtualSub.setPricePaid(plan.getPrice());
+                    return virtualSub;
+                }
+            }
+        }
+
+        // 3. Fallback to free package
+        return getVirtualFreeSubscription(userId);
     }
 
     /**
