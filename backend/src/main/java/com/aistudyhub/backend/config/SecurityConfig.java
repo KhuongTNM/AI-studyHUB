@@ -49,14 +49,13 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/verify-otp", "/api/auth/resend-otp").permitAll()
                         // FIX: /api/documents/public phải permitAll TRƯỚC rule /api/documents/**
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/users/**").authenticated()
                         .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers("/api/subscription-purchases/**").authenticated()
-                        .requestMatchers("/api/subscription-plans/**").permitAll()
                         .requestMatchers("/api/documents/**").authenticated()
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/flashcards/**").authenticated()

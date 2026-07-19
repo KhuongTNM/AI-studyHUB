@@ -7,10 +7,12 @@ import com.aistudyhub.backend.dto.GoogleLoginRequest;
 import com.aistudyhub.backend.dto.LoginRequest;
 import com.aistudyhub.backend.dto.ResetPasswordRequest;
 import com.aistudyhub.backend.dto.RegisterRequest;
+import com.aistudyhub.backend.dto.ResendOtpRequest;
 import com.aistudyhub.backend.dto.UpdateLanguagePreferenceRequest;
 import com.aistudyhub.backend.dto.UpdateProfileRequest;
 import com.aistudyhub.backend.dto.UpdateThemePreferenceRequest;
 import com.aistudyhub.backend.dto.UserResponse;
+import com.aistudyhub.backend.dto.VerifyOtpRequest;
 import com.aistudyhub.backend.service.AuthService;
 import com.aistudyhub.backend.service.PasswordResetService;
 import jakarta.validation.Valid;
@@ -43,6 +45,18 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    /** BR-096: Xác thực mã OTP vừa nhận qua email; thành công thì tự động đăng nhập. */
+    @PostMapping("/verify-otp")
+    public ResponseEntity<AuthResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(authService.verifyOtp(request));
+    }
+
+    /** BR-098: Gửi lại mã OTP (cooldown 60 giây, chống dò email). */
+    @PostMapping("/resend-otp")
+    public ResponseEntity<Map<String, String>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        return ResponseEntity.ok(authService.resendOtp(request));
     }
 
     /** FR-25: Đăng nhập bằng tài khoản Google thông qua ID Token. */

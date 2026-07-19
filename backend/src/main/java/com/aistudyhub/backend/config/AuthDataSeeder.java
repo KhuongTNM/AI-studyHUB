@@ -51,6 +51,8 @@ public class AuthDataSeeder implements ApplicationRunner {
             user.setRole(seed.role());
             user.setLocked(false);
             user.setLoginAttempts((short) 0);
+            // BR-097: tài khoản seed dùng cho dev/test, không cần qua bước OTP.
+            user.setEmailVerified(true);
             user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
             user.setStorageUsedBytes(0L);
             user.setSubscriptionPlanId(freePlan.getId());
