@@ -9,6 +9,7 @@ import {
   createFlashcardApi,
   deleteFlashcardApi,
   updateFlashcardApi,
+  deleteAllFlashcardsForDocumentApi,
 } from "@/services/api/flashcards"
 import type { Flashcard } from "@/states/types"
 
@@ -203,6 +204,30 @@ export function useFlashcardState() {
     }
   }, [])
 
+  /**
+   * Xoá TOÀN BỘ flashcard của một tài liệu cụ thể.
+   * Gọi khi user bấm nút "Làm mới" khi đang chọn 1 tài liệu (không phải "Tất cả").
+   */
+  const deleteAllFlashcardsForDocument = useCallback(
+    async (docId: string): Promise<{ success: boolean; message?: string }> => {
+      const backup = flashcards.filter(c => c.documentId === docId)
+      // Optimistic: xoá ngay trên UI
+      setFlashcards(prev => prev.filter(c => c.documentId !== docId))
+      try {
+        await deleteAllFlashcardsForDocumentApi(docId)
+        return { success: true }
+      } catch (error) {
+        // Rollback nếu API lỗi
+        setFlashcards(prev => [...backup, ...prev.filter(c => c.documentId !== docId)])
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : "Không thể xoá flashcard.",
+        }
+      }
+    },
+    [flashcards],
+  )
+
   // Tự động nạp flashcard ngay khi hook được khởi tạo (app mount / F5 trang),
   // thay vì để trống cho tới khi user chọn 1 document cụ thể.
   useEffect(() => {
@@ -220,6 +245,7 @@ export function useFlashcardState() {
     generateFlashcardsFromDocument,
     loadFlashcardsForDocument,
     loadAllFlashcards,
+    deleteAllFlashcardsForDocument,
     setFlashcardSelectedDocumentId,
   }
 }

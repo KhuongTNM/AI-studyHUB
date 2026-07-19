@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import {
-  Cloud, HardDrive, Upload, FileText, CheckCircle2,
-  AlertCircle, RefreshCw, Shield, Wifi, Zap, Download, Trash2,
+  Cloud, HardDrive, Upload, FileText,
+  AlertCircle, Zap, Download, Trash2,
   Eye, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -16,8 +16,6 @@ export function CloudStorage() {
     deleteDocument, downloadDocument, language,
   } = useApp()
 
-  const [syncing, setSyncing] = useState(false)
-  const [syncDone, setSyncDone] = useState(false)
   const [reviewDocId, setReviewDocId] = useState<string | null>(null)
   const text = cloudText[language]
 
@@ -37,14 +35,6 @@ export function CloudStorage() {
   const totalDownloads = readyDocs.reduce((sum, d) => sum + d.downloadCount, 0)
   const reviewDoc = readyDocs.find(doc => doc.id === reviewDocId)
 
-  const handleSync = async () => {
-    setSyncing(true)
-    await new Promise(r => setTimeout(r, 2000))
-    setSyncing(false)
-    setSyncDone(true)
-    setTimeout(() => setSyncDone(false), 3000)
-  }
-
   /**
    * Tải file từ server và tăng downloadCount qua POST /api/documents/{id}/download (BR-021).
    * Trước đây chỉ cập nhật local state; giờ gọi API thật.
@@ -57,7 +47,6 @@ export function CloudStorage() {
     { icon: FileText, label: text.documents, value: readyDocs.length, color: "text-primary" },
     { icon: HardDrive, label: text.used, value: formatBytes(currentUser.storageUsed), color: "text-blue-500" },
     { icon: Zap, label: text.downloads, value: totalDownloads, color: "text-yellow-500" },
-    { icon: Shield, label: text.encryption, value: "AES-256", color: "text-green-500" },
   ]
 
   return (
@@ -68,15 +57,7 @@ export function CloudStorage() {
             <h1 className="text-xl font-bold text-foreground">Cloud Storage</h1>
             <p className="text-sm text-muted-foreground">{text.subtitle}</p>
           </div>
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-            {syncing ? text.syncing : syncDone ? text.synced : text.sync}
-          </Button>
+
         </div>
       </div>
 
@@ -120,13 +101,6 @@ export function CloudStorage() {
               {text.storageWarning}
             </div>
           )}
-        </div>
-
-        {/* Connection info */}
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
-          <Wifi className="h-4 w-4 text-green-500" />
-          <span className="text-foreground">{text.secureConnection} - TLS 1.3</span>
-          <CheckCircle2 className="ml-auto h-4 w-4 text-green-500" />
         </div>
 
         {/* Document list */}
@@ -228,16 +202,11 @@ const cloudText = {
     documents: "Tài liệu",
     used: "Đã dùng",
     downloads: "Lượt tải",
-    encryption: "Mã hóa",
-    subtitle: "Tài liệu được đồng bộ và mã hóa an toàn",
-    syncing: "Đang đồng bộ...",
-    synced: "Đã đồng bộ",
-    sync: "Đồng bộ",
+    subtitle: "Tài liệu được lưu trữ trên cloud",
     storageUsage: "Dung lượng sử dụng",
     usedLower: "đã dùng",
     total: "tổng",
     storageWarning: "Bạn đã sử dụng hơn 80% dung lượng. Hãy xoá bớt hoặc nâng cấp gói.",
-    secureConnection: "Kết nối bảo mật",
     syncedDocuments: "Tài liệu đã đồng bộ",
     downloadsLower: "lượt tải",
     preview: "Xem preview",
@@ -254,23 +223,18 @@ const cloudText = {
     documents: "Documents",
     used: "Used",
     downloads: "Downloads",
-    encryption: "Encryption",
-    subtitle: "Documents are synced and encrypted securely",
-    syncing: "Syncing...",
-    synced: "Synced",
-    sync: "Sync",
+    subtitle: "Documents stored in the cloud",
     storageUsage: "Storage usage",
     usedLower: "used",
     total: "total",
     storageWarning: "You have used more than 80% of your storage. Delete files or upgrade your plan.",
-    secureConnection: "Secure connection",
     syncedDocuments: "Synced documents",
     downloadsLower: "downloads",
     preview: "Preview",
     download: "Download",
     delete: "Delete",
     noDocuments: "No documents yet",
-    uploadToSync: "Upload documents to start syncing",
+    uploadToSync: "Upload documents to get started",
     previewDeveloping: "Preview for",
     downloadToView: "Download to view",
   },
