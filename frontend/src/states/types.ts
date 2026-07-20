@@ -42,6 +42,22 @@ export interface GroupChatMember {
   joinedAt: Date
 }
 
+export interface GroupInvitationCandidate {
+  userId: string
+  displayName: string
+  avatar?: string | null
+}
+
+export interface GroupInvitation {
+  id: string
+  groupCode: string
+  name: string
+  description?: string
+  ownerId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface GroupChatMessage {
   id: string
   groupId: string

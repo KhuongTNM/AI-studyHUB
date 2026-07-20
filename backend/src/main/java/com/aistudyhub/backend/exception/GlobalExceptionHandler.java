@@ -1,5 +1,6 @@
 package com.aistudyhub.backend.exception;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,8 +61,12 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<Map<String, String>> handleBusinessException(BusinessException ex) {
-        return ResponseEntity.status(ex.getErrorCode().getStatus())
-                .body(Map.of("message", ex.getErrorCode().getMessage()));
+    public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", ex.getErrorCode().getMessage());
+        if (ex.getExtensions() != null) {
+            body.putAll(ex.getExtensions());
+        }
+        return ResponseEntity.status(ex.getErrorCode().getStatus()).body(body);
     }
 }

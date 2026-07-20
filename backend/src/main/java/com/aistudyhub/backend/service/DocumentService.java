@@ -547,4 +547,32 @@ public class DocumentService {
         }
         log.info("Finished scheduled cleanup. Cleaned {} documents.", cleanedCount);
     }
+
+    /**
+     * Re-trigger embedding pipeline cho 1 document cụ thể.
+     * Cho phép user gọi lại khi embedding_status = 'none' hoặc 'failed'.
+     */
+    public void triggerReingest(UUID documentId, UUID userId) {
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
+        if (!doc.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền thực hiện hành động này.");
+        }
+        if (doc.getStatus() != DocumentStatus.READY) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tài liệu không ở trạng thái READY.");
+        }
+        scanProcessor.triggerIngest(documentId);
+    }
+
+    /**
+     * Bulk re-trigger: tự động tìm tất cả document của user có embedding_status 'none' hoặc
+     * 'failed' và re-ingest. Trả về số lượng document được lên lịch.
+     */
+    public int bulkReingestMyDocuments(UUID userId) {
+        List<Document> docs = documentRepository
+                .findByUserIdAndEmbeddingStatusInAndDeletedAtIsNull(userId, List.of("none", "failed"));
+        int count = (int) docs.stream().filter(d -> d.getStatus() == DocumentStatus.READY).count();
+        scanProcessor.bulkReingestForUser(userId);
+        return count;
+    }
 }

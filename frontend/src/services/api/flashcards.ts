@@ -189,3 +189,18 @@ export async function updateFlashcardApi(
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiFlashcard((await response.json()) as ApiFlashcard)
 }
+
+/**
+ * DELETE /api/flashcards?documentId={id} — Xoá TOÀN BỘ flashcard của một tài liệu.
+ * Dùng khi user bấm nút "Làm mới" với 1 tài liệu cụ thể đang được chọn.
+ */
+export async function deleteAllFlashcardsForDocumentApi(documentId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/flashcards?documentId=${encodeURIComponent(documentId)}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(),
+    },
+  )
+  if (!response.ok) throw new Error(await parseError(response))
+}

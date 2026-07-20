@@ -39,15 +39,24 @@ public class FlashcardService {
     private final DocumentRepository documentRepository;
     private final RestTemplate aiServiceRestTemplate;
     private final String aiServiceUrl;
+    private final SubscriptionService subscriptionService;
+    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
+    private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     public FlashcardService(FlashcardRepository flashcardRepository,
                             DocumentRepository documentRepository,
                             @Qualifier("aiServiceRestTemplate") RestTemplate aiServiceRestTemplate,
-                            @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl) {
+                            @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl,
+                            SubscriptionService subscriptionService,
+                            com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository,
+                            com.aistudyhub.backend.repository.UserRepository userRepository) {
         this.flashcardRepository = flashcardRepository;
         this.documentRepository = documentRepository;
         this.aiServiceRestTemplate = aiServiceRestTemplate;
         this.aiServiceUrl = aiServiceUrl;
+        this.subscriptionService = subscriptionService;
+        this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -78,6 +87,25 @@ public class FlashcardService {
     @Transactional
     public FlashcardResponse createFlashcard(CreateFlashcardRequest request) {
         UUID userId = getCurrentUserId();
+
+        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+
+        if (!isAdmin) {
+            com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+            com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
+
+            int maxCards = plan.getMaxFlashcards();
+            if (maxCards != -1) {
+                long currentCards = flashcardRepository.countByUserId(userId);
+                if (currentCards >= maxCards) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Gói của bạn chỉ được tạo tối đa " + maxCards + " flashcards. Vui lòng nâng cấp gói.");
+                }
+            }
+        }
+
         LocalDateTime now = LocalDateTime.now();
 
         Flashcard card = new Flashcard();
@@ -107,6 +135,21 @@ public class FlashcardService {
         flashcardRepository.delete(flashcard);
     }
 
+    /**
+     * Xoá toàn bộ flashcard thuộc về một tài liệu, chỉ xoá những thẻ của user hiện tại.
+     * Dùng cho endpoint DELETE /api/flashcards?documentId={id} (nút "Làm mới" phía FE).
+     */
+    @Transactional
+    public int deleteAllFlashcardsForDocument(UUID documentId) {
+        UUID currentUserId = getCurrentUserId();
+        List<Flashcard> cards = flashcardRepository.findByDocumentIdOrderByCreatedAtAsc(documentId);
+        List<Flashcard> ownedCards = cards.stream()
+                .filter(c -> c.getUserId().equals(currentUserId))
+                .toList();
+        flashcardRepository.deleteAll(ownedCards);
+        return ownedCards.size();
+    }
+
     @Transactional
     public FlashcardResponse updateFlashcard(UUID id, UpdateFlashcardRequest request) {
         Flashcard flashcard = flashcardRepository.findById(id)
@@ -128,6 +171,26 @@ public class FlashcardService {
     public List<FlashcardResponse> generateFlashcards(GenerateFlashcardsRequest request) {
         UUID userId = getCurrentUserId();
 
+        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+
+        int requestedCount = request.getCount() != null ? request.getCount() : 5;
+
+        if (!isAdmin) {
+            com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+            com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
+
+            int maxCards = plan.getMaxFlashcards();
+            if (maxCards != -1) {
+                long currentCards = flashcardRepository.countByUserId(userId);
+                if (currentCards + requestedCount > maxCards) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Gói của bạn chỉ cho phép tạo tối đa " + maxCards + " flashcards. Bạn hiện có " + currentCards + " thẻ, không thể tạo thêm " + requestedCount + " thẻ.");
+                }
+            }
+        }
+
         Document doc = documentRepository.findById(request.getDocumentId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Document not found"));
 
@@ -144,7 +207,7 @@ public class FlashcardService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("document_id", request.getDocumentId().toString());
         payload.put("user_id", userId.toString());
-        payload.put("count", request.getCount() != null ? request.getCount() : 5);
+        payload.put("count", requestedCount);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

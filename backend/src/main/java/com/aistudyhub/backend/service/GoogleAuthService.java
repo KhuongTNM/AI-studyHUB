@@ -43,6 +43,7 @@ public class GoogleAuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionService subscriptionService;
 
     /**
      * FR-25 / BR-088 → BR-094: Đăng nhập bằng Google thông qua OAuth2 access token.
@@ -58,27 +59,16 @@ public class GoogleAuthService {
         Map<String, Object> userInfo = fetchGoogleUserInfo(request.getAccessToken());
 
         // ── Bước 2 (BR-088) ──────────────────────────────────────────────────
-        // Từ chối nếu email Google chưa được xác minh.
-        Boolean emailVerified = (Boolean) userInfo.get("email_verified");
-        if (!Boolean.TRUE.equals(emailVerified)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Tài khoản Google này chưa được xác minh email.");
+        String email = ((String) userInfo.get("email")).trim().toLowerCase();
+        String name = ((String) userInfo.get("name")).trim();
+
+        // ── Bước 3 (BR-088) ──────────────────────────────────────────────────
+        if (Boolean.FALSE.equals(userInfo.get("email_verified"))) {
+            throw new ApiException(HttpStatus.FORBIDDEN,
+                    "Tài khoản Google này chưa được xác thực (email_verified=false).");
         }
 
-        // ── Bước 3 ───────────────────────────────────────────────────────────
-        // Chuẩn hóa email, lấy tên an toàn chống NullPointerException.
-        Object rawEmail = userInfo.get("email");
-        if (!(rawEmail instanceof String)) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED,
-                    "Không lấy được email từ tài khoản Google.");
-        }
-        String email = ((String) rawEmail).trim().toLowerCase();
-
-        Object rawName = userInfo.get("name");
-        String name = (rawName instanceof String s) ? s.trim() : "";
-
-        // ── Bước 4 (BR-090 / BR-091) ─────────────────────────────────────────
-        // Tìm tài khoản theo email (không phân biệt hoa/thường).
+        // ── Bước 4 ───────────────────────────────────────────────────────────
         Optional<User> existing = userRepository.findByEmailIgnoreCase(email);
 
         User user;
@@ -98,11 +88,15 @@ public class GoogleAuthService {
             userRepository.save(user);
         }
 
+        // Đồng bộ gói cước thực tế (nếu hết hạn thì trả về gói Free ảo và cập nhật core.users)
+        subscriptionService.getActiveSubscriptionOrDefault(user.getId());
+        User updatedUser = userRepository.findById(user.getId()).orElse(user);
+
         // ── Bước 5 ───────────────────────────────────────────────────────────
         // Sinh JWT nội bộ đồng bộ với luồng đăng nhập email/password.
         String token = jwtService.generateToken(
-                user.getId(), user.getEmail(), user.getRole().name());
-        return new AuthResponse(token, UserResponse.from(user));
+                updatedUser.getId(), updatedUser.getEmail(), updatedUser.getRole().name());
+        return new AuthResponse(token, UserResponse.from(updatedUser));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -144,7 +138,7 @@ public class GoogleAuthService {
 
     private User buildGoogleUser(String email, String rawName) {
         SubscriptionPlan freePlan = subscriptionPlanRepository
-                .findByName(SubscriptionPlan.FREE_PLAN_NAME)
+                .findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "Gói Free chưa được cấu hình trong hệ thống."));
@@ -168,6 +162,8 @@ public class GoogleAuthService {
         user.setRole(User.Role.user);
         user.setLocked(false);
         user.setLoginAttempts((short) 0);
+        // BR-088/BR-095: email do Google trả về đã được Google xác thực -> bỏ qua bước OTP.
+        user.setEmailVerified(true);
         user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
         user.setStorageUsedBytes(0L);
         user.setSubscriptionPlanId(freePlan.getId());

@@ -1,7 +1,43 @@
 import { AlertCircle, Copy, FileText, Sparkles, ThumbsDown, ThumbsUp, User } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type ChatMessage } from "@/lib/store"
+
+function normalizeMarkdown(content: string) {
+  return content
+    .replace(/\\\*/g, "*")
+    .replace(/\\_/g, "_")
+}
+
+function MarkdownMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  return (
+    <div className="text-sm leading-relaxed">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="my-1">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          code: ({ children }) => (
+            <code className="rounded bg-background/70 px-1 py-0.5 text-[0.92em]">{children}</code>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-2 overflow-x-auto rounded-md bg-background/70 p-3 text-xs">{children}</pre>
+          ),
+        }}
+      >
+        {normalizeMarkdown(content)}
+      </ReactMarkdown>
+      {isStreaming && (
+        <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground/60 align-middle" />
+      )}
+    </div>
+  )
+}
 
 interface ChatMessageProps {
   message: ChatMessage
@@ -48,6 +84,8 @@ export function ChatMessageItem({
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.15s]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" />
             </div>
+          ) : message.role === "assistant" ? (
+            <MarkdownMessage content={message.content} isStreaming={message.isStreaming} />
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">
               {message.content}

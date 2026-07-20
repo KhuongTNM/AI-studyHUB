@@ -25,7 +25,7 @@ import React, { createContext, useCallback, useContext, useState, type ReactNode
 import { updateLanguagePreferenceApi } from "@/services/api/auth"
 import type {
   Language, PackagePrice, PackageTier, User,
-  Category, ChatSession, ChatMessage, Document, Folder, Flashcard, ActivityLog, GroupChat,
+  Category, ChatSession, ChatMessage, Document, Folder, Flashcard, ActivityLog, GroupChat, GroupInvitation, GroupInvitationCandidate,
 } from "@/states/types"
 
 import { useActivityLogs } from "./useActivityLogs"
@@ -43,6 +43,9 @@ import { useGroupChatState } from "./useGroupChatState"
 export interface AppState {
   // ── Auth ──────────────────────────────────────────────────────────────────
   currentUser: User | null
+  /** true while the initial session-restore call is in flight — use this to
+   *  avoid flashing a redirect before we know whether the user is logged in */
+  authLoading: boolean
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
@@ -144,12 +147,19 @@ export interface AppState {
   activeGroupId: string | null
   groupsLoading: boolean
   groupLoadError: string | null
+  pendingGroupInvitations: GroupInvitation[]
+  groupInvitationsLoading: boolean
+  groupInvitationsError: string | null
   groupCreateLimit: number
   groupJoinLimit: number
   setActiveGroupId: (id: string | null) => void
   loadGroups: () => Promise<{ success: boolean; error?: string }>
+  loadPendingGroupInvitations: () => Promise<{ success: boolean; error?: string }>
+  respondGroupInvitation: (groupId: string, accept: boolean) => Promise<{ success: boolean; error?: string }>
   createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
+  searchGroupInvitationUser: (groupId: string, email: string) => Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }>
+  inviteGroupMemberByEmail: (groupId: string, email: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
   kickGroupMember: (groupId: string, targetUserId: string, groupPassword: string) => Promise<{ success: boolean; error?: string }>
   deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
@@ -189,6 +199,8 @@ export interface AppState {
   loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
   loadAllFlashcards: () => Promise<{ success: boolean; message?: string }>
+  /** Xoá TOÀN BỘ flashcard của một tài liệu cụ thể (nút "Làm mới") */
+  deleteAllFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   setFlashcardSelectedDocumentId: (id: string | "all") => void
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -198,17 +210,17 @@ export interface AppState {
   activityLogsError: string | null
   loadActivityLogs: () => Promise<{ success: boolean; error?: string }>
   updateUser: (id: string, updates: Partial<User>) => void
-  updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
-  toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
-  resetUserPassword: (id: string, password: string) => Promise<{ success: boolean; error?: string }>
-  deleteUserAccount: (id: string) => Promise<{ success: boolean; error?: string }>
-  createSubAdminAccount: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
+  updateUserStorageLimit: (id: string, storageLimitGb: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  toggleUserLock: (id: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  resetUserPassword: (id: string, password: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  deleteUserAccount: (id: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  createSubAdminAccount: (email: string, password: string, displayName: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
   updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
-  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number) => Promise<{ success: boolean; error?: string }>
+  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
 }
 
@@ -318,6 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         // Auth
         currentUser: auth.currentUser,
+        authLoading: auth.authLoading,
         showAuthModal: ui.showAuthModal,
         authModalTab: ui.authModalTab,
         login: auth.login,
@@ -377,12 +390,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         activeGroupId: groupChat.activeGroupId,
         groupsLoading: groupChat.groupsLoading,
         groupLoadError: groupChat.groupLoadError,
+        pendingGroupInvitations: groupChat.pendingGroupInvitations,
+        groupInvitationsLoading: groupChat.groupInvitationsLoading,
+        groupInvitationsError: groupChat.groupInvitationsError,
         groupCreateLimit: groupChat.groupCreateLimit,
         groupJoinLimit: groupChat.groupJoinLimit,
         setActiveGroupId: groupChat.setActiveGroupId,
         loadGroups: groupChat.loadGroups,
+        loadPendingGroupInvitations: groupChat.loadPendingGroupInvitations,
+        respondGroupInvitation: groupChat.respondGroupInvitation,
         createGroup: groupChat.createGroup,
         joinGroup: groupChat.joinGroup,
+        searchGroupInvitationUser: groupChat.searchGroupInvitationUser,
+        inviteGroupMemberByEmail: groupChat.inviteGroupMemberByEmail,
         leaveGroup: groupChat.leaveGroup,
         kickGroupMember: groupChat.kickGroupMember,
         deleteGroup: groupChat.deleteGroup,
@@ -407,6 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         generateFlashcardsFromDocument: flashcards.generateFlashcardsFromDocument,
         loadFlashcardsForDocument: flashcards.loadFlashcardsForDocument,
         loadAllFlashcards: flashcards.loadAllFlashcards,
+        deleteAllFlashcardsForDocument: flashcards.deleteAllFlashcardsForDocument,
         setFlashcardSelectedDocumentId: flashcards.setFlashcardSelectedDocumentId,
 
         // Admin

@@ -2,10 +2,18 @@ import os
 import logging
 from typing import List, Dict, Optional, Any
 from psycopg2 import pool
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def _to_pgvector(values: Optional[List[float]]) -> Optional[str]:
+    if values is None:
+        return None
+    return "[" + ",".join(str(float(value)) for value in values) + "]"
 
 # Initialize connection pool
 try:
@@ -49,7 +57,7 @@ def insert_chunks(document_id: str, user_id: str, chunks: List[Dict[str, Any]]):
             insert_query = """
                 INSERT INTO ai.document_chunks 
                 (document_id, user_id, chunk_index, content, token_count, embedding) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s::public.vector)
                 ON CONFLICT (document_id, chunk_index) DO NOTHING
             """
             for chunk in chunks:
@@ -59,7 +67,7 @@ def insert_chunks(document_id: str, user_id: str, chunks: List[Dict[str, Any]]):
                     chunk["chunk_index"],
                     chunk["content"],
                     chunk.get("token_count"),
-                    chunk.get("embedding")
+                    _to_pgvector(chunk.get("embedding"))
                 ))
         conn.commit()
     except Exception as e:
@@ -75,13 +83,14 @@ HYBRID_SEARCH_ENABLED = os.getenv("HYBRID_SEARCH_ENABLED", "true").lower() == "t
 def search_similar_chunks(query_embedding: List[float], user_id: str, document_id: Optional[str] = None, top_k: int = 5, query_text: str = "") -> List[Dict[str, Any]]:
     conn = None
     try:
+        query_vector = _to_pgvector(query_embedding)
         conn = get_connection()
         with conn.cursor() as cur:
             if HYBRID_SEARCH_ENABLED and query_text:
                 query = """
                     WITH vector_search AS (
                         SELECT id, document_id, chunk_index, content,
-                               ROW_NUMBER() OVER (ORDER BY embedding OPERATOR(ai.<=>) %s::ai.vector) as rank
+                               ROW_NUMBER() OVER (ORDER BY embedding OPERATOR(public.<=>) %s::public.vector) as rank
                         FROM ai.document_chunks
                         WHERE user_id = %s::uuid AND (%s::uuid IS NULL OR document_id = %s::uuid)
                         LIMIT 20
@@ -104,19 +113,19 @@ def search_similar_chunks(query_embedding: List[float], user_id: str, document_i
                     LIMIT %s;
                 """
                 cur.execute(query, (
-                    query_embedding, user_id, document_id, document_id,
+                    query_vector, user_id, document_id, document_id,
                     query_text, user_id, document_id, document_id, query_text,
                     top_k
                 ))
             else:
                 query = """
-                    SELECT id, document_id, chunk_index, content, (1 - (embedding OPERATOR(ai.<=>) %s::ai.vector)) AS score
+                    SELECT id, document_id, chunk_index, content, (1 - (embedding OPERATOR(public.<=>) %s::public.vector)) AS score
                     FROM ai.document_chunks
                     WHERE user_id = %s::uuid AND (%s::uuid IS NULL OR document_id = %s::uuid)
-                    ORDER BY embedding OPERATOR(ai.<=>) %s::ai.vector
+                    ORDER BY embedding OPERATOR(public.<=>) %s::public.vector
                     LIMIT %s
                 """
-                cur.execute(query, (query_embedding, user_id, document_id, document_id, query_embedding, top_k))
+                cur.execute(query, (query_vector, user_id, document_id, document_id, query_vector, top_k))
             
             results = cur.fetchall()
             

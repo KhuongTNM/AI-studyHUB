@@ -237,4 +237,28 @@ public class DocumentController {
         Document doc = documentService.updateFolderId(id, principal.getId(), request.getFolderId());
         return ResponseEntity.ok(DocumentResponse.from(doc));
     }
+
+    /**
+     * Re-trigger embedding pipeline cho 1 tài liệu cụ thể.
+     * Dùng khi embedding_status = 'none' hoặc 'failed' (tài liệu upload trước khi AI service hoạt động).
+     */
+    @PostMapping("/{id}/reingest")
+    public ResponseEntity<Void> reingest(
+            @AuthenticationPrincipal AuthUserPrincipal principal,
+            @PathVariable UUID id) {
+        documentService.triggerReingest(id, principal.getId());
+        return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * Bulk re-trigger: tự động tìm và re-ingest toàn bộ tài liệu của user hiện tại
+     * có embedding_status = 'none' hoặc 'failed'.
+     * Trả về {"queued": N} — số lượng tài liệu được đưa vào hàng đợi xử lý.
+     */
+    @PostMapping("/reingest-all")
+    public ResponseEntity<java.util.Map<String, Integer>> reingestAll(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        int queued = documentService.bulkReingestMyDocuments(principal.getId());
+        return ResponseEntity.accepted().body(java.util.Map.of("queued", queued));
+    }
 }
