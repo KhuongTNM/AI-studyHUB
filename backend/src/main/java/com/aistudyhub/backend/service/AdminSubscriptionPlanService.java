@@ -94,14 +94,37 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
         }
 
-        plan.setDescription(request.getDescription());
-        plan.setPrice(request.getPrice());
+        if (request.getDisplayName() != null && !request.getDisplayName().isBlank()) {
+            plan.setDisplayName(formatDisplayName(request.getDisplayName()));
+        }
+
+        if (request.getDescription() != null) {
+            plan.setDescription(request.getDescription());
+        }
+
+        if (request.getPrice() != null) {
+            plan.setPrice(request.getPrice());
+        }
+
+        if (request.getMaxRoomMembers() != null) {
+            plan.setMaxRoomMembers(request.getMaxRoomMembers());
+        }
+
+        if (request.getDefaultStorageBytes() != null) {
+            plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
+        }
         
         // Handle maxGroups / createGroupLimit
-        if (request.getCreateGroupLimit() == null || request.getCreateGroupLimit() == -1) {
-            plan.setCreateGroupLimit(-1); // Infinite
-        } else {
-            plan.setCreateGroupLimit(request.getCreateGroupLimit());
+        if (request.getCreateGroupLimit() != null) {
+            if (request.getCreateGroupLimit() == -1) {
+                plan.setCreateGroupLimit(-1); // Infinite
+            } else {
+                plan.setCreateGroupLimit(request.getCreateGroupLimit());
+            }
+        }
+
+        if (request.getJoinGroupLimit() != null) {
+            plan.setJoinGroupLimit(request.getJoinGroupLimit());
         }
 
         if (request.getDailyAiChatLimit() != null) {

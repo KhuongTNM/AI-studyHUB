@@ -7,11 +7,19 @@ import java.math.BigDecimal;
 
 @Data
 public class UpdatePlanRequest {
+    private String displayName;
+
     private String description;
     
     private BigDecimal price;
     
+    private Short maxRoomMembers;
+
+    private Long defaultStorageBytes;
+
     private Integer createGroupLimit; // maxGroups
+
+    private Integer joinGroupLimit;
 
     private Integer dailyAiChatLimit;
 
