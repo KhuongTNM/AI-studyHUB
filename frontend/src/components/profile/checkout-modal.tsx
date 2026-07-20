@@ -3,6 +3,7 @@ import { CheckCircle2, CreditCard, ExternalLink, Loader2, RefreshCw } from "luci
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Language, PackagePrice } from "@/states/types"
+import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
 import { fetchCurrentUserApi } from "@/services/api/auth"
 import {
   createSubscriptionPurchaseApi,
@@ -34,12 +35,13 @@ export function CheckoutModal({
   const [isCreatingPurchase, setIsCreatingPurchase] = useState(false)
   const [isCheckingPurchase, setIsCheckingPurchase] = useState(false)
   const text = checkoutText[language]
-  const selectedPlanName = selectedPlan.name
+  const selectedPlanName = getLocalizedPlanName(selectedPlan, language)
 
   const syncPaidUser = async (order: SubscriptionPurchase) => {
     const paidUser = order.user ?? (await fetchCurrentUserApi())
     if (paidUser) {
       updateUser(currentUser.id, {
+        subscriptionPlanId: paidUser.subscriptionPlanId,
         subscriptionTier: paidUser.subscriptionTier,
         subscriptionExpiresAt: paidUser.subscriptionExpiresAt,
         storageLimit: paidUser.storageLimit,
@@ -141,7 +143,7 @@ export function CheckoutModal({
               <div className="mb-6 flex items-center justify-between rounded-xl bg-muted p-4">
                 <span className="text-sm font-medium text-muted-foreground">{text.total}</span>
                 <span className="text-xl font-extrabold text-primary">
-                  {selectedPlan.price.toLocaleString("vi-VN")}đ
+                  {formatPrice(selectedPlan.price, language)}
                 </span>
               </div>
 
@@ -357,3 +359,8 @@ const checkoutText = {
     paymentExpired: "This payment has expired or was cancelled. Please create a new order.",
   },
 } as const
+
+function formatPrice(price: number, language: Language) {
+  const amount = price.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
+  return language === "vi" ? `${amount}đ` : `${amount} VND`
+}

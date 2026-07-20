@@ -32,6 +32,9 @@ export interface PackagePrice {
   storageLabel?: string
   createGroupLimit?: number
   joinGroupLimit?: number
+  dailyAiChatLimit?: number
+  maxFlashcards?: number
+  description?: string | null
 }
 
 export interface GroupChatMember {
