@@ -35,7 +35,7 @@ public class AuthDataSeeder implements ApplicationRunner {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new IllegalStateException("Free subscription plan is not configured."));
         List<SeedUser> seeds = List.of(
                 new SeedUser("admin@gmail.com", "Admin123", "System Admin", User.Role.admin),
@@ -51,6 +51,8 @@ public class AuthDataSeeder implements ApplicationRunner {
             user.setRole(seed.role());
             user.setLocked(false);
             user.setLoginAttempts((short) 0);
+            // BR-097: tài khoản seed dùng cho dev/test, không cần qua bước OTP.
+            user.setEmailVerified(true);
             user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
             user.setStorageUsedBytes(0L);
             user.setSubscriptionPlanId(freePlan.getId());

@@ -11,6 +11,7 @@ public class UserResponse {
     private String displayName;
     private String role;
     private boolean locked;
+    private boolean emailVerified;
     private long storageUsedBytes;
     private long storageLimitBytes;
     private Integer subscriptionPlanId;
@@ -26,6 +27,7 @@ public class UserResponse {
         response.displayName = user.getDisplayName();
         response.role = mapRole(user.getRole());
         response.locked = user.isLocked();
+        response.emailVerified = user.isEmailVerified();
         response.storageUsedBytes = user.getStorageUsedBytes();
         response.storageLimitBytes = user.getStorageLimitBytes();
         response.subscriptionPlanId = user.getSubscriptionPlanId();
@@ -61,6 +63,10 @@ public class UserResponse {
 
     public boolean isLocked() {
         return locked;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
     }
 
     public long getStorageUsedBytes() {

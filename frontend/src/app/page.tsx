@@ -1,6 +1,7 @@
 "use client"
+export const dynamic = 'force-dynamic'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { AuthModal } from "@/components/auth/auth-modal"
@@ -14,7 +15,7 @@ import { FeaturesSection, Footer } from "@/components/features-section"
 import { FlashcardPage } from "@/components/flashcards/flashcard-page"
 import { GroupChatPage } from "@/components/groups/group-chat-page"
 import { Button } from "@/components/ui/button"
-import { useApp } from "@/lib/store"
+import { useApp, type AppState } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import {
   Sparkles, Menu, X, FileText, Bot, Cloud,
@@ -204,16 +205,46 @@ function HomePage() {
   )
 }
 
+// Pages that require a logged-in session.
+// Guests who land on any of these (e.g. by pasting /?page=documents) will be
+// immediately redirected to Home and shown the login modal.
+const PROTECTED_PAGES: AppState["currentPage"][] = [
+  "chat", "groups", "documents", "cloud",
+  "profile", "admin", "trash", "flashcards",
+]
+
 // ─── Root Component ───────────────────────────────────────────────────────────
 export default function AIStudyHub() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const { currentPage, setCurrentPage } = useApp()
+const appStore = useApp()
+const { currentPage, setCurrentPage, currentUser, openAuthModal, language } = appStore
+const authLoading = appStore.authLoading   // ← khai báo riêng, tránh bug Turbopack
+
+  // ── Route guard ────────────────────────────────────────────────────────────
+  // Wait until the initial session-restore call finishes (authLoading = false)
+  // before deciding to redirect. This prevents bouncing a logged-in user whose
+  // token hasn't been validated yet on first mount.
+  useEffect(() => {
+    if (authLoading) return
+    if (!currentUser && PROTECTED_PAGES.includes(currentPage)) {
+      // Clean the URL so the protected page name is not visible
+      window.history.replaceState(null, "", window.location.pathname)
+      setCurrentPage("home")
+      openAuthModal("login")
+    }
+  }, [authLoading, currentUser, currentPage, setCurrentPage, openAuthModal])
 
   const handleNewChat = () => {
     setCurrentPage("chat")
   }
 
   const renderContent = () => {
+    // Render guard: even before the useEffect above fires (same tick as the
+    // state update), never display protected content to a guest.
+    if (!authLoading && !currentUser && PROTECTED_PAGES.includes(currentPage)) {
+      return <div className="flex-1 overflow-y-auto"><HomePage /></div>
+    }
+
     switch (currentPage) {
       case "home":
         return <div className="flex-1 overflow-y-auto"><HomePage /></div>
@@ -238,27 +269,34 @@ export default function AIStudyHub() {
     }
   }
 
+  // The sidebar and its mobile toggle are only rendered for authenticated users.
+  const showSidebar = !!currentUser
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Mobile Sidebar Toggle */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed left-4 top-3 z-50 lg:hidden"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </Button>
+      {/* Mobile Sidebar Toggle — hidden for guests */}
+      {showSidebar && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed left-4 top-3 z-50 lg:hidden"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+        >
+          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+      )}
 
-      {/* Sidebar */}
-      <div
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 lg:relative lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <Sidebar onNewChat={handleNewChat} />
-      </div>
+      {/* Sidebar — hidden for guests */}
+      {showSidebar && (
+        <div
+          className={cn(
+            "fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 lg:relative lg:translate-x-0",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          <Sidebar onNewChat={handleNewChat} />
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -268,8 +306,8 @@ export default function AIStudyHub() {
         </main>
       </div>
 
-      {/* Mobile overlay */}
-      {sidebarOpen && (
+      {/* Mobile overlay — only when sidebar is open for logged-in users */}
+      {showSidebar && sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}

@@ -1,31 +1,88 @@
 import os
+import logging
 import tiktoken
 from openai import OpenAI
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
-from typing import List, Dict
+from typing import List, Dict, Any
 
-# --- Đã đổi sang dùng Gemini qua lớp tương thích OpenAI ---
-# OPENAI_API_KEY trong .env giờ sẽ là API key của Gemini (lấy tại https://aistudio.google.com/apikey)
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+logger = logging.getLogger(__name__)
+
+# ─── Embedding Model Registry ─────────────────────────────────────────────────
+#
+# Cả 2 model đều được truncate về 1536 chiều để khớp với schema DB: vector(1536)
+#
+# EMBED_MODEL (env var):
+#   "gemini-embedding-001"  →  Gemini Embedding 1 (mặc định, stable)
+#   "gemini-embedding-004"  →  Gemini Embedding 2 (mới hơn, hỗ trợ đến 3072 dims,
+#                               truncated xuống 1536 để tương thích DB)
+#
+# Nếu muốn dùng Embedding 2 với full 3072 dims, cần migrate DB schema:
+#   ALTER TABLE ai.document_chunks ALTER COLUMN embedding TYPE vector(3072);
+# và set EMBED_DIMENSIONS=3072 trong .env, rồi re-ingest toàn bộ tài liệu.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EMBEDDING_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "gemini-embedding-001": {
+        "model": "gemini-embedding-001",
+        "default_dimensions": 1536,
+        "description": "Gemini Embedding 1 – stable, 1536 dims",
+    },
+    "gemini-embedding-2": {
+        "model": "gemini-embedding-2",
+        "default_dimensions": 1536,   # truncated from max 3072 → compatible với DB hiện tại
+        "description": "Gemini Embedding 2 – newer model, truncated to 1536 for DB compatibility",
+    },
+}
+
+# Resolve active embedding model
+_EMBED_MODEL_NAME = os.getenv("EMBED_MODEL", "gemini-embedding-001")
+
+if _EMBED_MODEL_NAME not in _EMBEDDING_REGISTRY:
+    logger.warning(
+        f"Unknown EMBED_MODEL '{_EMBED_MODEL_NAME}'. "
+        f"Valid values: {list(_EMBEDDING_REGISTRY.keys())}. "
+        "Falling back to 'gemini-embedding-001'."
+    )
+    _EMBED_MODEL_NAME = "gemini-embedding-001"
+
+_embed_cfg = _EMBEDDING_REGISTRY[_EMBED_MODEL_NAME]
+EMBED_MODEL: str = _embed_cfg["model"]
+
+# EMBED_DIMENSIONS từ env override mọi default (để dễ migrate DB sau này)
+EMBED_DIMENSIONS: int = int(os.getenv("EMBED_DIMENSIONS", str(_embed_cfg["default_dimensions"])))
+
+logger.info(
+    f"[Embedding] Active model: {EMBED_MODEL}  |  "
+    f"dimensions={EMBED_DIMENSIONS}  |  {_embed_cfg['description']}"
 )
-EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
-EMBED_DIMENSIONS = int(os.getenv("EMBED_DIMENSIONS", "1536"))  # phải khớp với vector(1536) trong schema DB
-BATCH_SIZE = int(os.getenv("OPENAI_EMBEDDING_BATCH_SIZE", "100"))
 
+# ─── Gemini Client (OpenAI-compatible endpoint) ───────────────────────────────
+# OPENAI_API_KEY trong .env là Gemini API key (https://aistudio.google.com/apikey)
+# Hoặc có thể set GEMINI_API_KEY riêng; GEMINI_API_KEY được ưu tiên hơn.
+_gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+if not _gemini_api_key:
+    logger.error("[Embedding] Neither GEMINI_API_KEY nor OPENAI_API_KEY is set!")
+
+client = OpenAI(
+    api_key=_gemini_api_key,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+)
+
+BATCH_SIZE: int = int(os.getenv("OPENAI_EMBEDDING_BATCH_SIZE", "100"))
 tokenizer = tiktoken.get_encoding("cl100k_base")
 
 # In-memory dictionary cache
-embedding_cache = {}
+embedding_cache: Dict[str, List[float]] = {}
+
 
 def get_token_count(text: str) -> int:
     return len(tokenizer.encode(text))
 
+
 @retry(
     wait=wait_exponential(multiplier=1, min=2, max=10),
     stop=stop_after_attempt(5),
-    retry=retry_if_exception_type(Exception)
+    retry=retry_if_exception_type(Exception),
 )
 def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     if not texts:
@@ -34,10 +91,11 @@ def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     response = client.embeddings.create(
         input=texts,
         model=EMBED_MODEL,
-        dimensions=EMBED_DIMENSIONS
+        dimensions=EMBED_DIMENSIONS,
     )
 
     return [data.embedding for data in response.data]
+
 
 def generate_embedding(text: str) -> List[float]:
     if not text:
@@ -50,9 +108,10 @@ def generate_embedding(text: str) -> List[float]:
     embedding_cache[text] = emb
     return emb
 
-def process_chunks(chunks: List[Dict[str, any]]) -> List[Dict[str, any]]:
-    texts_to_embed = []
-    chunk_indices_to_embed = []
+
+def process_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    texts_to_embed: List[str] = []
+    chunk_indices_to_embed: List[int] = []
 
     for i, chunk in enumerate(chunks):
         text = chunk["content"]
@@ -64,8 +123,8 @@ def process_chunks(chunks: List[Dict[str, any]]) -> List[Dict[str, any]]:
             chunk_indices_to_embed.append(i)
 
     for i in range(0, len(texts_to_embed), BATCH_SIZE):
-        batch_texts = texts_to_embed[i:i + BATCH_SIZE]
-        batch_indices = chunk_indices_to_embed[i:i + BATCH_SIZE]
+        batch_texts = texts_to_embed[i : i + BATCH_SIZE]
+        batch_indices = chunk_indices_to_embed[i : i + BATCH_SIZE]
 
         embeddings = generate_embeddings_batch(batch_texts)
 

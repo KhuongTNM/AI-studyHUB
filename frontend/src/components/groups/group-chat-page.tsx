@@ -2,18 +2,19 @@
 
 import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
 import {
-  AlertCircle, Download, Eye, EyeOff, FileText, Image, Info, LogOut, MessageCircle,
+  AlertCircle, Download, Eye, EyeOff, FileText, Image, Info, Loader2, LogOut, Mail, MessageCircle,
   MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, UserMinus, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useApp, type Document, type GroupChat, type GroupChatMember, type GroupChatMessage } from "@/lib/store"
+import { useApp, type Document, type GroupChat, type GroupChatMember, type GroupChatMessage, type GroupInvitationCandidate } from "@/lib/store"
 
 export function GroupChatPage() {
   const {
     currentUser, openAuthModal, language, documents,
     groups, activeGroupId, groupsLoading, groupLoadError, groupCreateLimit, groupJoinLimit,
-    setActiveGroupId, loadGroups, createGroup, joinGroup, leaveGroup, kickGroupMember, deleteGroup, getGroupPassword,
+    setActiveGroupId, loadGroups, createGroup, joinGroup, searchGroupInvitationUser, inviteGroupMemberByEmail,
+    leaveGroup, kickGroupMember, deleteGroup, getGroupPassword,
     updateGroupMuted, updateGroupPinned,
     sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
     exportGroupChat, reportGroup, generateGroupCode,
@@ -43,6 +44,11 @@ export function GroupChatPage() {
   const [memberToKick, setMemberToKick] = useState<GroupChatMember | null>(null)
   const [kickPassword, setKickPassword] = useState("")
   const [kickError, setKickError] = useState("")
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteCandidate, setInviteCandidate] = useState<GroupInvitationCandidate | null>(null)
+  const [inviteSearching, setInviteSearching] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteError, setInviteError] = useState("")
   const [groupPassword, setGroupPassword] = useState("")
   const [groupPasswordVisible, setGroupPasswordVisible] = useState(false)
   const [groupPasswordBusy, setGroupPasswordBusy] = useState(false)
@@ -84,6 +90,58 @@ export function GroupChatPage() {
     setGroupPasswordError("")
   }, [activeGroup?.id])
 
+  const getInviteErrorText = useMemo(() => (inviteErrorCode?: string) => {
+    const code = inviteErrorCode?.toUpperCase() ?? ""
+    if (code.includes("USER_NOT_FOUND")) return text.inviteUserNotFound
+    if (code.includes("GROUP_CANNOT_INVITE_SELF")) return text.inviteSelf
+    if (code.includes("GROUP_MEMBER_ALREADY_JOINED_OR_INVITED")) return text.inviteDuplicate
+    if (code.includes("GROUP_OWNER_REQUIRED") || code.includes("GROUP_ACCESS_DENIED")) return text.inviteOwnerOnly
+    if (code.includes("UNAUTHENTICATED")) return text.sessionExpired
+    return inviteErrorCode || text.inviteFailed
+  }, [text])
+
+  useEffect(() => {
+    if (!showMembers || !activeGroup || !isActiveGroupOwner) {
+      setInviteSearching(false)
+      setInviteCandidate(null)
+      setInviteError("")
+      return
+    }
+
+    const email = inviteEmail.trim().toLowerCase()
+    setInviteCandidate(null)
+    setInviteError("")
+
+    if (!email) {
+      setInviteSearching(false)
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteSearching(false)
+      setInviteError(text.inviteInvalidEmail)
+      return
+    }
+
+    let cancelled = false
+    setInviteSearching(true)
+    const timer = window.setTimeout(async () => {
+      const result = await searchGroupInvitationUser(activeGroup.id, email)
+      if (cancelled) return
+      setInviteSearching(false)
+      if (!result.success) {
+        setInviteError(getInviteErrorText(result.error))
+        return
+      }
+      setInviteCandidate(result.user ?? null)
+    }, 500)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [activeGroup?.id, getInviteErrorText, inviteEmail, isActiveGroupOwner, searchGroupInvitationUser, showMembers, text])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activeGroup?.messages.length])
@@ -116,6 +174,23 @@ export function GroupChatPage() {
     setJoinGroupCode("")
     setJoinGroupPassword("")
     setShowJoin(false)
+  }
+
+  const handleInviteMember = async () => {
+    if (!activeGroup || !inviteCandidate || !inviteEmail.trim()) return
+
+    setInviteBusy(true)
+    setInviteError("")
+    const result = await inviteGroupMemberByEmail(activeGroup.id, inviteEmail.trim().toLowerCase())
+    setInviteBusy(false)
+    if (!result.success) {
+      setInviteError(getInviteErrorText(result.error))
+      return
+    }
+
+    setInviteEmail("")
+    setInviteCandidate(null)
+    showMockNotice(text.inviteSent)
   }
 
   const handleLeaveOrDelete = async () => {
@@ -242,6 +317,14 @@ export function GroupChatPage() {
     setGroupPassword("")
     setGroupPasswordVisible(false)
     setGroupPasswordError("")
+  }
+
+  const closeMembers = () => {
+    setShowMembers(false)
+    setInviteEmail("")
+    setInviteCandidate(null)
+    setInviteError("")
+    setInviteSearching(false)
   }
 
   const showMockNotice = (notice: string) => {
@@ -641,10 +724,53 @@ export function GroupChatPage() {
                 <h2 className="text-lg font-semibold text-foreground">{text.memberList}</h2>
                 <p className="text-sm text-muted-foreground">{activeGroup.members.length}/{activeGroup.maxMembers} {text.members}</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowMembers(false)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeMembers}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            {isActiveGroupOwner && (
+              <div className="mb-4 rounded-lg border border-border bg-background p-3">
+                <div className="mb-3 flex items-start gap-2">
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{text.inviteMember}</p>
+                    <p className="text-xs text-muted-foreground">{text.inviteHint}</p>
+                  </div>
+                </div>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={event => setInviteEmail(event.target.value)}
+                  placeholder={text.inviteEmailPlaceholder}
+                  disabled={inviteBusy}
+                  className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                {inviteSearching && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {text.inviteSearching}
+                  </p>
+                )}
+                {inviteError && (
+                  <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-destructive">{inviteError}</p>
+                )}
+                {inviteCandidate && !inviteSearching && !inviteError && (
+                  <div className="mt-3 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                      {inviteCandidate.displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{inviteCandidate.displayName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{inviteEmail.trim()}</p>
+                    </div>
+                    <Button type="button" size="sm" onClick={handleInviteMember} disabled={inviteBusy}>
+                      {inviteBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Mail className="mr-1.5 h-3.5 w-3.5" />}
+                      {text.inviteButton}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               {activeGroup.members.map(member => (
                 <div key={member.userId} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
@@ -1139,6 +1265,18 @@ const groupText = {
     documentUploaded: "Tài liệu đã được chia sẻ vào chat nhóm.",
     mockEmoji: "Mock: bảng emoji sẽ được triển khai sau.",
     memberList: "Danh sách thành viên",
+    inviteMember: "Mời thành viên",
+    inviteHint: "Nhập email tài khoản đã đăng ký để gửi lời mời đang chờ xử lý.",
+    inviteEmailPlaceholder: "Email thành viên",
+    inviteInvalidEmail: "Vui lòng nhập email hợp lệ.",
+    inviteSearching: "Đang tìm người dùng...",
+    inviteUserNotFound: "Không tìm thấy người dùng.",
+    inviteSelf: "Bạn không thể tự mời chính mình.",
+    inviteDuplicate: "Thành viên này đã tham gia hoặc đang có lời mời chờ xử lý.",
+    inviteOwnerOnly: "Chỉ chủ nhóm mới có thể mời thành viên.",
+    inviteButton: "Mời",
+    inviteSent: "Đã gửi lời mời tham gia nhóm.",
+    inviteFailed: "Không thể gửi lời mời.",
     joinedAt: "Tham gia",
     owner: "Chủ nhóm",
     member: "Thành viên",
@@ -1246,6 +1384,18 @@ const groupText = {
     documentUploaded: "Document shared to the group chat.",
     mockEmoji: "Mock: emoji picker will be implemented later.",
     memberList: "Member list",
+    inviteMember: "Invite member",
+    inviteHint: "Enter a registered account email to send a pending invitation.",
+    inviteEmailPlaceholder: "Member email",
+    inviteInvalidEmail: "Enter a valid email address.",
+    inviteSearching: "Searching for user...",
+    inviteUserNotFound: "User not found.",
+    inviteSelf: "You cannot invite yourself.",
+    inviteDuplicate: "This member has already joined or already has a pending invitation.",
+    inviteOwnerOnly: "Only the group owner can invite members.",
+    inviteButton: "Invite",
+    inviteSent: "Group invitation sent.",
+    inviteFailed: "Could not send the group invitation.",
     joinedAt: "Joined",
     owner: "Owner",
     member: "Member",

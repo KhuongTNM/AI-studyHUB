@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { Document, GroupChat, GroupChatMessage, PackageTier, User } from "@/states/types"
+import type { Document, GroupChat, GroupChatMessage, GroupInvitation, GroupInvitationCandidate, PackageTier, User } from "@/states/types"
 import {
   createGroupApi,
   deleteGroupApi,
@@ -12,10 +12,14 @@ import {
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
+  fetchPendingGroupInvitationsApi,
   joinGroupApi,
   kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
+  respondGroupInvitationApi,
+  inviteGroupMemberApi,
+  searchGroupInvitationUserApi,
   sendGroupMessageApi,
   shareGroupDocumentApi,
   updateGroupMuteApi,
@@ -126,6 +130,9 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [groupLoadError, setGroupLoadError] = useState<string | null>(null)
+  const [pendingGroupInvitations, setPendingGroupInvitations] = useState<GroupInvitation[]>([])
+  const [groupInvitationsLoading, setGroupInvitationsLoading] = useState(false)
+  const [groupInvitationsError, setGroupInvitationsError] = useState<string | null>(null)
 
   const ruleTier = useMemo(() => getRuleTier(currentUser), [currentUser])
   const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
@@ -200,6 +207,73 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return { success: false, error: getErrorMessage(error, "Could not load groups.") }
     }
   }, [reloadGroups])
+
+  const loadPendingGroupInvitations = useCallback(async (): Promise<ActionResult> => {
+    if (!currentUser?.id) {
+      setPendingGroupInvitations([])
+      setGroupInvitationsError(null)
+      return { success: true }
+    }
+
+    setGroupInvitationsLoading(true)
+    setGroupInvitationsError(null)
+
+    try {
+      const invitations = await fetchPendingGroupInvitationsApi()
+      setPendingGroupInvitations(invitations)
+      return { success: true }
+    } catch (error) {
+      const message = getErrorMessage(error, "Could not load group invitations.")
+      setPendingGroupInvitations([])
+      setGroupInvitationsError(message)
+      return { success: false, error: message }
+    } finally {
+      setGroupInvitationsLoading(false)
+    }
+  }, [currentUser?.id])
+
+  const respondGroupInvitation = useCallback(async (
+    groupId: string,
+    accept: boolean,
+  ): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    try {
+      await respondGroupInvitationApi(groupId, accept)
+      setPendingGroupInvitations(prev => prev.filter(invitation => invitation.id !== groupId))
+
+      if (accept) {
+        // The response changes membership on the server. Refresh the real list
+        // so the accepted group is immediately available in Group Chat.
+        try {
+          await reloadGroups(groupId, null)
+        } catch (error) {
+          // The invitation response already succeeded. A later group refresh
+          // can be retried when the user opens Group Chat again.
+          console.warn("[GroupChat] Accepted invitation but could not refresh groups", { groupId, error })
+        }
+      }
+
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not respond to group invitation.") }
+    }
+  }, [currentUser, reloadGroups])
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setPendingGroupInvitations([])
+      setGroupInvitationsError(null)
+      return
+    }
+
+    void loadPendingGroupInvitations()
+    const intervalId = window.setInterval(() => {
+      void loadPendingGroupInvitations()
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [currentUser?.id, loadPendingGroupInvitations])
 
   useEffect(() => {
     if (!currentUser) {
@@ -313,6 +387,45 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return { success: false, error: getErrorMessage(error, "Could not join group.") }
     }
   }, [currentUser, reloadGroups])
+
+  const searchGroupInvitationUser = useCallback(async (
+    groupId: string,
+    email: string,
+  ): Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    const group = groups.find(item => item.id === groupId)
+    if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
+    if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+
+    try {
+      const user = await searchGroupInvitationUserApi(groupId, email.trim().toLowerCase())
+      if (user.userId === currentUser.id || email.trim().toLowerCase() === currentUser.email.toLowerCase()) {
+        return { success: false, error: "GROUP_CANNOT_INVITE_SELF" }
+      }
+      return { success: true, user }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "USER_NOT_FOUND") }
+    }
+  }, [currentUser, groups])
+
+  const inviteGroupMemberByEmail = useCallback(async (groupId: string, email: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
+
+    const group = groups.find(item => item.id === groupId)
+    if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
+    if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
+    if (email.trim().toLowerCase() === currentUser.email.toLowerCase()) {
+      return { success: false, error: "GROUP_CANNOT_INVITE_SELF" }
+    }
+
+    try {
+      await inviteGroupMemberApi(groupId, email.trim().toLowerCase())
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error, "Could not invite group member.") }
+    }
+  }, [currentUser, groups])
 
   const leaveGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
@@ -472,12 +585,19 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     activeGroupId,
     groupsLoading,
     groupLoadError,
+    pendingGroupInvitations,
+    groupInvitationsLoading,
+    groupInvitationsError,
     groupCreateLimit,
     groupJoinLimit,
     setActiveGroupId,
     loadGroups,
+    loadPendingGroupInvitations,
+    respondGroupInvitation,
     createGroup,
     joinGroup,
+    searchGroupInvitationUser,
+    inviteGroupMemberByEmail,
     leaveGroup,
     kickGroupMember,
     deleteGroup,

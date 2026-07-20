@@ -109,6 +109,7 @@ export function useSubscriptionState({
       userId: string,
       tier: PackageTier,
       durationMonths: number,
+      adminPassword: string,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) {
         return { success: false, error: "Không có quyền thực hiện." }
@@ -118,9 +119,10 @@ export function useSubscriptionState({
       if (currentUser.role === "sub-admin" && targetUser.role === "admin") {
         return { success: false, error: "Sub-admin không thể cấp gói cho Admin." }
       }
+      if (!adminPassword.trim()) return { success: false, error: "Mật khẩu Admin không được để trống." }
 
       try {
-        const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths)
+        const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths, adminPassword)
 
         setUsers(prev => prev.map(u => (u.id === userId ? updatedUser : u)))
         if (currentUser.id === userId) setCurrentUser(updatedUser)
@@ -133,26 +135,9 @@ export function useSubscriptionState({
         )
         return { success: true }
       } catch (error) {
-        // Fallback: cập nhật local nếu API thất bại
-        const expiresAt =
-          tier === "free"
-            ? undefined
-            : new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000)
-        setUsers(prev =>
-          prev.map(u =>
-            u.id === userId
-              ? { ...u, subscriptionTier: tier, subscriptionExpiresAt: expiresAt }
-              : u,
-          ),
-        )
-        if (currentUser.id === userId) {
-          setCurrentUser(prev =>
-            prev ? { ...prev, subscriptionTier: tier, subscriptionExpiresAt: expiresAt } : prev,
-          )
-        }
         return {
           success: false,
-          error: error instanceof Error ? error.message : "Không thể cấp gói. Đã cập nhật cục bộ.",
+          error: error instanceof Error ? error.message : "Không thể cấp gói.",
         }
       }
     },

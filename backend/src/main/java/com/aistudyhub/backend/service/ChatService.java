@@ -25,6 +25,9 @@ public class ChatService {
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final SubscriptionService subscriptionService;
+    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
+    private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     /** GET /api/v1/chat/sessions */
     @Transactional(readOnly = true)
@@ -62,6 +65,27 @@ public class ChatService {
     @Transactional
     public ChatMessageResponse addMessage(UUID sessionId, UUID userId, CreateChatMessageRequest request) {
         ChatSession session = requireOwnedSession(sessionId, userId);
+
+        if ("user".equals(request.getRole())) {
+            com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+            boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+
+            if (!isAdmin) {
+                com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+                com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                        .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
+
+                int chatLimit = plan.getDailyAiChatLimit();
+                if (chatLimit != -1) {
+                    java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
+                    long todayMessages = chatMessageRepository.countUserMessagesSince(userId, "user", startOfToday);
+                    if (todayMessages >= chatLimit) {
+                        throw new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bạn đã dùng hết lượt Chat AI trong ngày (" + chatLimit + " lượt). Vui lòng nâng cấp gói dịch vụ.");
+                    }
+                }
+            }
+        }
 
         ChatMessage message = new ChatMessage();
         message.setSessionId(session.getId());

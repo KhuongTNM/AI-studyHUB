@@ -82,14 +82,17 @@ export async function updatePackagePriceApi(
   return response.json()
 }
 
-export async function createSubscriptionPlanApi(input: CreateSubscriptionPlanInput): Promise<ApiSubscriptionPlan> {
+export async function createSubscriptionPlanApi(
+  input: CreateSubscriptionPlanInput,
+  adminPassword: string,
+): Promise<ApiSubscriptionPlan> {
   const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, adminPassword }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
@@ -98,6 +101,7 @@ export async function createSubscriptionPlanApi(input: CreateSubscriptionPlanInp
 export async function updateSubscriptionPlanApi(
   planName: string,
   input: UpdateSubscriptionPlanInput,
+  adminPassword: string,
 ): Promise<ApiSubscriptionPlan> {
   const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
     method: "PUT",
@@ -105,16 +109,19 @@ export async function updateSubscriptionPlanApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, adminPassword }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
-export async function deleteSubscriptionPlanApi(planName: string): Promise<void> {
+export async function deleteSubscriptionPlanApi(planName: string, adminPassword: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
     method: "DELETE",
-    headers: authHeaders(),
+    headers: {
+      ...authHeaders(),
+      "X-Admin-Password": adminPassword,
+    },
   })
   if (!response.ok) throw new Error(await parseError(response))
 }

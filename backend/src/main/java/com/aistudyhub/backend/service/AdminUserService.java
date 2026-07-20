@@ -78,7 +78,7 @@ public class AdminUserService {
         }
         PasswordPolicyValidator.validate(request.getPassword());
 
-        SubscriptionPlan freePlan = subscriptionPlanRepository.findByName(SubscriptionPlan.FREE_PLAN_NAME)
+        SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói Free."));
         LocalDateTime now = LocalDateTime.now();
 
@@ -90,6 +90,9 @@ public class AdminUserService {
         subAdmin.setRole(User.Role.sub_admin);
         subAdmin.setLocked(false);
         subAdmin.setLoginAttempts((short) 0);
+        // BR-097: tài khoản do Admin tạo trực tiếp (không qua form đăng ký) được coi là đã xác thực,
+        // không bắt phải qua bước nhập OTP.
+        subAdmin.setEmailVerified(true);
         subAdmin.setStorageUsedBytes(0L);
         subAdmin.setStorageLimitBytes(SUB_ADMIN_STORAGE_LIMIT_BYTES);
         subAdmin.setSubscriptionPlanId(freePlan.getId());
@@ -133,7 +136,7 @@ public class AdminUserService {
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ. Chỉ hỗ trợ: FREE, 2-4, 5+.");
         };
 
-        SubscriptionPlan plan = subscriptionPlanRepository.findByName(dbPlanName)
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(dbPlanName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
         target.setSubscriptionPlanId(plan.getId());

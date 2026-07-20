@@ -6,9 +6,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SubscriptionPlanRepository extends JpaRepository<SubscriptionPlan, Integer> {
 
-    Optional<SubscriptionPlan> findByName(String name);
+    Optional<SubscriptionPlan> findByNameIgnoreCase(String name);
 
     boolean existsByDisplayName(String displayName);
 
     boolean existsByName(String name);
+    
+    boolean existsByNameIgnoreCaseAndIsDeletedFalse(String name);
+    
+    java.util.List<SubscriptionPlan> findAllByIsDeletedFalse();
 }
