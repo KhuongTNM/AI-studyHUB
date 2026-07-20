@@ -1,5 +1,6 @@
 import { AlertCircle, Copy, FileText, Sparkles, ThumbsDown, ThumbsUp, User } from "lucide-react"
-import { type ReactNode } from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type ChatMessage } from "@/lib/store"
@@ -10,85 +11,27 @@ function normalizeMarkdown(content: string) {
     .replace(/\\_/g, "_")
 }
 
-function renderInlineMarkdown(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
-
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={index} className="font-semibold">
-          {part.slice(2, -2)}
-        </strong>
-      )
-    }
-
-    return <span key={index}>{part}</span>
-  })
-}
-
 function MarkdownMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-  const normalized = normalizeMarkdown(content)
-  const lines = normalized.split(/\r?\n/)
-  const blocks: ReactNode[] = []
-  let listItems: ReactNode[] = []
-  let listType: "ol" | "ul" | null = null
-
-  const flushList = () => {
-    if (!listType || listItems.length === 0) return
-
-    const className = "my-2 space-y-1 pl-5"
-    blocks.push(
-      listType === "ol" ? (
-        <ol key={`list-${blocks.length}`} className={cn(className, "list-decimal")}>
-          {listItems}
-        </ol>
-      ) : (
-        <ul key={`list-${blocks.length}`} className={cn(className, "list-disc")}>
-          {listItems}
-        </ul>
-      ),
-    )
-    listItems = []
-    listType = null
-  }
-
-  lines.forEach((line, index) => {
-    const trimmed = line.trim()
-
-    if (!trimmed) {
-      flushList()
-      blocks.push(<div key={`space-${index}`} className="h-2" />)
-      return
-    }
-
-    const ordered = trimmed.match(/^(\d+)\.\s+(.+)$/)
-    const unordered = trimmed.match(/^[*-]\s+(.+)$/)
-
-    if (ordered || unordered) {
-      const nextType = ordered ? "ol" : "ul"
-      if (listType && listType !== nextType) flushList()
-      listType = nextType
-      listItems.push(
-        <li key={`item-${index}`} className="pl-1">
-          {renderInlineMarkdown((ordered?.[2] ?? unordered?.[1] ?? "").trim())}
-        </li>,
-      )
-      return
-    }
-
-    flushList()
-    blocks.push(
-      <p key={`p-${index}`} className="my-1">
-        {renderInlineMarkdown(trimmed)}
-      </p>,
-    )
-  })
-
-  flushList()
-
   return (
     <div className="text-sm leading-relaxed">
-      {blocks}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="my-1">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          code: ({ children }) => (
+            <code className="rounded bg-background/70 px-1 py-0.5 text-[0.92em]">{children}</code>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-2 overflow-x-auto rounded-md bg-background/70 p-3 text-xs">{children}</pre>
+          ),
+        }}
+      >
+        {normalizeMarkdown(content)}
+      </ReactMarkdown>
       {isStreaming && (
         <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground/60 align-middle" />
       )}
