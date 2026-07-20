@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useApp } from "@/lib/store"
+import { fetchFlashcardQuotaApi } from "@/services/api/flashcards"
 import { cn } from "@/lib/utils"
 import type { EmbeddingStatus } from "@/states/types"
 
@@ -33,6 +34,7 @@ export function FlashcardPage() {
     flashcardSelectedDocumentId,
     setFlashcardSelectedDocumentId,
     language,
+    currentUser,
   } = useApp()
   const [selectedDocId, setSelectedDocId] = useState<string>(flashcardSelectedDocumentId ?? "all")
   const [question, setQuestion] = useState("")
@@ -103,6 +105,10 @@ export function FlashcardPage() {
     docEmbeddingProcessing: "Tài liệu đang được xử lý, vui lòng thử lại sau ít phút.",
     docEmbeddingFailed: "Tài liệu xử lý AI thất bại, không thể sinh flashcard.",
     docEmbeddingNone: "Tài liệu chưa sẵn sàng để sinh flashcard AI.",
+    quotaRemaining: (remaining: number, max: number) =>
+      `Gói của bạn: tối đa ${max} thẻ (còn lại ${remaining})`,
+    quotaUnlimited: "Gói của bạn: không giới hạn số thẻ",
+    quotaExhausted: "Bạn đã đạt giới hạn số thẻ của gói hiện tại. Vui lòng nâng cấp gói để tạo thêm.",
   } : {
     title: "Study Flashcards",
     description: "Build and review quick learning cards to remember key concepts faster.",
@@ -158,13 +164,49 @@ export function FlashcardPage() {
     docEmbeddingProcessing: "The document is still being processed. Please try again in a few minutes.",
     docEmbeddingFailed: "AI processing failed for this document, so flashcards can't be generated.",
     docEmbeddingNone: "This document isn't ready for AI flashcard generation yet.",
+    quotaRemaining: (remaining: number, max: number) =>
+      `Your plan: up to ${max} cards (${remaining} left)`,
+    quotaUnlimited: "Your plan: unlimited cards",
+    quotaExhausted: "You've reached your plan's flashcard limit. Please upgrade to create more.",
   }
 
   const availableDocs = [{ id: "all", name: text.allDocs }, ...documents.map(doc => ({ id: doc.id, name: doc.name }))]
 
+  // Giới hạn số thẻ AI được sinh, dựa theo gói dịch vụ hiện tại của user.
+  // maxFlashcards === -1 nghĩa là không giới hạn (ví dụ gói VIP / admin).
+  // Lấy trực tiếp từ endpoint public của gói dịch vụ, không phụ thuộc state của tính năng subscription.
+  const [maxFlashcards, setMaxFlashcards] = useState<number>(5)
+  useEffect(() => {
+    let cancelled = false
+    if (!currentUser?.subscriptionTier) return
+    fetchFlashcardQuotaApi(currentUser.subscriptionTier)
+      .then(max => {
+        if (!cancelled) setMaxFlashcards(max)
+      })
+      .catch(() => {
+        // Giữ giá trị mặc định nếu không lấy được, tránh chặn UI
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser?.subscriptionTier])
+
+  const isUnlimited = maxFlashcards === -1
+  const aiGeneratedCount = flashcards.filter(c => c.aiGenerated).length
+  const remainingQuota = isUnlimited ? Infinity : Math.max(0, maxFlashcards - aiGeneratedCount)
+  const generateInputMax = isUnlimited ? 50 : remainingQuota
+
   useEffect(() => {
     setSelectedDocId(flashcardSelectedDocumentId ?? "all")
   }, [flashcardSelectedDocumentId])
+
+  // Giữ generateCount trong giới hạn hợp lệ mỗi khi quota thay đổi
+  // (ví dụ sau khi tạo thêm thẻ khiến quota còn lại giảm xuống).
+  useEffect(() => {
+    if (generateInputMax >= 1 && generateCount > generateInputMax) {
+      setGenerateCount(generateInputMax)
+    }
+  }, [generateInputMax, generateCount])
 
   const filteredCards = useMemo(() => {
     if (selectedDocId === "all") return flashcards
@@ -369,30 +411,37 @@ export function FlashcardPage() {
           <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <Button
               onClick={handleGenerateAI}
-              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady}
-              title={embeddingNotReady ? embeddingHint(selectedDoc?.embeddingStatus, text) : undefined}
+              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady || remainingQuota <= 0}
+              title={embeddingNotReady ? embeddingHint(selectedDoc?.embeddingStatus, text) : remainingQuota <= 0 ? text.quotaExhausted : undefined}
               className="gap-2"
             >
               <Sparkles className="h-4 w-4" />
               {isGenerating ? (language === "vi" ? "Đang tạo flashcard..." : "Generating flashcards...") : (language === "vi" ? "Tạo flashcard bằng AI" : "Generate AI flashcards")}
             </Button>
-            <select
+            <input
+              type="number"
+              min={1}
+              max={generateInputMax}
               value={generateCount}
-              onChange={e => setGenerateCount(Number(e.target.value))}
-              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady}
+              onChange={e => {
+                const raw = Number(e.target.value)
+                const clamped = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), Math.max(generateInputMax, 1)) : 1
+                setGenerateCount(clamped)
+              }}
+              disabled={selectedDocId === "all" || isGenerating || embeddingNotReady || remainingQuota <= 0}
               title={text.cardCountLabel}
-              className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-            >
-              {[3, 5, 8].map(n => (
-                <option key={n} value={n}>{n} {language === "vi" ? "thẻ" : "cards"}</option>
-              ))}
-            </select>
+              className="w-28 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+            />
             <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
               {selectedDocId === "all"
                 ? language === "vi" ? "Chọn tài liệu để tạo flashcard" : "Select a document to generate"
                 : embeddingNotReady
                 ? embeddingHint(selectedDoc?.embeddingStatus, text)
-                : language === "vi" ? "AI sẽ đọc tài liệu và sinh flashcard" : "AI will read the document and generate cards"}
+                : remainingQuota <= 0
+                ? text.quotaExhausted
+                : isUnlimited
+                ? text.quotaUnlimited
+                : text.quotaRemaining(remainingQuota, maxFlashcards)}
             </div>
           </div>
 
