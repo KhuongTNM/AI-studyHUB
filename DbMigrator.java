@@ -118,6 +118,56 @@ public class DbMigrator {
             System.out.println("Updating plan_5_plus limits...");
             stmt.executeUpdate("UPDATE payment.subscription_plans SET daily_ai_chat_limit = -1, max_flashcards = -1 WHERE name = 'plan_5_plus';");
 
+            // 8. Thêm cột email_verified vào core.users nếu chưa có
+            System.out.println("Adding column email_verified to core.users...");
+            try {
+                stmt.execute("ALTER TABLE core.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;");
+                System.out.println("email_verified column verified/created.");
+                // Backfill cho các user hiện có
+                stmt.execute("UPDATE core.users SET email_verified = TRUE WHERE email_verified = FALSE;");
+                System.out.println("email_verified column backfilled.");
+            } catch (Exception e) {
+                System.out.println("Error adding/updating email_verified: " + e.getMessage());
+            }
+
+            // 9. Tạo bảng core.email_otp_tokens nếu chưa có
+            System.out.println("Creating table core.email_otp_tokens...");
+            try {
+                stmt.execute("CREATE TABLE IF NOT EXISTS core.email_otp_tokens (\n" +
+                        "  id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),\n" +
+                        "  user_id       UUID         NOT NULL,\n" +
+                        "  email         VARCHAR(255) NOT NULL,\n" +
+                        "  otp_code_hash VARCHAR(255) NOT NULL,\n" +
+                        "  expiry        TIMESTAMPTZ  NOT NULL,\n" +
+                        "  attempt_count INT          NOT NULL DEFAULT 0,\n" +
+                        "  used          BOOLEAN      NOT NULL DEFAULT FALSE,\n" +
+                        "  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()\n" +
+                        ");");
+                
+                // Thêm constraint khóa ngoại
+                try {
+                    stmt.execute("ALTER TABLE core.email_otp_tokens ADD CONSTRAINT fk_email_otp_tokens_user FOREIGN KEY (user_id)\n" +
+                            "  REFERENCES core.users (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;");
+                    System.out.println("Foreign key constraint added for email_otp_tokens.");
+                } catch (Exception e) {
+                    System.out.println("Foreign key constraint might already exist: " + e.getMessage());
+                }
+
+                // Thêm các index
+                try {
+                    stmt.execute("CREATE INDEX IF NOT EXISTS idx_eot_user_id ON core.email_otp_tokens (user_id);");
+                    stmt.execute("CREATE INDEX IF NOT EXISTS idx_eot_email ON core.email_otp_tokens (email);");
+                    stmt.execute("CREATE INDEX IF NOT EXISTS idx_eot_user_used ON core.email_otp_tokens (user_id, used);");
+                    System.out.println("Indexes for email_otp_tokens created.");
+                } catch (Exception e) {
+                    System.out.println("Error creating indexes for email_otp_tokens: " + e.getMessage());
+                }
+
+                System.out.println("core.email_otp_tokens table verified/created successfully.");
+            } catch (Exception e) {
+                System.out.println("Error creating core.email_otp_tokens table: " + e.getMessage());
+            }
+
             System.out.println("All migrations applied successfully to active database!");
 
 

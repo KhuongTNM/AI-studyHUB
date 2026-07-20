@@ -4,8 +4,10 @@ import tiktoken
 from openai import OpenAI
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 from typing import List, Dict, Any
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 # ─── Embedding Model Registry ─────────────────────────────────────────────────
 #
@@ -22,13 +24,27 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _EMBEDDING_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "text-embedding-3-small": {
+        "model": "text-embedding-3-small",
+        "provider": "openai",
+        "default_dimensions": 1536,
+        "description": "OpenAI text-embedding-3-small - 1536 dims",
+    },
+    "text-embedding-3-large": {
+        "model": "text-embedding-3-large",
+        "provider": "openai",
+        "default_dimensions": 1536,
+        "description": "OpenAI text-embedding-3-large - truncated to 1536 dims",
+    },
     "gemini-embedding-001": {
         "model": "gemini-embedding-001",
+        "provider": "gemini",
         "default_dimensions": 1536,
         "description": "Gemini Embedding 1 – stable, 1536 dims",
     },
     "gemini-embedding-2": {
         "model": "gemini-embedding-2",
+        "provider": "gemini",
         "default_dimensions": 1536,   # truncated from max 3072 → compatible với DB hiện tại
         "description": "Gemini Embedding 2 – newer model, truncated to 1536 for DB compatibility",
     },
@@ -47,36 +63,61 @@ if _EMBED_MODEL_NAME not in _EMBEDDING_REGISTRY:
 
 _embed_cfg = _EMBEDDING_REGISTRY[_EMBED_MODEL_NAME]
 EMBED_MODEL: str = _embed_cfg["model"]
+EMBED_PROVIDER: str = _embed_cfg["provider"]
 
 # EMBED_DIMENSIONS từ env override mọi default (để dễ migrate DB sau này)
 EMBED_DIMENSIONS: int = int(os.getenv("EMBED_DIMENSIONS", str(_embed_cfg["default_dimensions"])))
 
 logger.info(
     f"[Embedding] Active model: {EMBED_MODEL}  |  "
-    f"dimensions={EMBED_DIMENSIONS}  |  {_embed_cfg['description']}"
+    f"provider={EMBED_PROVIDER}  |  dimensions={EMBED_DIMENSIONS}  |  "
+    f"{_embed_cfg['description']}"
 )
 
 # ─── Gemini Client (OpenAI-compatible endpoint) ───────────────────────────────
 # OPENAI_API_KEY trong .env là Gemini API key (https://aistudio.google.com/apikey)
 # Hoặc có thể set GEMINI_API_KEY riêng; GEMINI_API_KEY được ưu tiên hơn.
-_gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
-if not _gemini_api_key:
-    logger.error("[Embedding] Neither GEMINI_API_KEY nor OPENAI_API_KEY is set!")
+def _build_client() -> OpenAI:
+    if EMBED_PROVIDER == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("[Embedding] GEMINI_API_KEY or OPENAI_API_KEY must be set for Gemini embeddings.")
+        return OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
 
-client = OpenAI(
-    api_key=_gemini_api_key,
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("[Embedding] OPENAI_API_KEY must be set for OpenAI embeddings.")
+    return OpenAI(api_key=api_key)
+
+
+client: OpenAI | None = None
+
+
+def get_client() -> OpenAI:
+    global client
+    if client is None:
+        client = _build_client()
+    return client
 
 BATCH_SIZE: int = int(os.getenv("OPENAI_EMBEDDING_BATCH_SIZE", "100"))
-tokenizer = tiktoken.get_encoding("cl100k_base")
+tokenizer = None
 
 # In-memory dictionary cache
 embedding_cache: Dict[str, List[float]] = {}
 
 
 def get_token_count(text: str) -> int:
-    return len(tokenizer.encode(text))
+    global tokenizer
+    try:
+        if tokenizer is None:
+            tokenizer = tiktoken.get_encoding("cl100k_base")
+        return len(tokenizer.encode(text))
+    except Exception as e:
+        logger.warning(f"Could not load tiktoken tokenizer, using approximate token count: {e}")
+        return max(1, len(text) // 4)
 
 
 @retry(
@@ -88,7 +129,7 @@ def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
 
-    response = client.embeddings.create(
+    response = get_client().embeddings.create(
         input=texts,
         model=EMBED_MODEL,
         dimensions=EMBED_DIMENSIONS,
