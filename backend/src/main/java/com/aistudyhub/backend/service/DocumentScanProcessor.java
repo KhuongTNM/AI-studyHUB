@@ -93,6 +93,7 @@ public class DocumentScanProcessor {
             LOGGER.info("Successfully triggered ingest for document {}", doc.getId());
         } catch (Exception e) {
             LOGGER.error("Failed to trigger ingest for document {}: {}", doc.getId(), e.getMessage());
+            documentRepository.updateEmbeddingStatus(doc.getId(), "failed");
         }
     }
 }
