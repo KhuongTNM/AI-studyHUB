@@ -62,13 +62,27 @@ function tierToPlanName(tier: string): string {
  * Hàm này thuộc phạm vi tính năng flashcard, không đụng vào code/state của tính năng subscription.
  * Trả về -1 nếu gói không giới hạn.
  */
-export async function fetchFlashcardQuotaApi(subscriptionTier: string): Promise<number> {
+export async function fetchFlashcardQuotaApi(subscriptionTier: string, subscriptionPlanId?: number | null): Promise<number> {
   const planName = tierToPlanName(subscriptionTier)
-  const response = MOCK_API
-    ? await mockFetchFlashcardQuotaRequest(subscriptionTier)
-    : await fetch(`${API_BASE_URL}/api/subscription-plans/${planName}`, {
-        headers: authHeaders(),
-      })
+  if (MOCK_API) {
+    const response = await mockFetchFlashcardQuotaRequest(subscriptionTier)
+    if (!response.ok) throw new Error(await parseError(response))
+    const plan = (await response.json()) as { maxFlashcards: number }
+    return plan.maxFlashcards
+  }
+
+  // Custom plans cannot be mapped from the legacy tier union. Resolve the
+  // persisted plan id from the public list first, then fall back to the
+  // built-in slug for older sessions that do not have an id.
+  if (subscriptionPlanId !== null && subscriptionPlanId !== undefined) {
+    const listResponse = await fetch(`${API_BASE_URL}/api/subscription-plans`)
+    if (!listResponse.ok) throw new Error(await parseError(listResponse))
+    const plans = (await listResponse.json()) as Array<{ id: number; maxFlashcards: number }>
+    const currentPlan = plans.find(plan => Number(plan.id) === Number(subscriptionPlanId))
+    if (currentPlan) return currentPlan.maxFlashcards
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/subscription-plans/${planName}`)
   if (!response.ok) throw new Error(await parseError(response))
   const plan = (await response.json()) as { maxFlashcards: number }
   return plan.maxFlashcards

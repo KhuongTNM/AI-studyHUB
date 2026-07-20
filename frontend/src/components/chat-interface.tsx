@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Sparkles } from "lucide-react"
+import { toast } from "sonner"
 import { useApp, ChatSession, ChatMessage, ChatSource } from "@/lib/store"
 import { askRagStream } from "@/services/api/chat"
 
@@ -18,6 +19,7 @@ export function EnhancedChatInterface() {
     createChatSession, persistChatMessage,
     pendingChatDocumentId, setPendingChatDocumentId,
     openAuthModal,
+    setCurrentPage,
     language,
   } = useApp()
 
@@ -33,6 +35,14 @@ export function EnhancedChatInterface() {
   const messages = activeSession?.messages ?? []
   const selectedDoc = documents.find(d => d.id === selectedDocId)
   const text = chatText[language]
+
+  const openPackages = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("profile-tab", "packages")
+      window.dispatchEvent(new Event("profile-tab-packages"))
+    }
+    setCurrentPage("profile")
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -151,11 +161,23 @@ export function EnhancedChatInterface() {
             })
           }
         },
-        onError: () => {
+        onError: (error) => {
+          const message = error.message || ""
+          const isQuotaError = /chat\s*ai|lượt\s*chat|daily.*chat|limit/i.test(message)
+          if (isQuotaError) {
+            toast.error(message, {
+              action: {
+                label: language === "vi" ? "Nâng cấp gói" : "Upgrade plan",
+                onClick: openPackages,
+              },
+            })
+          }
           const existing = currentMessages.find(m => m.id === aiMsgId)
           updateAiMessage({
             content: existing?.content
               ? existing.content
+              : isQuotaError
+              ? message
               : "Xin lỗi, đã có lỗi xảy ra khi kết nối với AI. Vui lòng thử lại.",
             isStreaming: false,
             error: true,
