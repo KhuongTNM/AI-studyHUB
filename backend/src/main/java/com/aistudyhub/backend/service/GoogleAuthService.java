@@ -162,6 +162,8 @@ public class GoogleAuthService {
         user.setRole(User.Role.user);
         user.setLocked(false);
         user.setLoginAttempts((short) 0);
+        // BR-088/BR-095: email do Google trả về đã được Google xác thực -> bỏ qua bước OTP.
+        user.setEmailVerified(true);
         user.setStorageLimitBytes(freePlan.getDefaultStorageBytes());
         user.setStorageUsedBytes(0L);
         user.setSubscriptionPlanId(freePlan.getId());

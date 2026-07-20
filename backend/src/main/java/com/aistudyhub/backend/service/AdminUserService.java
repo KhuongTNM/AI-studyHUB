@@ -90,6 +90,9 @@ public class AdminUserService {
         subAdmin.setRole(User.Role.sub_admin);
         subAdmin.setLocked(false);
         subAdmin.setLoginAttempts((short) 0);
+        // BR-097: tài khoản do Admin tạo trực tiếp (không qua form đăng ký) được coi là đã xác thực,
+        // không bắt phải qua bước nhập OTP.
+        subAdmin.setEmailVerified(true);
         subAdmin.setStorageUsedBytes(0L);
         subAdmin.setStorageLimitBytes(SUB_ADMIN_STORAGE_LIMIT_BYTES);
         subAdmin.setSubscriptionPlanId(freePlan.getId());

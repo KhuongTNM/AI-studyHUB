@@ -56,6 +56,10 @@ public class User {
     @Column(name = "is_locked", nullable = false)
     private boolean locked;
 
+    /** BR-095/096: true khi đã xác thực OTP thành công (hoặc tài khoản Google - BR-088). */
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
     @Column(name = "login_attempts", nullable = false)
     private short loginAttempts;
 
@@ -137,6 +141,14 @@ public class User {
 
     public void setLocked(boolean locked) {
         this.locked = locked;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
     }
 
     public short getLoginAttempts() {
