@@ -1,7 +1,100 @@
 import { AlertCircle, Copy, FileText, Sparkles, ThumbsDown, ThumbsUp, User } from "lucide-react"
+import { type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { type ChatMessage } from "@/lib/store"
+
+function normalizeMarkdown(content: string) {
+  return content
+    .replace(/\\\*/g, "*")
+    .replace(/\\_/g, "_")
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={index} className="font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      )
+    }
+
+    return <span key={index}>{part}</span>
+  })
+}
+
+function MarkdownMessage({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  const normalized = normalizeMarkdown(content)
+  const lines = normalized.split(/\r?\n/)
+  const blocks: ReactNode[] = []
+  let listItems: ReactNode[] = []
+  let listType: "ol" | "ul" | null = null
+
+  const flushList = () => {
+    if (!listType || listItems.length === 0) return
+
+    const className = "my-2 space-y-1 pl-5"
+    blocks.push(
+      listType === "ol" ? (
+        <ol key={`list-${blocks.length}`} className={cn(className, "list-decimal")}>
+          {listItems}
+        </ol>
+      ) : (
+        <ul key={`list-${blocks.length}`} className={cn(className, "list-disc")}>
+          {listItems}
+        </ul>
+      ),
+    )
+    listItems = []
+    listType = null
+  }
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      flushList()
+      blocks.push(<div key={`space-${index}`} className="h-2" />)
+      return
+    }
+
+    const ordered = trimmed.match(/^(\d+)\.\s+(.+)$/)
+    const unordered = trimmed.match(/^[*-]\s+(.+)$/)
+
+    if (ordered || unordered) {
+      const nextType = ordered ? "ol" : "ul"
+      if (listType && listType !== nextType) flushList()
+      listType = nextType
+      listItems.push(
+        <li key={`item-${index}`} className="pl-1">
+          {renderInlineMarkdown((ordered?.[2] ?? unordered?.[1] ?? "").trim())}
+        </li>,
+      )
+      return
+    }
+
+    flushList()
+    blocks.push(
+      <p key={`p-${index}`} className="my-1">
+        {renderInlineMarkdown(trimmed)}
+      </p>,
+    )
+  })
+
+  flushList()
+
+  return (
+    <div className="text-sm leading-relaxed">
+      {blocks}
+      {isStreaming && (
+        <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground/60 align-middle" />
+      )}
+    </div>
+  )
+}
 
 interface ChatMessageProps {
   message: ChatMessage
@@ -48,6 +141,8 @@ export function ChatMessageItem({
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40 [animation-delay:-0.15s]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" />
             </div>
+          ) : message.role === "assistant" ? (
+            <MarkdownMessage content={message.content} isStreaming={message.isStreaming} />
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">
               {message.content}
