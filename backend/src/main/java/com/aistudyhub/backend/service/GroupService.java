@@ -376,7 +376,7 @@ public class GroupService {
         User owner = userRepository.findById(g.getOwnerId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         Limits ownerLim = limits(owner);
-        if (groupMemberRepository.countByIdGroupId(groupId) >= ownerLim.maxCapacity()) {
+        if (ownerLim.maxCapacity() != -1 && groupMemberRepository.countByIdGroupId(groupId) >= ownerLim.maxCapacity()) {
             throw new BusinessException(ErrorCode.GROUP_FULL);
         }
 
@@ -453,7 +453,7 @@ public class GroupService {
             Limits lim = limits(user);
 
             long joinedCount = groupMemberRepository.countGroupsJoinedByUser(userId);
-            if (joinedCount >= lim.maxJoined()) {
+            if (lim.maxJoined() != -1 && joinedCount >= lim.maxJoined()) {
                 throw new BusinessException(ErrorCode.GROUP_JOIN_LIMIT_REACHED);
             }
 
@@ -478,33 +478,25 @@ public class GroupService {
             groupMemberRepository.delete(invitation);
         }
     }
-
     private record Limits(boolean canCreate, int maxCreated, int maxJoined, int maxCapacity) {}
 
     private Limits limits(User u) {
         String role = u.getRole().toString();
         boolean admin = role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("sub_admin");
 
-        String plan = resolveActivePlanName(u);
+        if (admin) {
+            return new Limits(true, -1, -1, 9999);
+        }
 
-        if (admin || "vip_5_plus".equals(plan) || "plan_5_plus".equals(plan)) {
-            return new Limits(true, 50, 60, 99);
-        }
-        if ("pro_2_4".equals(plan) || "plan_2_4".equals(plan)) {
-            return new Limits(true, 20, 30, 4);
-        }
-        return new Limits(false, 0, 5, 0);
-    }
+        Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(u.getId());
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
+                .orElseThrow(() -> new com.aistudyhub.backend.exception.SystemConfigurationException("Cấu hình gói không hợp lệ."));
 
-    private String resolveActivePlanName(User user) {
-        if (user.getSubscriptionPlanId() == null || user.getSubscriptionExpiresAt() == null) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        if (user.getSubscriptionExpiresAt().isBefore(LocalDateTime.now())) {
-            return SubscriptionPlan.FREE_PLAN_NAME;
-        }
-        return subscriptionPlanRepository.findById(user.getSubscriptionPlanId())
-                .map(SubscriptionPlan::getName)
-                .orElse(SubscriptionPlan.FREE_PLAN_NAME);
+        return new Limits(
+                plan.getCreateGroupLimit() != 0,
+                plan.getCreateGroupLimit(),
+                plan.getJoinGroupLimit(),
+                plan.getMaxRoomMembers()
+        );
     }
 }
