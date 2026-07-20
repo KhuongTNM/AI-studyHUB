@@ -82,4 +82,10 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
               @Param("documentId") UUID documentId,
               @Param("status") String status
        );
+
+    /**
+     * Tìm tất cả document của một user có embedding_status nằm trong danh sách
+     * (ví dụ: 'none', 'failed') và chưa bị xóa mềm. Dùng cho bulk reingest.
+     */
+    List<Document> findByUserIdAndEmbeddingStatusInAndDeletedAtIsNull(UUID userId, List<String> statuses);
 }
