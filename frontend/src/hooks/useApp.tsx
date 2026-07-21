@@ -175,14 +175,12 @@ export interface AppState {
   loadGroups: () => Promise<{ success: boolean; error?: string }>
   loadPendingGroupInvitations: () => Promise<{ success: boolean; error?: string }>
   respondGroupInvitation: (groupId: string, accept: boolean) => Promise<{ success: boolean; error?: string }>
-  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
-  joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
+  createGroup: (name: string, description: string | undefined, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   searchGroupInvitationUser: (groupId: string, email: string) => Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }>
   inviteGroupMemberByEmail: (groupId: string, email: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
-  kickGroupMember: (groupId: string, targetUserId: string, groupPassword: string) => Promise<{ success: boolean; error?: string }>
-  deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
-  getGroupPassword: (groupId: string) => Promise<{ success: boolean; password?: string; error?: string }>
+  kickGroupMember: (groupId: string, targetUserId: string) => Promise<{ success: boolean; error?: string }>
+  deleteGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
   updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
   updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
   sendGroupMessage: (groupId: string, content: string) => Promise<{ success: boolean; error?: string }>
@@ -430,13 +428,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadPendingGroupInvitations: groupChat.loadPendingGroupInvitations,
         respondGroupInvitation: groupChat.respondGroupInvitation,
         createGroup: groupChat.createGroup,
-        joinGroup: groupChat.joinGroup,
         searchGroupInvitationUser: groupChat.searchGroupInvitationUser,
         inviteGroupMemberByEmail: groupChat.inviteGroupMemberByEmail,
         leaveGroup: groupChat.leaveGroup,
         kickGroupMember: groupChat.kickGroupMember,
         deleteGroup: groupChat.deleteGroup,
-        getGroupPassword: groupChat.getGroupPassword,
         updateGroupMuted: groupChat.updateGroupMuted,
         updateGroupPinned: groupChat.updateGroupPinned,
         sendGroupMessage: groupChat.sendGroupMessage,
