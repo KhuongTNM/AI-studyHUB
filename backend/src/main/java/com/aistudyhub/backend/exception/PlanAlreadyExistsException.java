@@ -1,7 +1,10 @@
 package com.aistudyhub.backend.exception;
 
-public class PlanAlreadyExistsException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+public class PlanAlreadyExistsException extends ApiException {
     public PlanAlreadyExistsException(String message) {
-        super(message);
+        super(HttpStatus.BAD_REQUEST, message);
     }
 }
+
