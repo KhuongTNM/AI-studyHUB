@@ -46,7 +46,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final PdfPreviewService pdfPreviewService;
 
-    @PostMapping("/upload")
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentResponse> upload(
             @AuthenticationPrincipal AuthUserPrincipal principal,
             @RequestParam("file") MultipartFile file,
