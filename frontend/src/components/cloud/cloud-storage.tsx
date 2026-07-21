@@ -63,7 +63,7 @@ export function CloudStorage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-3">
           {stats.map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="rounded-xl border border-border bg-card p-4">
               <Icon className={cn("mb-2 h-5 w-5", color)} />
