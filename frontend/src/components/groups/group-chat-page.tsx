@@ -83,6 +83,17 @@ export function GroupChatPage() {
     return inviteErrorCode || text.inviteFailed
   }, [text])
 
+  const getDownloadErrorText = useMemo(() => (downloadErrorCode?: string) => {
+    const code = downloadErrorCode?.toUpperCase() ?? ""
+    if (code.includes("DOCUMENT_NOT_FOUND")) return text.documentNotFound
+    if (code.includes("DOCUMENT_NOT_PUBLIC")) return text.documentNotPublic
+    if (code.includes("DOCUMENT_NOT_READY")) return text.documentNotReady
+    if (code.includes("DOCUMENT_DELETED")) return text.documentDeleted
+    if (code.includes("GROUP_ACCESS_DENIED")) return text.groupAccessDenied
+    if (code.includes("UNAUTHENTICATED")) return text.sessionExpired
+    return downloadErrorCode || text.downloadFailed
+  }, [text])
+
   useEffect(() => {
     if (!showMembers || !activeGroup || !isActiveGroupOwner) {
       setInviteSearching(false)
@@ -302,7 +313,7 @@ export function GroupChatPage() {
     if (!activeGroup) return
     const result = await downloadGroupDocument(activeGroup.id, documentId)
     if (!result.success) {
-      setError(result.error ?? text.downloadFailed)
+      setError(getDownloadErrorText(result.error))
       return
     }
     setError("")
@@ -1147,6 +1158,11 @@ const groupText = {
     create: "Tạo nhóm",
     download: "Tải xuống",
     downloadFailed: "Không thể tải tài liệu.",
+    documentNotFound: "Tài liệu không tồn tại hoặc đã bị xóa.",
+    documentNotPublic: "Tài liệu này không còn ở chế độ công khai.",
+    documentNotReady: "Tài liệu chưa xử lý xong, vui lòng thử lại sau.",
+    documentDeleted: "Tài liệu đã bị xóa.",
+    groupAccessDenied: "Bạn không còn là thành viên của nhóm này.",
     previewUnavailable: "Chưa có URL",
     unavailable: "Không thể tải",
   },
@@ -1250,6 +1266,11 @@ const groupText = {
     create: "Create group",
     download: "Download",
     downloadFailed: "Could not download document.",
+    documentNotFound: "The document does not exist or has been deleted.",
+    documentNotPublic: "This document is no longer public.",
+    documentNotReady: "The document is still being processed. Please try again later.",
+    documentDeleted: "This document has been deleted.",
+    groupAccessDenied: "You are no longer a member of this group.",
     previewUnavailable: "No URL yet",
     unavailable: "Unavailable",
   },
