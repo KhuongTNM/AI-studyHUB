@@ -58,6 +58,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/payos/webhook").permitAll()
                         // Bank sync — no JWT, authenticated at network level
                         .requestMatchers("/bank/api/transaction-sync").permitAll()
+                        // WebSocket/STOMP handshake (SockJS) — browser can't attach a Bearer header
+                        // to the upgrade request, so auth happens in the STOMP CONNECT frame
+                        // (see StompAuthChannelInterceptor), not at this HTTP layer.
+                        .requestMatchers("/ws/**").permitAll()
 
                         // ── Authenticated user endpoints ───────────────────────────────────────
                         .requestMatchers("/api/auth/**").authenticated()
