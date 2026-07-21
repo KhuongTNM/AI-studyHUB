@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Document, GroupChat, GroupChatMessage, GroupInvitation, GroupInvitationCandidate, PackageTier, User } from "@/states/types"
 import {
   createGroupApi,
@@ -42,6 +42,8 @@ const GROUP_JOIN_LIMIT_BY_TIER: Record<PackageTier, number> = {
   "2-4": 30,
   "5+": 60,
 }
+
+const GROUP_INVITATION_POLL_INTERVAL_MS = 5000
 
 function getEffectiveTier(user: User | null): PackageTier {
   if (!user) return "free"
@@ -124,6 +126,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [pendingGroupInvitations, setPendingGroupInvitations] = useState<GroupInvitation[]>([])
   const [groupInvitationsLoading, setGroupInvitationsLoading] = useState(false)
   const [groupInvitationsError, setGroupInvitationsError] = useState<string | null>(null)
+  const pendingInvitationRequestRef = useRef(false)
 
   const ruleTier = useMemo(() => getRuleTier(currentUser), [currentUser])
   const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
@@ -206,19 +209,29 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return { success: true }
     }
 
+    if (pendingInvitationRequestRef.current) {
+      return { success: true }
+    }
+
+    pendingInvitationRequestRef.current = true
+
     setGroupInvitationsLoading(true)
     setGroupInvitationsError(null)
 
     try {
       const invitations = await fetchPendingGroupInvitationsApi()
-      setPendingGroupInvitations(invitations)
+      if (currentUser?.id) {
+        setPendingGroupInvitations(invitations)
+      }
       return { success: true }
     } catch (error) {
       const message = getErrorMessage(error, "Could not load group invitations.")
-      setPendingGroupInvitations([])
+      // Keep the last successful list during a transient polling failure so
+      // one failed request does not hide an invitation already shown to the user.
       setGroupInvitationsError(message)
       return { success: false, error: message }
     } finally {
+      pendingInvitationRequestRef.current = false
       setGroupInvitationsLoading(false)
     }
   }, [currentUser?.id])
@@ -258,12 +271,24 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return
     }
 
-    void loadPendingGroupInvitations()
-    const intervalId = window.setInterval(() => {
-      void loadPendingGroupInvitations()
-    }, 30000)
+    const refreshInvitations = () => {
+      if (document.visibilityState === "visible") {
+        void loadPendingGroupInvitations()
+      }
+    }
 
-    return () => window.clearInterval(intervalId)
+    void loadPendingGroupInvitations()
+    const intervalId = window.setInterval(refreshInvitations, GROUP_INVITATION_POLL_INTERVAL_MS)
+    window.addEventListener("focus", refreshInvitations)
+    window.addEventListener("online", refreshInvitations)
+    document.addEventListener("visibilitychange", refreshInvitations)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refreshInvitations)
+      window.removeEventListener("online", refreshInvitations)
+      document.removeEventListener("visibilitychange", refreshInvitations)
+    }
   }, [currentUser?.id, loadPendingGroupInvitations])
 
   useEffect(() => {
@@ -343,6 +368,50 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       window.clearInterval(intervalId)
     }
   }, [activeGroupId, currentUser])
+
+  // Membership changes happen in another session when someone accepts an
+  // invitation or leaves the group. Refresh the open group's members so the
+  // header, sidebar count, info modal, and member modal stay in sync.
+  useEffect(() => {
+    if (!currentUser?.id || !activeGroupId) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refreshMembers = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+
+      try {
+        const members = await fetchGroupMembersApi(activeGroupId)
+        if (cancelled) return
+
+        setGroups(prev => prev.map(group => group.id === activeGroupId
+          ? mergeOwnerName({ ...group, members })
+          : group,
+        ))
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[GroupChat] Failed to refresh group members", { groupId: activeGroupId, error })
+        }
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    void refreshMembers()
+    const intervalId = window.setInterval(() => { void refreshMembers() }, 3000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshMembers()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeGroupId, currentUser?.id])
 
   const createGroup = useCallback(async (
     name: string,
