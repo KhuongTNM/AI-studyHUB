@@ -156,7 +156,6 @@ export function mapGroup(api: ApiGroup): GroupChat {
   return {
     id: api.id,
     groupCode: api.groupCode,
-    password: "",
     name: api.name,
     description: api.description ?? undefined,
     ownerId: api.ownerId,
@@ -268,29 +267,11 @@ export async function fetchGroupMessagesApi(groupId: string): Promise<GroupChatM
   return messages.map(mapMessage)
 }
 
-/** GET /api/groups/{groupId}/password — owner-only plain-text password. */
-export async function fetchGroupPasswordApi(groupId: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/password`, {
-    headers: authHeaders(),
-  })
-
-  if (!response.ok) {
-    const error = new Error(await parseError(response)) as Error & { status?: number }
-    error.status = response.status
-    throw error
-  }
-
-  const password = (await response.text()).trim()
-  if (!password) throw new Error("GROUP_PASSWORD_NOT_AVAILABLE")
-  return password
-}
-
-/** POST /api/groups — create group. Backend hashes password and checks limits. */
+/** POST /api/groups — create group. The current contract has no group password. */
 export async function createGroupApi(input: {
   groupCode?: string
   name: string
   description?: string
-  password: string
 }): Promise<GroupChat> {
   const response = await fetch(`${API_BASE_URL}/api/groups`, {
     method: "POST",
@@ -299,16 +280,6 @@ export async function createGroupApi(input: {
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapGroup((await response.json()) as ApiGroup)
-}
-
-/** POST /api/groups/join — join by Group ID and password. Backend returns 200 with no body. */
-export async function joinGroupApi(groupCode: string, password: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/join`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ groupCode, password }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
 }
 
 /** POST /api/groups/{groupId}/messages — send text message. */
@@ -455,25 +426,22 @@ export async function leaveGroupApi(groupId: string): Promise<void> {
 export async function kickGroupMemberApi(
   groupId: string,
   targetUserId: string,
-  groupPassword: string,
 ): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(targetUserId)}`,
     {
       method: "DELETE",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ groupPassword: groupPassword.trim() }),
+      headers: authHeaders(),
     },
   )
   if (!response.ok) throw new Error(await parseError(response))
 }
 
-/** DELETE /api/groups/{groupId} — owner deletes group after password confirmation. */
-export async function deleteGroupApi(groupId: string, password: string): Promise<void> {
+/** DELETE /api/groups/{groupId} — owner deletes group after a frontend confirmation. */
+export async function deleteGroupApi(groupId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}`, {
     method: "DELETE",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ password }),
+    headers: authHeaders(),
   })
   if (!response.ok) throw new Error(await parseError(response))
 }

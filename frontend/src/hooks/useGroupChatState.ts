@@ -7,13 +7,11 @@ import {
   deleteGroupApi,
   downloadGroupDocumentApi,
   exportGroupChatApi,
-  fetchGroupPasswordApi,
   fetchGroupMessagesApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
   fetchPendingGroupInvitationsApi,
-  joinGroupApi,
   kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
@@ -32,7 +30,6 @@ interface GroupChatStateDeps {
 }
 
 type ActionResult = { success: boolean; error?: string }
-type GroupPasswordResult = ActionResult & { password?: string }
 
 const GROUP_CREATE_LIMIT_BY_TIER: Record<PackageTier, number> = {
   free: 0,
@@ -71,12 +68,6 @@ function makeGroupCode() {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
-}
-
-function getHttpStatus(error: unknown) {
-  if (!error || typeof error !== "object") return undefined
-  const status = (error as { status?: unknown }).status
-  return typeof status === "number" ? status : undefined
 }
 
 function mergeOwnerName(group: GroupChat): GroupChat {
@@ -356,7 +347,6 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const createGroup = useCallback(async (
     name: string,
     description: string | undefined,
-    password: string,
     groupCode = makeGroupCode(),
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to create a group." }
@@ -366,25 +356,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
         groupCode: groupCode.trim().toUpperCase(),
         name: name.trim(),
         description: description?.trim() || undefined,
-        password: password.trim(),
       })
       await reloadGroups(group.id, group.groupCode)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not create group.") }
-    }
-  }, [currentUser, reloadGroups])
-
-  const joinGroup = useCallback(async (groupCode: string, password: string): Promise<ActionResult> => {
-    if (!currentUser) return { success: false, error: "Please log in to join a group." }
-
-    const trimmedCode = groupCode.trim().toUpperCase()
-    try {
-      await joinGroupApi(trimmedCode, password.trim())
-      await reloadGroups(null, trimmedCode)
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error, "Could not join group.") }
     }
   }, [currentUser, reloadGroups])
 
@@ -442,7 +418,6 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const kickGroupMember = useCallback(async (
     groupId: string,
     targetUserId: string,
-    groupPassword: string,
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
@@ -450,10 +425,9 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
     if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
     if (targetUserId === currentUser.id) return { success: false, error: "GROUP_CANNOT_KICK_SELF" }
-    if (!groupPassword.trim()) return { success: false, error: "GROUP_PASSWORD_INVALID" }
 
     try {
-      await kickGroupMemberApi(groupId, targetUserId, groupPassword)
+      await kickGroupMemberApi(groupId, targetUserId)
       await reloadGroups(groupId, null)
       return { success: true }
     } catch (error) {
@@ -461,32 +435,17 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, groups, reloadGroups])
 
-  const deleteGroup = useCallback(async (groupId: string, password: string): Promise<ActionResult> => {
+  const deleteGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
     try {
-      await deleteGroupApi(groupId, password.trim())
+      await deleteGroupApi(groupId)
       await reloadGroups(null, null)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not delete group.") }
     }
   }, [currentUser, reloadGroups])
-
-  const getGroupPassword = useCallback(async (groupId: string): Promise<GroupPasswordResult> => {
-    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
-
-    try {
-      const password = await fetchGroupPasswordApi(groupId)
-      return { success: true, password }
-    } catch (error) {
-      const status = getHttpStatus(error)
-      if (status === 401) return { success: false, error: "UNAUTHENTICATED" }
-      if (status === 403) return { success: false, error: "GROUP_OWNER_REQUIRED" }
-      if (status === 404) return { success: false, error: "GROUP_NOT_FOUND" }
-      return { success: false, error: getErrorMessage(error, "GROUP_PASSWORD_NOT_AVAILABLE") }
-    }
-  }, [currentUser])
 
   const updateGroupMuted = useCallback(async (groupId: string, muted: boolean): Promise<ActionResult> => {
     try {
@@ -595,13 +554,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     loadPendingGroupInvitations,
     respondGroupInvitation,
     createGroup,
-    joinGroup,
     searchGroupInvitationUser,
     inviteGroupMemberByEmail,
     leaveGroup,
     kickGroupMember,
     deleteGroup,
-    getGroupPassword,
     updateGroupMuted,
     updateGroupPinned,
     sendGroupMessage,
