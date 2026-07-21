@@ -96,7 +96,7 @@ public class UploadSettingsService {
         log.setUserId(actor.getId());
         log.setAction(ActivityLog.Action.UPDATE_UPLOAD_SETTINGS);
         log.setTargetType(null);
-        log.setTargetId(null);
+        log.setTargetId((UUID) null); // UUID overload -> null String
         log.setDescription(toJson(Map.of(
                 "maxFileSizeBytes", Map.of("old", oldMaxBytes, "new", saved.getMaxFileSizeBytes()),
                 "maxFilesPerUpload", Map.of("old", oldMaxFiles, "new", saved.getMaxFilesPerUpload())
