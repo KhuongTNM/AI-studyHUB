@@ -20,6 +20,8 @@ import com.aistudyhub.backend.repository.GroupReportRepository;
 import com.aistudyhub.backend.repository.GroupRepository;
 import com.aistudyhub.backend.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
@@ -29,6 +31,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +54,10 @@ public class GroupMessageService {
     private final GroupReportRepository groupReportRepository;
     private final UserRepository userRepository;
     private final StorageService storageService;
+    private final DocumentService documentService;
+
+    /** Kết quả tải tài liệu chia sẻ trong group chat: nội dung file + tên gốc để hiển thị. */
+    public record DocumentDownload(Resource resource, String filename) {}
 
     @Transactional
     public GroupMessageResponse sendTextMessage(UUID groupId, UUID userId, SendTextRequest request) {
@@ -192,7 +199,7 @@ public class GroupMessageService {
 
     // Document Download Logic
     @Transactional(readOnly = true)
-    public Resource downloadDocument(UUID groupId, UUID documentId, UUID userId) {
+    public DocumentDownload downloadDocument(UUID groupId, UUID documentId, UUID userId) {
         // Membership Check
         requireMembership(groupId, userId);
 
@@ -209,7 +216,18 @@ public class GroupMessageService {
             throw new BusinessException(ErrorCode.DOCUMENT_NOT_READY);
         }
 
-        return storageService.loadAsResource(document.getFileUrl());
+        // BUG FIX: tài liệu hiện được lưu trên Supabase Storage (fileUrl là URL http/https), không
+        // còn nằm trên đĩa local của service này. storageService.loadAsResource() chỉ đọc được file
+        // cũ lưu local nên luôn trả NOT_FOUND cho mọi tài liệu mới -> tải file trong group chat luôn
+        // lỗi. Dùng lại đúng logic proxy/cache của luồng download tài liệu thường
+        // (DocumentService.getLocalFileForServing: tự tải về cache nếu là URL Supabase, dùng path
+        // local nếu là file cũ).
+        Path filePath = documentService.getLocalFileForServing(document);
+        if (!Files.exists(filePath)) {
+            throw new BusinessException(ErrorCode.DOCUMENT_NOT_FOUND);
+        }
+
+        return new DocumentDownload(new FileSystemResource(filePath), document.getOriginalName());
     }
 
     // Image Upload Logic
