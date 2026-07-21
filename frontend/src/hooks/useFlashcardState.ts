@@ -13,7 +13,18 @@ import {
 } from "@/services/api/flashcards"
 import type { Flashcard } from "@/states/types"
 
-export function useFlashcardState() {
+interface FlashcardStateDeps {
+  /**
+   * true khi đã có user đăng nhập VÀ việc khôi phục session (authLoading ở
+   * useAuthState) đã xong. Trước khi cờ này = true, hook sẽ KHÔNG tự gọi
+   * GET /api/flashcards — tránh gửi request cần JWT trong lúc token trong
+   * localStorage chưa kịp đọc / user đang là khách chưa đăng nhập.
+   * (Nguyên nhân gây lỗi 401 "Failed to load resource ... /api/flashcards")
+   */
+  isAuthReady: boolean
+}
+
+export function useFlashcardState({ isAuthReady }: FlashcardStateDeps) {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([])
   const [flashcardSelectedDocumentId, setFlashcardSelectedDocId] = useState<string | "all">("all")
 
@@ -230,10 +241,16 @@ export function useFlashcardState() {
 
   // Tự động nạp flashcard ngay khi hook được khởi tạo (app mount / F5 trang),
   // thay vì để trống cho tới khi user chọn 1 document cụ thể.
+  //
+  // FIX 401: chỉ gọi khi isAuthReady = true (session đã được khôi phục và có
+  // user đăng nhập). Trước đây effect này chạy vô điều kiện ngay khi mount,
+  // nên với khách chưa đăng nhập (hoặc user đã login nhưng token chưa kịp
+  // đọc từ localStorage) request GET /api/flashcards luôn bị BE trả 401.
   useEffect(() => {
+    if (!isAuthReady) return
     void loadAllFlashcards()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthReady])
 
   return {
     flashcards,

@@ -290,7 +290,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   // ── 4. Flashcards ────────────────────────────────────────────────────────
-  const flashcards = useFlashcardState()
+  // isAuthReady: chỉ true khi session đã được khôi phục xong (!authLoading)
+  // VÀ có user đăng nhập. FIX 401: trước đây hook tự fetch ngay khi mount,
+  // kể cả khi là khách chưa đăng nhập hoặc token chưa kịp đọc từ localStorage.
+  const flashcards = useFlashcardState({
+    isAuthReady: !auth.authLoading && !!auth.currentUser,
+  })
 
   // ── 5. Admin (cần currentUser + cross-domain setters) ──────────────────
   const admin = useAdminState({
