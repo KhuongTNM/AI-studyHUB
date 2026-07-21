@@ -58,6 +58,19 @@ function planMaxFlashcards(tier: string): number {
   return 5 // free
 }
 
+/**
+ * Trần số thẻ TỐI ĐA MỖI LƯỢT BẤM (BR-099) — độc lập với maxFlashcards ở trên.
+ * Free CỐ ĐỊNH = 5 (đúng 1 batch, theo mô tả BR-099). Premium là tham số cấu hình
+ * nghiệp vụ (không cố định theo tài liệu) — chọn số mô phỏng hợp lý để test được
+ * cơ chế nhiều-batch (BR-100: N=18 → 4 batch 5+5+5+3).
+ */
+function planPerClickLimit(tier: string): number {
+  if (tier === "2-4") return 20
+  if (tier === "5+") return 50
+  return 5 // free — BR-099: cố định 5/lượt, không phụ thuộc quota tổng
+}
+let cachedPerClickLimit = 5
+
 function toApiShape(card: MockFlashcard) {
   return { ...card }
 }
@@ -67,45 +80,114 @@ function toApiShape(card: MockFlashcard) {
 export async function mockFetchFlashcardQuotaRequest(tier: string): Promise<Response> {
   await delay(200)
   cachedMaxFlashcards = planMaxFlashcards(tier)
-  return jsonResponse(200, { maxFlashcards: cachedMaxFlashcards })
+  cachedPerClickLimit = planPerClickLimit(tier)
+  return jsonResponse(200, { maxFlashcards: cachedMaxFlashcards, perClickLimit: cachedPerClickLimit })
 }
 
-// ─── 2. Generate AI (POST /api/flashcards/generate) ─────────────────────────
+// ─── 2. Generate AI theo cơ chế Batching (POST /api/flashcards/generate) ────
+// Mô phỏng đúng luồng BR-100: chia N thành các batch 5 thẻ, chạy tuần tự,
+// "lưu" ngay sau mỗi batch thành công. Response trả về đúng shape MỚI của
+// GenerateFlashcardsResponse (Mục 1, 4.1 của API Contract) — KHÔNG còn là
+// mảng phẳng như trước.
+//
+// TEST HOOK (chỉ tồn tại ở mock, không phải hành vi thật của BE): vì UI chỉ
+// cho nhập "count" (không có ô nhập documentId tự do), dùng vài giá trị count
+// cố định làm công tắc mô phỏng các kịch bản lỗi ở Mục 3/BR-104 để test UI mà
+// không cần BE thật. Các giá trị này đều ≤ 20 nên test được trên mọi gói.
+//   count = 13 → PARTIAL_SUCCESS: batch 1+2 thành công (10 thẻ), batch 3 timeout.
+//   count = 17 → lỗi cứng 429 AI_RATE_LIMIT_EXCEEDED ngay batch đầu (0 thẻ).
+//   count = 19 → lỗi cứng 422 AI_CONTENT_SAFETY_BLOCKED ngay batch đầu (0 thẻ).
+const BATCH_SIZE = 5
+const TEST_HOOK_PARTIAL_TIMEOUT = 13
+const TEST_HOOK_RATE_LIMIT = 17
+const TEST_HOOK_SAFETY_BLOCKED = 19
+
+function makeMockCard(documentId: string, seq: number): MockFlashcard {
+  const now = new Date().toISOString()
+  return {
+    id: newId(),
+    userId: "mock-current-user",
+    documentId,
+    question: `[Mock] Câu hỏi AI sinh ra #${seq} từ tài liệu ${documentId}`,
+    answer: `[Mock] Đây là câu trả lời mẫu #${seq}, dùng để test giao diện.`,
+    status: "new",
+    aiGenerated: true,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
 
 export async function mockGenerateFlashcardsRequest(
   documentId: string,
   count: number | undefined,
 ): Promise<Response> {
-  await delay(500)
   const requestedCount = count ?? 5
-  // Chỉ đếm thẻ do AI sinh ra — thẻ thêm thủ công không tính vào quota này.
-  const currentAiCount = mockCards.filter(c => c.aiGenerated).length
 
+  // 1. Trần per-click (BR-099/BR-101) — validate TRƯỚC khi gọi AI, giống hệt
+  //    thứ tự validate mô tả ở BR-100 bước 3.
+  if (requestedCount > cachedPerClickLimit) {
+    await delay(150)
+    return jsonResponse(400, {
+      message: "FLASHCARD_PER_CLICK_LIMIT_EXCEEDED",
+      perClickLimit: cachedPerClickLimit,
+      requestedCount,
+    })
+  }
+
+  // 2. Quota tổng còn lại (ĐÃ CÓ, giữ nguyên pattern lỗi cũ — flat message).
+  const currentAiCount = mockCards.filter(c => c.aiGenerated).length
   if (cachedMaxFlashcards !== -1 && currentAiCount + requestedCount > cachedMaxFlashcards) {
+    await delay(150)
     return jsonResponse(400, {
       message: `Gói của bạn chỉ cho phép tạo tối đa ${cachedMaxFlashcards} flashcard bằng AI. Bạn hiện có ${currentAiCount} thẻ AI, không thể tạo thêm ${requestedCount} thẻ.`,
     })
   }
 
-  const now = new Date().toISOString()
-  const created: MockFlashcard[] = []
-  for (let i = 0; i < requestedCount; i++) {
-    const card: MockFlashcard = {
-      id: newId(),
-      userId: "mock-current-user",
-      documentId,
-      question: `[Mock] Câu hỏi AI sinh ra #${mockCards.length + 1} từ tài liệu ${documentId}`,
-      answer: `[Mock] Đây là câu trả lời mẫu #${mockCards.length + 1}, dùng để test giao diện.`,
-      status: "new",
-      aiGenerated: true,
-      createdAt: now,
-      updatedAt: now,
-    }
-    mockCards.push(card)
-    created.push(card)
+  // 3. TEST HOOK — lỗi cứng ngay batch đầu tiên (0 thẻ tạo được).
+  if (requestedCount === TEST_HOOK_RATE_LIMIT) {
+    await delay(600)
+    return jsonResponse(429, { message: "AI_RATE_LIMIT_EXCEEDED", createdCount: 0, requestedCount })
+  }
+  if (requestedCount === TEST_HOOK_SAFETY_BLOCKED) {
+    await delay(600)
+    return jsonResponse(422, { message: "AI_CONTENT_SAFETY_BLOCKED", createdCount: 0, requestedCount })
   }
 
-  return jsonResponse(200, created.map(toApiShape))
+  // 4. Chia batch theo BR-100 bước 5-11, chạy tuần tự, "lưu" ngay sau mỗi batch.
+  const totalBatches = Math.max(1, Math.ceil(requestedCount / BATCH_SIZE))
+  const created: MockFlashcard[] = []
+  let remaining = requestedCount
+
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    await delay(400) // mô phỏng độ trễ gọi Gemini cho mỗi batch
+
+    // TEST HOOK — timeout giữa chừng (chỉ khi đã có ≥1 thẻ, đúng BR-104.1: lỗi
+    // SAU batch đầu → PARTIAL_SUCCESS, không phải lỗi cứng).
+    if (requestedCount === TEST_HOOK_PARTIAL_TIMEOUT && batchIndex === 2) {
+      mockCards.push(...created)
+      return jsonResponse(200, {
+        status: "PARTIAL_SUCCESS",
+        requestedCount,
+        createdCount: created.length,
+        failureReason: "AI_GENERATION_TIMEOUT",
+        flashcards: created.map(toApiShape),
+      })
+    }
+
+    const batchSize = Math.min(BATCH_SIZE, remaining)
+    for (let i = 0; i < batchSize; i++) {
+      created.push(makeMockCard(documentId, mockCards.length + created.length + 1))
+    }
+    remaining -= batchSize
+  }
+
+  mockCards.push(...created)
+  return jsonResponse(200, {
+    status: "COMPLETED",
+    requestedCount,
+    createdCount: created.length,
+    flashcards: created.map(toApiShape),
+  })
 }
 
 // ─── 3. Danh sách flashcard theo tài liệu (GET /api/flashcards?documentId=) ─

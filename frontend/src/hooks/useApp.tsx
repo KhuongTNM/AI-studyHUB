@@ -33,7 +33,7 @@ import { useUIState } from "./useUIState"
 import { useAuthState } from "./useAuthState"
 import { useDocumentState } from "./useDocumentState"
 import { useChatState } from "./useChatState"
-import { useFlashcardState } from "./useFlashcardState"
+import { useFlashcardState, type GenerateFlashcardsOutcome } from "./useFlashcardState"
 import { useAdminState } from "./useAdminState"
 import { useSubscriptionState } from "./useSubscriptionState"
 import { useGroupChatState } from "./useGroupChatState"
@@ -209,11 +209,15 @@ export interface AppState {
   ) => Promise<{ success: boolean; message?: string }>
   /** Cập nhật status qua PATCH /api/flashcards/{id}/status (BR-038) */
   updateFlashcardStatus: (id: string, status: Flashcard["status"]) => void
-  /** AI tạo flashcard qua POST /api/flashcards/generate (BR-036), không fallback mock khi lỗi */
+  /**
+   * AI tạo flashcard qua POST /api/flashcards/generate theo cơ chế Batching
+   * (BR-099 → BR-105), không fallback mock khi lỗi. Xem GenerateFlashcardsOutcome
+   * ở useFlashcardState.ts để biết đầy đủ field của 2 nhánh success/failure.
+   */
   generateFlashcardsFromDocument: (
     docId: string,
     count?: number,
-  ) => Promise<{ success: boolean; count: number; message?: string }>
+  ) => Promise<GenerateFlashcardsOutcome>
   /** Load flashcard từ API theo document (BR-039) */
   loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
