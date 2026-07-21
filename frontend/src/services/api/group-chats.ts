@@ -217,6 +217,7 @@ export async function inviteGroupMemberApi(groupId: string, email: string): Prom
 export async function fetchPendingGroupInvitationsApi(): Promise<GroupInvitation[]> {
   const response = await fetch(`${API_BASE_URL}/api/groups/invitations/pending`, {
     headers: authHeaders(),
+    cache: "no-store",
   })
   if (!response.ok) throw new Error(await parseError(response))
   const invitations = (await response.json()) as ApiGroup[]
