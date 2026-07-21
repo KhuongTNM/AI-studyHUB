@@ -38,15 +38,41 @@ _CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1/"
 
 _PROVIDER_CONFIGS: List[Dict[str, Any]] = [
     # ── Gemini Flash models (dùng OPENAI_API_KEY = Gemini key) ──────────────
+    # Thứ tự đã sắp lại theo yêu cầu leader: toàn bộ dòng "gemini-2.5-*" hiện bị Google
+    # chặn cho tài khoản/API key mới ("no longer available to new users") nên đẩy xuống
+    # cuối danh sách. Lỗi 404 loại này không phải quota error nên KHÔNG tự chuyển sang
+    # provider kế tiếp — vì vậy các model dòng "3.x"/"gemma" (chưa bị chặn) phải đứng đầu.
     {
-        "name": "gemini-2.5-flash",
-        "model": "gemini-2.5-flash",
+        "name": "gemini-3.1-flash-lite",
+        "model": "gemini-3.1-flash-lite",
         "api_key_env": "GEMINI_API_KEY",
         "fallback_key_env": "OPENAI_API_KEY",
         "base_url": _GEMINI_BASE_URL,
         "supports_json_mode": True,
         "supports_streaming": True,
     },
+    {
+        "name": "gemini-3-flash-preview",
+        "model": "gemini-3-flash-preview",
+        "api_key_env": "GEMINI_API_KEY",
+        "fallback_key_env": "OPENAI_API_KEY",
+        "base_url": _GEMINI_BASE_URL,
+        "supports_json_mode": True,
+        "supports_streaming": True,
+    },
+    # ── Gemma (Gemini API) ───────────────────────────────────────────────────
+    {
+        "name": "gemma-4-31b-it",
+        "model": "gemma-4-31b-it",
+        "api_key_env": "GEMINI_API_KEY",
+        "fallback_key_env": "OPENAI_API_KEY",
+        "base_url": _GEMINI_BASE_URL,
+        "supports_json_mode": True,
+        "supports_streaming": True,
+    },
+    # Giữ lại cuối cùng làm dự phòng — hiện bị chặn với tài khoản mới, nhưng để đây
+    # phòng khi Google thay đổi chính sách; nếu tới lượt các model này thì mọi model
+    # phía trên đều đã thất bại rồi nên không mất thêm gì khi vẫn giữ trong chain.
     {
         "name": "gemini-2.5-flash-lite",
         "model": "gemini-2.5-flash-lite",
@@ -57,27 +83,8 @@ _PROVIDER_CONFIGS: List[Dict[str, Any]] = [
         "supports_streaming": True,
     },
     {
-        "name": "gemini-3-flash",
-        "model": "gemini-3-flash",
-        "api_key_env": "GEMINI_API_KEY",
-        "fallback_key_env": "OPENAI_API_KEY",
-        "base_url": _GEMINI_BASE_URL,
-        "supports_json_mode": True,
-        "supports_streaming": True,
-    },
-    {
-        "name": "gemini-3.1-flash-lite",
-        "model": "gemini-3.1-flash-lite",
-        "api_key_env": "GEMINI_API_KEY",
-        "fallback_key_env": "OPENAI_API_KEY",
-        "base_url": _GEMINI_BASE_URL,
-        "supports_json_mode": True,
-        "supports_streaming": True,
-    },
-    # ── Gemma (Gemini API) ───────────────────────────────────────────────────
-    {
-        "name": "gemma-4-31b",
-        "model": "gemma-4-31b",
+        "name": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash",
         "api_key_env": "GEMINI_API_KEY",
         "fallback_key_env": "OPENAI_API_KEY",
         "base_url": _GEMINI_BASE_URL,
@@ -201,6 +208,39 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(kw in msg for kw in keywords)
 
 
+def _is_safety_blocked_error(exc: Exception) -> bool:
+    """
+    Kiểm tra xem lỗi có phải do provider từ chối sinh nội dung vì chính sách an toàn
+    (safety/content policy) không — dùng cho BR-104.3 (Flashcard AI Batching).
+
+    Bao gồm cả trường hợp exception bọc lại đoạn text thô mà model trả về (xem
+    _extract_json_from_text) — nếu model từ chối bằng văn xuôi thay vì trả JSON,
+    câu trả lời thô thường chứa các cụm từ từ chối bên dưới.
+    """
+    msg = str(exc).lower()
+    keywords = (
+        "safety", "content_filter", "content filter", "harm_category",
+        "policy violation", "blocked", "recitation",
+        "cannot generate", "unable to assist", "i cannot help",
+        "i'm unable", "inappropriate content", "violat",
+    )
+    return any(kw in msg for kw in keywords)
+
+
+class LLMQuotaExhaustedError(Exception):
+    """
+    BR-104.2: toàn bộ provider trong chuỗi fallback (Gemini + Cerebras) đều bị
+    rate-limit/hết quota. Router (flashcards.py) map lỗi này sang HTTP 429.
+    """
+
+
+class LLMContentSafetyBlockedError(Exception):
+    """
+    BR-104.3: provider từ chối sinh nội dung do chính sách an toàn — không phải lỗi
+    hạ tầng, không nên thử lại với cùng nội dung nguồn. Router map lỗi này sang HTTP 422.
+    """
+
+
 def _extract_json_from_text(text: str) -> Dict[str, Any]:
     """
     Parse JSON từ raw text (dùng khi model không hỗ trợ json_object mode).
@@ -308,12 +348,43 @@ async def generate_answer_stream(query: str, retrieved_chunks: List[Dict[str, An
 
 # ─── Flashcard Generation ─────────────────────────────────────────────────────
 
-def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, Any]]:
+def _build_dedup_instruction(existing_questions: Optional[List[str]]) -> str:
+    """
+    BR-100/BR-102 (Flashcard AI Batching): xây dựng đoạn chỉ dẫn nhắc model tránh sinh
+    lại các câu hỏi đã sinh ở những batch trước trong cùng lượt tạo, để giảm số thẻ bị
+    tầng Java lọc trùng (BR-102) — tiết kiệm quota Gemini dùng chung một cách thực chất
+    thay vì chỉ lọc trùng SAU KHI đã tốn quota sinh ra chúng.
+    """
+    if not existing_questions:
+        return ""
+    # Giới hạn số câu hỏi đưa vào prompt để tránh phình system_prompt vô hạn khi N lớn.
+    capped = existing_questions[-50:]
+    joined = "\n".join(f"- {q}" for q in capped)
+    return (
+        "\n\nIMPORTANT: The following questions have ALREADY been generated in this session. "
+        "Do NOT repeat them or generate close rephrasings of them:\n"
+        f"{joined}"
+    )
+
+
+def generate_flashcards_from_text(
+    text: str,
+    count: int = 5,
+    existing_questions: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """
     Sinh flashcard từ text.  Cùng logic fallback chain như generate_answer_stream.
 
     Với provider hỗ trợ json_object mode → dùng response_format.
     Với provider không hỗ trợ (vd: zai-glm-4.7) → inject JSON prompt và parse thủ công.
+
+    existing_questions: câu hỏi đã sinh ở các batch trước trong cùng lượt (BR-100/BR-102),
+    được nhắc vào system_prompt để giảm khả năng model sinh trùng lặp giữa các batch.
+
+    Raises:
+        LLMQuotaExhaustedError: toàn bộ provider trong chuỗi fallback đều bị rate-limit (BR-104.2).
+        LLMContentSafetyBlockedError: nội dung bị chặn bởi chính sách an toàn (BR-104.3).
+        Exception: các lỗi khác chưa phân loại (parse JSON, lỗi hạ tầng...) — router coi là 500.
     """
     global _current_index
 
@@ -321,6 +392,7 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
         raise RuntimeError("No LLM providers configured.")
 
     calculated_max_tokens = min(65536, count * 200 + 1000)
+    dedup_instruction = _build_dedup_instruction(existing_questions)
     n = len(_providers)
     start = _current_index
 
@@ -337,6 +409,7 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
                     "based strictly on the text below. "
                     "Return a clean JSON object containing an array of flashcards "
                     "with 'question' and 'answer' keys."
+                    f"{dedup_instruction}"
                 )
                 extra_kwargs: Dict[str, Any] = {
                     "response_format": {"type": "json_object"}
@@ -348,6 +421,7 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
                     "based strictly on the text below. "
                     "You MUST respond with ONLY a valid JSON object (no markdown, no explanation). "
                     'Format: {"flashcards": [{"question": "...", "answer": "..."}, ...]}'
+                    f"{dedup_instruction}"
                 )
                 extra_kwargs = {}
 
@@ -363,7 +437,20 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
             )
 
             _current_index = idx
-            content: str = response.choices[0].message.content or ""
+            choice = response.choices[0]
+
+            # BR-104.3: một số provider trả về response THÀNH CÔNG về mặt HTTP nhưng đã lọc
+            # nội dung do chính sách an toàn (finish_reason báo hiệu, message rỗng/thiếu).
+            # Cần bắt sớm ở đây — nếu không, content rỗng sẽ rơi xuống bên dưới và bị hiểu
+            # nhầm thành lỗi parse JSON thông thường thay vì bị chặn bởi safety filter.
+            finish_reason = getattr(choice, "finish_reason", None)
+            if finish_reason in ("content_filter", "safety"):
+                raise LLMContentSafetyBlockedError(
+                    f"Provider '{provider.name}' blocked content generation "
+                    f"(finish_reason={finish_reason})."
+                )
+
+            content: str = choice.message.content or ""
 
             # Parse JSON
             try:
@@ -390,6 +477,10 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
             ]
             return valid
 
+        except LLMContentSafetyBlockedError:
+            # Đã phân loại rõ ràng (từ finish_reason ở trên) -> không thử provider khác,
+            # dừng toàn bộ ngay (BR-104.3: đây là vấn đề về nội dung, không phải hạ tầng).
+            raise
         except Exception as exc:
             if _is_quota_error(exc):
                 logger.warning(
@@ -397,6 +488,12 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
                     f"Switching to next. Error: {exc}"
                 )
                 _current_index = (idx + 1) % n
+            elif _is_safety_blocked_error(exc):
+                logger.warning(
+                    f"[Flashcards] Provider '{provider.name}' refused content "
+                    f"(safety/policy). Error: {exc}"
+                )
+                raise LLMContentSafetyBlockedError(str(exc)) from exc
             else:
                 logger.error(
                     f"[Flashcards] Provider '{provider.name}' unexpected error.",
@@ -404,6 +501,7 @@ def generate_flashcards_from_text(text: str, count: int = 5) -> List[Dict[str, A
                 )
                 raise
 
-    raise RuntimeError(
-        "All LLM providers are currently unavailable. Please try again later."
+    raise LLMQuotaExhaustedError(
+        "All LLM providers are currently unavailable (quota exhausted). "
+        "Please try again later."
     )

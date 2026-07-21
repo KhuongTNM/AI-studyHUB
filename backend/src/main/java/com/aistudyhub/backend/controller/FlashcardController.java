@@ -3,6 +3,7 @@ package com.aistudyhub.backend.controller;
 import com.aistudyhub.backend.dto.CreateFlashcardRequest;
 import com.aistudyhub.backend.dto.FlashcardResponse;
 import com.aistudyhub.backend.dto.GenerateFlashcardsRequest;
+import com.aistudyhub.backend.dto.GenerateFlashcardsResponse;
 import com.aistudyhub.backend.dto.UpdateFlashcardRequest;
 import com.aistudyhub.backend.dto.UpdateFlashcardStatusRequest;
 import com.aistudyhub.backend.service.FlashcardService;
@@ -56,7 +57,7 @@ public class FlashcardController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<List<FlashcardResponse>> generate(
+    public ResponseEntity<GenerateFlashcardsResponse> generate(
             @Valid @RequestBody GenerateFlashcardsRequest request) {
         return ResponseEntity.ok(flashcardService.generateFlashcards(request));
     }
