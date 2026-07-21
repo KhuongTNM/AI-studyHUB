@@ -107,7 +107,7 @@ public class SubscriptionPurchaseService {
         purchase.setUserId(user.getId());
         purchase.setPlanId(plan.getId());
         purchase.setPlanName(plan.getName());
-        purchase.setDisplayName(plan.getDisplayName());
+        purchase.setDisplayName(plan.getName());
         purchase.setAmount(plan.getPrice().setScale(0, RoundingMode.HALF_UP));
         purchase.setStorageLimitBytes(storageLimitBytesFor(plan));
         purchase.setStatus(SubscriptionPurchase.Status.PENDING);

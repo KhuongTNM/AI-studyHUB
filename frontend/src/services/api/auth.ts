@@ -7,6 +7,8 @@ import {
   mockGoogleLoginRequest,
   mockLogoutRequest,
   mockFetchCurrentUserRequest,
+  mockVerifyOtpRequest,
+  mockResendOtpRequest,
 } from "@/services/mock/auth.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
@@ -17,6 +19,8 @@ export interface ApiUser {
   displayName: string
   role: string
   locked: boolean
+  /** BR-095/096 — true khi đã xác thực OTP thành công (hoặc tài khoản Google). */
+  emailVerified?: boolean
   storageUsedBytes: number
   storageLimitBytes: number
   subscriptionPlanId?: number | null
@@ -32,12 +36,53 @@ interface AuthApiResponse {
   user: ApiUser
 }
 
+/** Response thật của POST /api/auth/register sau BR-095 (không còn accessToken). */
+interface RegisterApiResponse {
+  tokenType?: string
+  user: ApiUser
+  password_strength?: string
+  requiresVerification?: boolean
+  otpExpiresInSeconds?: number
+}
+
 interface ErrorBody {
   message?: string
 }
 
 interface MessageBody {
   message?: string
+}
+
+/** Mã lỗi ổn định trả về từ POST /api/auth/verify-otp (BR-096). */
+export type VerifyOtpErrorCode =
+  | "USER_NOT_FOUND"
+  | "EMAIL_ALREADY_VERIFIED"
+  | "OTP_NOT_FOUND"
+  | "OTP_EXPIRED"
+  | "OTP_MAX_ATTEMPTS_EXCEEDED"
+  | "OTP_INVALID_CODE"
+
+export interface VerifyOtpErrorResult {
+  success: false
+  error: string
+  code?: VerifyOtpErrorCode
+  /** Chỉ có khi code === "OTP_INVALID_CODE" */
+  attemptsRemaining?: number
+}
+
+/** Ánh xạ mã lỗi OTP ổn định sang câu tiếng Việt hiển thị cho người dùng (Mục 2, Notes). */
+const OTP_ERROR_MESSAGES: Record<VerifyOtpErrorCode, string> = {
+  USER_NOT_FOUND: "Không tìm thấy tài khoản với email này.",
+  EMAIL_ALREADY_VERIFIED: "Email này đã được xác thực trước đó.",
+  OTP_NOT_FOUND: "Không tìm thấy mã xác thực. Vui lòng bấm \"Gửi lại mã\".",
+  OTP_EXPIRED: "Mã xác thực đã hết hạn. Vui lòng bấm \"Gửi lại mã\".",
+  OTP_MAX_ATTEMPTS_EXCEEDED: "Bạn đã nhập sai quá 5 lần. Vui lòng bấm \"Gửi lại mã\" để lấy mã mới.",
+  OTP_INVALID_CODE: "Mã xác thực không đúng.",
+}
+
+export function mapOtpErrorMessage(code?: string): string {
+  if (code && code in OTP_ERROR_MESSAGES) return OTP_ERROR_MESSAGES[code as VerifyOtpErrorCode]
+  return "Đã xảy ra lỗi. Vui lòng thử lại."
 }
 
 async function parseError(response: Response): Promise<string> {
@@ -70,7 +115,10 @@ export function mapApiUserToStoreUser(apiUser: ApiUser): User {
     password: "",
     role: mapRole(apiUser.role),
     isLocked: apiUser.locked,
-    emailVerified: true,
+    // BR-095/096: field mới trên UserResponse. Tài khoản cũ trước khi tính năng OTP
+    // triển khai sẽ không có field này trong response — coi như đã verified để
+    // không chặn nhầm người dùng hiện hữu.
+    emailVerified: apiUser.emailVerified ?? true,
     createdAt: new Date(apiUser.createdAt),
     loginAttempts: 0,
     lastActive: new Date(),
@@ -94,17 +142,18 @@ async function handleAuthResponse(
   return { success: true, user: mapApiUserToStoreUser(data.user) }
 }
 
-async function handleRegisterResponse(
-  response: Response
-): Promise<{ success: true } | { success: false; error: string }> {
-  if (!response.ok) {
-    return { success: false, error: await parseError(response) }
-  }
-
-  return { success: true }
+export interface LoginErrorResult {
+  success: false
+  error: string
+  /** BR-097 — tài khoản chưa xác thực OTP; FE điều hướng sang màn hình OTP. */
+  code?: "ACCOUNT_NOT_VERIFIED"
+  email?: string
 }
 
-export async function loginApi(email: string, password: string): Promise<{ success: true; user: User } | { success: false; error: string }> {
+export async function loginApi(
+  email: string,
+  password: string
+): Promise<{ success: true; user: User } | LoginErrorResult> {
   const response = MOCK_API
     ? await mockLoginRequest(email, password)
     : await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -112,7 +161,38 @@ export async function loginApi(email: string, password: string): Promise<{ succe
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       })
-  return handleAuthResponse(response)
+
+  if (!response.ok) {
+    let body: { message?: string; email?: string } = {}
+    try {
+      body = (await response.json()) as { message?: string; email?: string }
+    } catch {
+      // ignore parse errors
+    }
+    // BR-097 — lỗi mới dùng pattern BusinessException(ErrorCode), kèm field email phụ.
+    if (response.status === 403 && body.message === "ACCOUNT_NOT_VERIFIED") {
+      return {
+        success: false,
+        error: "Tài khoản chưa được xác thực. Vui lòng kiểm tra email và nhập mã xác thực.",
+        code: "ACCOUNT_NOT_VERIFIED",
+        email: body.email ?? email,
+      }
+    }
+    // Các lỗi cũ (401/403 locked) dùng pattern legacy — message đã là câu tiếng Việt.
+    return { success: false, error: body.message || "Đã xảy ra lỗi. Vui lòng thử lại." }
+  }
+
+  const data = (await response.json()) as AuthApiResponse
+  setAccessToken(data.accessToken)
+  return { success: true, user: mapApiUserToStoreUser(data.user) }
+}
+
+export interface RegisterSuccessResult {
+  success: true
+  /** BR-095 — true nghĩa là chưa cấp accessToken, FE phải điều hướng sang màn OTP. */
+  requiresVerification: boolean
+  email: string
+  otpExpiresInSeconds?: number
 }
 
 export async function registerApi(
@@ -120,7 +200,7 @@ export async function registerApi(
   password: string,
   confirmPassword: string,
   displayName: string
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<RegisterSuccessResult | { success: false; error: string }> {
   const response = MOCK_API
     ? await mockRegisterRequest(email, password, confirmPassword, displayName)
     : await fetch(`${API_BASE_URL}/api/auth/register`, {
@@ -128,7 +208,101 @@ export async function registerApi(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, confirmPassword, displayName }),
       })
-  return handleRegisterResponse(response)
+
+  if (!response.ok) {
+    return { success: false, error: await parseError(response) }
+  }
+
+  const data = (await response.json()) as RegisterApiResponse
+  return {
+    success: true,
+    requiresVerification: Boolean(data.requiresVerification),
+    email: data.user?.email ?? email,
+    otpExpiresInSeconds: data.otpExpiresInSeconds,
+  }
+}
+
+/**
+ * Xác thực mã OTP sau khi đăng ký (BR-096). Thành công thì tự động đăng nhập luôn
+ * (accessToken được trả về giống response của login) — không cần qua màn Login lần nữa.
+ */
+export async function verifyOtpApi(
+  email: string,
+  otpCode: string
+): Promise<{ success: true; user: User } | VerifyOtpErrorResult> {
+  const response = MOCK_API
+    ? await mockVerifyOtpRequest(email, otpCode)
+    : await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otpCode }),
+      })
+
+  if (!response.ok) {
+    let body: { message?: string; attemptsRemaining?: number } = {}
+    try {
+      body = (await response.json()) as { message?: string; attemptsRemaining?: number }
+    } catch {
+      // ignore parse errors
+    }
+    const code = body.message as VerifyOtpErrorCode | undefined
+    return {
+      success: false,
+      error: mapOtpErrorMessage(code),
+      code,
+      attemptsRemaining: body.attemptsRemaining,
+    }
+  }
+
+  const data = (await response.json()) as AuthApiResponse
+  setAccessToken(data.accessToken)
+  return { success: true, user: mapApiUserToStoreUser(data.user) }
+}
+
+export interface ResendOtpErrorResult {
+  success: false
+  error: string
+  code?: "OTP_RESEND_COOLDOWN"
+  retryAfterSeconds?: number
+}
+
+/**
+ * Gửi lại mã OTP (BR-098). Luôn trả 200 dù email có tồn tại/đã verified hay không
+ * (chống user-enumeration) — lỗi DUY NHẤT có thể xảy ra là cooldown 429.
+ */
+export async function resendOtpApi(
+  email: string
+): Promise<{ success: true; message: string } | ResendOtpErrorResult> {
+  const response = MOCK_API
+    ? await mockResendOtpRequest(email)
+    : await fetch(`${API_BASE_URL}/api/auth/resend-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+
+  let body: { message?: string; retryAfterSeconds?: number } = {}
+  try {
+    body = (await response.json()) as { message?: string; retryAfterSeconds?: number }
+  } catch {
+    // ignore parse errors
+  }
+
+  if (response.status === 429) {
+    const retryAfterSeconds = body.retryAfterSeconds ?? 0
+    return {
+      success: false,
+      error: `Vui lòng đợi ${retryAfterSeconds} giây trước khi gửi lại mã.`,
+      code: "OTP_RESEND_COOLDOWN",
+      retryAfterSeconds,
+    }
+  }
+
+  if (!response.ok) {
+    return { success: false, error: body.message || "Đã xảy ra lỗi. Vui lòng thử lại." }
+  }
+
+  return { success: true, message: body.message || "Nếu email tồn tại, mã xác thực đã được gửi." }
 }
 
 /**

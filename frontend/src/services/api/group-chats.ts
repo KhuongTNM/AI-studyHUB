@@ -156,7 +156,6 @@ export function mapGroup(api: ApiGroup): GroupChat {
   return {
     id: api.id,
     groupCode: api.groupCode,
-    password: "",
     name: api.name,
     description: api.description ?? undefined,
     ownerId: api.ownerId,
@@ -218,6 +217,7 @@ export async function inviteGroupMemberApi(groupId: string, email: string): Prom
 export async function fetchPendingGroupInvitationsApi(): Promise<GroupInvitation[]> {
   const response = await fetch(`${API_BASE_URL}/api/groups/invitations/pending`, {
     headers: authHeaders(),
+    cache: "no-store",
   })
   if (!response.ok) throw new Error(await parseError(response))
   const invitations = (await response.json()) as ApiGroup[]
@@ -268,29 +268,11 @@ export async function fetchGroupMessagesApi(groupId: string): Promise<GroupChatM
   return messages.map(mapMessage)
 }
 
-/** GET /api/groups/{groupId}/password — owner-only plain-text password. */
-export async function fetchGroupPasswordApi(groupId: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/password`, {
-    headers: authHeaders(),
-  })
-
-  if (!response.ok) {
-    const error = new Error(await parseError(response)) as Error & { status?: number }
-    error.status = response.status
-    throw error
-  }
-
-  const password = (await response.text()).trim()
-  if (!password) throw new Error("GROUP_PASSWORD_NOT_AVAILABLE")
-  return password
-}
-
-/** POST /api/groups — create group. Backend hashes password and checks limits. */
+/** POST /api/groups — create group. The current contract has no group password. */
 export async function createGroupApi(input: {
   groupCode?: string
   name: string
   description?: string
-  password: string
 }): Promise<GroupChat> {
   const response = await fetch(`${API_BASE_URL}/api/groups`, {
     method: "POST",
@@ -299,16 +281,6 @@ export async function createGroupApi(input: {
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapGroup((await response.json()) as ApiGroup)
-}
-
-/** POST /api/groups/join — join by Group ID and password. Backend returns 200 with no body. */
-export async function joinGroupApi(groupCode: string, password: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/join`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ groupCode, password }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
 }
 
 /** POST /api/groups/{groupId}/messages — send text message. */
@@ -347,6 +319,23 @@ export async function uploadGroupImageApi(groupId: string, file: File): Promise<
   return mapMessage((await response.json()) as ApiGroupMessage)
 }
 
+function parseDownloadFilename(contentDisposition: string | null): string {
+  if (!contentDisposition) return "document"
+
+  const encodedMatch = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i)
+  if (encodedMatch?.[1]) {
+    const encodedFilename = encodedMatch[1].trim().replace(/^"(.*)"$/, "$1")
+    try {
+      return decodeURIComponent(encodedFilename) || "document"
+    } catch {
+      return encodedFilename || "document"
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i)
+  return (filenameMatch?.[1] ?? filenameMatch?.[2])?.trim() || "document"
+}
+
 /** GET /api/groups/{groupId}/documents/{documentId}/download — download shared file. */
 export async function downloadGroupDocumentApi(groupId: string, documentId: string): Promise<void> {
   const response = await fetch(
@@ -356,21 +345,18 @@ export async function downloadGroupDocumentApi(groupId: string, documentId: stri
   if (!response.ok) throw new Error(await parseError(response))
 
   const blob = await response.blob()
-  const contentDisposition = response.headers.get("Content-Disposition")
-  let filename = "document"
-  if (contentDisposition) {
-    const match = contentDisposition.match(/filename="?([^";\n]+)"?/)
-    if (match?.[1]) filename = match[1].trim()
-  }
-
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition"))
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
   anchor.href = url
   anchor.download = filename
+  anchor.style.display = "none"
   document.body.appendChild(anchor)
   anchor.click()
-  document.body.removeChild(anchor)
-  URL.revokeObjectURL(url)
+  anchor.remove()
+
+  // Keep the object URL alive until the browser has started the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 /** GET /api/groups/{groupId}/members — real member list for modal. */
@@ -455,25 +441,22 @@ export async function leaveGroupApi(groupId: string): Promise<void> {
 export async function kickGroupMemberApi(
   groupId: string,
   targetUserId: string,
-  groupPassword: string,
 ): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(targetUserId)}`,
     {
       method: "DELETE",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ groupPassword: groupPassword.trim() }),
+      headers: authHeaders(),
     },
   )
   if (!response.ok) throw new Error(await parseError(response))
 }
 
-/** DELETE /api/groups/{groupId} — owner deletes group after password confirmation. */
-export async function deleteGroupApi(groupId: string, password: string): Promise<void> {
+/** DELETE /api/groups/{groupId} — owner deletes group after a frontend confirmation. */
+export async function deleteGroupApi(groupId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}`, {
     method: "DELETE",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ password }),
+    headers: authHeaders(),
   })
   if (!response.ok) throw new Error(await parseError(response))
 }

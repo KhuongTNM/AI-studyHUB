@@ -16,6 +16,7 @@ interface MockDoc {
   userId: string
   folderId: string | null
   originalName: string
+  title: string
   subject: string
   visibility: "private" | "public"
   tags: string[]
@@ -164,6 +165,7 @@ export async function mockUploadRequest(formData: FormData): Promise<Response> {
     userId: "mock-current-user",
     folderId,
     originalName: file.name,
+    title: title || file.name,
     subject: subject.trim(),
     visibility,
     tags: tagsRaw.split(",").map(t => t.trim()).filter(Boolean),
@@ -178,14 +180,45 @@ export async function mockUploadRequest(formData: FormData): Promise<Response> {
     userId: doc.userId,
     folderId: doc.folderId,
     originalName: doc.originalName,
-    title: title || doc.originalName,
+    title: doc.title,
     fileSizeBytes: doc.fileSizeBytes,
     fileType: doc.fileType,
     subject: doc.subject,
     status: "ready",
+    // Mock hoàn tất "quét file" + "sinh embedding" ngay lập tức (không có hàng đợi
+    // async thật như backend), nên trả luôn "done" — nếu không, polling ở
+    // useDocumentState.ts sẽ chờ mãi vì GET /api/documents thật không biết
+    // tới tài liệu mock này.
+    embeddingStatus: "done",
     visibility: doc.visibility,
     downloadCount: 0,
     createdAt: doc.createdAt,
     updatedAt: doc.createdAt,
   })
+}
+
+// ─── 4. Danh sách tài liệu (GET /api/documents) ─────────────────────────────
+// Dùng cho lần load đầu trang VÀ cho vòng polling sau khi upload (chờ
+// status/embeddingStatus chuyển từ "scanning" sang "ready"/"done").
+
+export async function mockFetchDocumentsRequest(): Promise<Response> {
+  await delay(150)
+  const docs = Array.from(mockDocs.values()).map(doc => ({
+    id: doc.id,
+    userId: doc.userId,
+    folderId: doc.folderId,
+    originalName: doc.originalName,
+    title: doc.title,
+    fileSizeBytes: doc.fileSizeBytes,
+    fileType: doc.fileType,
+    subject: doc.subject,
+    status: "ready",
+    embeddingStatus: "done",
+    visibility: doc.visibility,
+    tags: doc.tags,
+    downloadCount: 0,
+    createdAt: doc.createdAt,
+    updatedAt: doc.createdAt,
+  }))
+  return jsonResponse(200, docs)
 }

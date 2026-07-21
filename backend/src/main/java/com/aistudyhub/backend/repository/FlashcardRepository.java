@@ -11,5 +11,7 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
 
     long countByUserId(UUID userId);
 
+    long countByUserIdAndIsAiGeneratedTrue(UUID userId);
+
     long deleteByDocumentId(UUID documentId);
 }

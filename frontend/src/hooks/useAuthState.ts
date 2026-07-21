@@ -9,6 +9,8 @@ import {
   logoutApi,
   registerApi,
   updateProfileApi,
+  verifyOtpApi,
+  resendOtpApi,
 } from "@/services/api/auth"
 import { clearAccessToken } from "@/lib/auth-storage"
 import type { Language, User } from "@/states/types"
@@ -99,10 +101,10 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
         setLanguageState(result.user.languagePreference ?? "vi")
         onAuthenticated?.(result.user)
         closeAuthModal()
-        return { success: true }
+        return { success: true as const }
       } catch {
         return {
-          success: false,
+          success: false as const,
           error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
         }
       }
@@ -115,17 +117,67 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
       try {
         const result = await registerApi(email, password, confirmPassword, displayName)
         if (!result.success) return result
+
+        // BR-095: đăng ký không còn cấp accessToken ngay — tài khoản phải xác thực
+        // OTP trước. Chỉ đóng modal/coi như "xong" khi không cần xác thực (fallback
+        // cho trường hợp backend cũ chưa triển khai OTP).
+        if (result.requiresVerification) {
+          return {
+            success: true as const,
+            requiresVerification: true as const,
+            email: result.email,
+            otpExpiresInSeconds: result.otpExpiresInSeconds,
+          }
+        }
+
         closeAuthModal()
-        return { success: true, message: "Đăng ký thành công. Vui lòng đăng nhập." }
+        return {
+          success: true as const,
+          requiresVerification: false as const,
+          message: "Đăng ký thành công. Vui lòng đăng nhập.",
+        }
       } catch {
         return {
-          success: false,
+          success: false as const,
           error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
         }
       }
     },
     [setLanguageState, closeAuthModal, onAuthenticated],
   )
+
+  /** BR-096 — xác thực mã OTP; thành công thì tự động đăng nhập luôn. */
+  const verifyOtp = useCallback(
+    async (email: string, otpCode: string) => {
+      try {
+        const result = await verifyOtpApi(email, otpCode)
+        if (!result.success) return result
+        setCurrentUser(result.user)
+        setLanguageState(result.user.languagePreference ?? "vi")
+        onAuthenticated?.(result.user)
+        closeAuthModal()
+        return { success: true as const }
+      } catch {
+        return {
+          success: false as const,
+          error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
+        }
+      }
+    },
+    [setLanguageState, closeAuthModal, onAuthenticated],
+  )
+
+  /** BR-098 — gửi lại mã OTP, tối đa 1 lần mỗi 60 giây cho mỗi email. */
+  const resendOtp = useCallback(async (email: string) => {
+    try {
+      return await resendOtpApi(email)
+    } catch {
+      return {
+        success: false as const,
+        error: "Không kết nối được máy chủ. Hãy chạy backend trên cổng 8080.",
+      }
+    }
+  }, [])
 
   /**
    * Đăng nhập/đăng ký bằng Google.
@@ -200,6 +252,8 @@ export function useAuthState({ setLanguageState, closeAuthModal, onAuthenticated
     authLoading,
     login,
     register,
+    verifyOtp,
+    resendOtp,
     loginWithGoogle,
     logoutUser,
     updateOwnProfile,

@@ -40,37 +40,22 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse createPlan(CreateSubscriptionPlanRequest request) {
-        String formattedDisplayName = formatDisplayName(request.getDisplayName());
-
-        if (subscriptionPlanRepository.existsByDisplayName(formattedDisplayName)) {
-            throw new PlanAlreadyExistsException("Tên gói (hiển thị) đã tồn tại.");
+        if (request.getPrice() == null || request.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Giá gói cước phải lớn hơn 0.");
         }
 
-        String baseSlug = generateSlug(formattedDisplayName);
-        if (baseSlug.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên gói không hợp lệ (không chứa ký tự chữ/số).");
+        String planName = request.getName();
+        if (planName == null || planName.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên gói không được để trống.");
         }
-        
-        if (baseSlug.length() > 20) {
-            baseSlug = baseSlug.substring(0, 20);
-        }
+        planName = planName.trim();
 
-        String finalSlug = baseSlug;
-        int count = 1;
-        while (subscriptionPlanRepository.existsByNameIgnoreCaseAndIsDeletedFalse(finalSlug)) {
-            String suffix = "_" + count;
-            int remainingLength = 20 - suffix.length();
-            if (baseSlug.length() > remainingLength) {
-                finalSlug = baseSlug.substring(0, remainingLength) + suffix;
-            } else {
-                finalSlug = baseSlug + suffix;
-            }
-            count++;
+        if (subscriptionPlanRepository.existsByNameIgnoreCaseAndIsDeletedFalse(planName)) {
+            throw new PlanAlreadyExistsException("Tên gói dịch vụ đã tồn tại.");
         }
 
         SubscriptionPlan plan = new SubscriptionPlan();
-        plan.setName(finalSlug);
-        plan.setDisplayName(formattedDisplayName);
+        plan.setName(planName);
         plan.setPrice(request.getPrice());
         plan.setMaxRoomMembers(request.getMaxRoomMembers());
         plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
@@ -94,15 +79,18 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
         }
 
-        if (request.getDisplayName() != null && !request.getDisplayName().isBlank()) {
-            plan.setDisplayName(formatDisplayName(request.getDisplayName()));
-        }
-
-        if (request.getDescription() != null) {
-            plan.setDescription(request.getDescription());
+        String newName = request.getEffectiveName();
+        if (newName != null && !newName.isBlank() && !newName.equalsIgnoreCase(plan.getName())) {
+            if (subscriptionPlanRepository.existsByNameIgnoreCaseAndIsDeletedFalse(newName.trim())) {
+                throw new PlanAlreadyExistsException("Tên gói dịch vụ đã tồn tại.");
+            }
+            plan.setName(newName.trim());
         }
 
         if (request.getPrice() != null) {
+            if (request.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Giá gói cước phải lớn hơn 0.");
+            }
             plan.setPrice(request.getPrice());
         }
 
@@ -114,13 +102,8 @@ public class AdminSubscriptionPlanService {
             plan.setDefaultStorageBytes(request.getDefaultStorageBytes());
         }
         
-        // Handle maxGroups / createGroupLimit
         if (request.getCreateGroupLimit() != null) {
-            if (request.getCreateGroupLimit() == -1) {
-                plan.setCreateGroupLimit(-1); // Infinite
-            } else {
-                plan.setCreateGroupLimit(request.getCreateGroupLimit());
-            }
+            plan.setCreateGroupLimit(request.getCreateGroupLimit());
         }
 
         if (request.getJoinGroupLimit() != null) {
@@ -141,12 +124,6 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public void deletePlan(String planName) {
-        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(planName) || 
-            "plan_2_4".equalsIgnoreCase(planName) || 
-            "plan_5_plus".equalsIgnoreCase(planName)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Không được xóa các gói mặc định.");
-        }
-
         SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
@@ -166,10 +143,6 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public SubscriptionPlanResponse updatePrice(String planName, UpdatePackagePriceRequest request) {
-        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(planName)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Không được chỉnh giá gói Free.");
-        }
-
         SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
                 
@@ -177,41 +150,13 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
         }
 
+        if (request.getPrice() == null || request.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Giá gói cước phải lớn hơn 0.");
+        }
+
         plan.setPrice(request.getPrice());
         plan.setUpdatedAt(LocalDateTime.now());
         return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
     }
-
-    private String generateSlug(String displayName) {
-        String slug = displayName.toLowerCase()
-                .replaceAll("[àáạảãâầấậẩẫăằắặẳẵ]", "a")
-                .replaceAll("[èéẹẻẽêềếệểễ]", "e")
-                .replaceAll("[ìíịỉĩ]", "i")
-                .replaceAll("[òóọỏõôồốộổỗơờớợởỡ]", "o")
-                .replaceAll("[ùúụủũưừứựửữ]", "u")
-                .replaceAll("[ỳýỵỷỹ]", "y")
-                .replaceAll("đ", "d")
-                .replaceAll("[^a-z0-9\\s-]", "")
-                .trim()
-                .replaceAll("\\s+", "_");
-        return slug;
-    }
-
-    private String formatDisplayName(String input) {
-        if (input == null || input.isBlank()) return input;
-        String[] words = input.trim().split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < words.length; i++) {
-            String word = words[i];
-            if (word.isEmpty()) continue;
-            sb.append(Character.toUpperCase(word.charAt(0)));
-            if (word.length() > 1) {
-                sb.append(word.substring(1).toLowerCase());
-            }
-            if (i < words.length - 1) {
-                sb.append(" ");
-            }
-        }
-        return sb.toString();
-    }
 }
+

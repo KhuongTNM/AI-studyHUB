@@ -7,11 +7,14 @@ export interface ApiSubscriptionPlan {
   id: number
   name: string
   displayName: string
+  description?: string | null
   price: number
   maxRoomMembers: number
   defaultStorageBytes: number
   createGroupLimit: number
   joinGroupLimit: number
+  dailyAiChatLimit: number
+  maxFlashcards: number
 }
 
 export interface CreateSubscriptionPlanInput {
@@ -21,14 +24,16 @@ export interface CreateSubscriptionPlanInput {
   defaultStorageBytes: number
   createGroupLimit: number
   joinGroupLimit: number
+  dailyAiChatLimit?: number
+  maxFlashcards?: number
 }
 
 export interface UpdateSubscriptionPlanInput {
-  displayName: string
-  maxRoomMembers: number
-  defaultStorageBytes: number
-  createGroupLimit: number
-  joinGroupLimit: number
+  description?: string | null
+  price?: number | null
+  createGroupLimit?: number | null
+  dailyAiChatLimit?: number | null
+  maxFlashcards?: number | null
 }
 
 interface ErrorBody {
@@ -49,7 +54,7 @@ async function parseError(response: Response): Promise<string> {
   } catch {
     // ignore parse errors
   }
-  return "Không thể cập nhật giá gói. Vui lòng thử lại."
+  return "Không thể xử lý gói dịch vụ. Vui lòng thử lại."
 }
 
 function authHeaders(): HeadersInit {
@@ -57,10 +62,15 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+/** Public pricing endpoint. It intentionally does not send an admin-only request. */
 export async function fetchSubscriptionPlansApi(): Promise<ApiSubscriptionPlan[]> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
-    headers: authHeaders(),
-  })
+  const response = await fetch(`${API_BASE_URL}/api/subscription-plans`)
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function fetchSubscriptionPlanApi(planName: string): Promise<ApiSubscriptionPlan> {
+  const response = await fetch(`${API_BASE_URL}/api/subscription-plans/${encodeURIComponent(planName)}`)
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
