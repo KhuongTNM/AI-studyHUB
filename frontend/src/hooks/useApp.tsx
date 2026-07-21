@@ -241,8 +241,8 @@ export interface AppState {
   packagePrices: PackagePrice[]
   updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
-  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
+  grantSubscription: (userId: string, tier: string, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  buySubscription: (tier: string) => { success: boolean; error?: string }
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -316,7 +316,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addLog: logs.addLog,
   })
 
-  const groupChat = useGroupChatState({ currentUser: auth.currentUser })
+  const groupChat = useGroupChatState({
+    currentUser: auth.currentUser,
+    packagePrices: subscription.packagePrices,
+  })
 
   // ─── Cross-domain actions ───────────────────────────────────────────────
 

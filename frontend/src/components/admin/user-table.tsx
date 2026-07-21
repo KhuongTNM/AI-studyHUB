@@ -4,15 +4,31 @@ import { Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatBytes, type User } from "@/lib/store"
+import type { Language, PackagePrice } from "@/states/types"
+import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
 
-function UserSummary({ user, docs, text }: { user: User; docs: number; text: any }) {
+function UserSummary({ user, docs, text, packagePrices, language }: {
+  user: User
+  docs: number
+  text: any
+  packagePrices: PackagePrice[]
+  language: Language
+}) {
   const getPackageLabel = (u: User) => {
     if (u.role === "admin" || u.role === "sub-admin") return text.unlimited
-    if (u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() < Date.now())
-      return text.expiredFree
+    const expired = Boolean(
+      u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() <= Date.now(),
+    )
+    const plan = expired
+      ? packagePrices.find(item => (item.planName ?? item.tier) === "free")
+      : u.subscriptionPlanId == null
+        ? packagePrices.find(item => (item.planName ?? item.tier) === (u.subscriptionTier === "2-4" ? "plan_2_4" : u.subscriptionTier === "5+" ? "plan_5_plus" : "free"))
+        : packagePrices.find(item => Number(item.id) === Number(u.subscriptionPlanId))
+    if (plan) return getLocalizedPlanName(plan, language)
+    if (expired) return text.expiredFree
     if (u.subscriptionTier === "2-4") return text.plan2To4
     if (u.subscriptionTier === "5+") return text.plan5Plus
-    return "Free"
+    return language === "vi" ? "Gói Free" : "Free plan"
   }
 
   return (
@@ -65,6 +81,8 @@ export function UserTable({
   onGrant,
   onStorageLimit,
   text,
+  packagePrices,
+  language,
   isSubAdmin
 }: {
   users: User[]
@@ -78,6 +96,8 @@ export function UserTable({
   onGrant: (user: User) => void
   onStorageLimit: (user: User, value: string) => void
   text: any
+  packagePrices: PackagePrice[]
+  language: Language
 }) {
   const filteredUsers = users.filter(
     user =>
@@ -113,7 +133,13 @@ export function UserTable({
       <div className="space-y-3">
         {filteredUsers.map(user => (
           <div key={user.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background p-3">
-            <UserSummary user={user} docs={docsByUser[user.id] ?? 0} text={text} />
+            <UserSummary
+              user={user}
+              docs={docsByUser[user.id] ?? 0}
+              text={text}
+              packagePrices={packagePrices}
+              language={language}
+            />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               {text.storageLimit}
               <input

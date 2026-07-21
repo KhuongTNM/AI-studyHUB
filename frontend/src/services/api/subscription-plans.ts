@@ -6,8 +6,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 export interface ApiSubscriptionPlan {
   id: number
   name: string
-  displayName: string
-  description?: string | null
+  /** Kept optional while older backend deployments still return this alias. */
+  displayName?: string | null
   price: number
   maxRoomMembers: number
   defaultStorageBytes: number
@@ -18,7 +18,7 @@ export interface ApiSubscriptionPlan {
 }
 
 export interface CreateSubscriptionPlanInput {
-  displayName: string
+  name: string
   price: number
   maxRoomMembers: number
   defaultStorageBytes: number
@@ -29,7 +29,7 @@ export interface CreateSubscriptionPlanInput {
 }
 
 export interface UpdateSubscriptionPlanInput {
-  description?: string | null
+  name?: string | null
   price?: number | null
   createGroupLimit?: number | null
   dailyAiChatLimit?: number | null

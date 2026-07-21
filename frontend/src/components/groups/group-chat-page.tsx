@@ -53,6 +53,8 @@ export function GroupChatPage() {
   const isActiveGroupOwner = Boolean(activeGroup && currentUser && activeGroup.ownerId === currentUser.id)
   const ownedGroupCount = currentUser ? groups.filter(group => group.ownerId === currentUser.id).length : 0
   const joinedGroupCount = currentUser ? groups.filter(group => group.members.some(member => member.userId === currentUser.id)).length : 0
+  const canCreateGroup = (groupCreateLimit === -1 || (groupCreateLimit > 0 && ownedGroupCount < groupCreateLimit))
+    && (groupJoinLimit === -1 || joinedGroupCount < groupJoinLimit)
   const readyDocuments = documents.filter(document => document.status === "ready")
   const filteredGroups = groups.filter(group => {
     const query = search.trim().toLowerCase()
@@ -387,7 +389,7 @@ export function GroupChatPage() {
             <div>
               <h1 className="text-lg font-bold text-foreground">{text.title}</h1>
               <p className="text-xs text-muted-foreground">
-                {ownedGroupCount}/{groupCreateLimit} {text.groupsCreated} • {joinedGroupCount}/{groupJoinLimit} {text.groupsJoined}
+                {ownedGroupCount}/{groupCreateLimit === -1 ? text.unlimited : groupCreateLimit} {text.groupsCreated} • {joinedGroupCount}/{groupJoinLimit === -1 ? text.unlimited : groupJoinLimit} {text.groupsJoined}
               </p>
             </div>
             <Button
@@ -397,7 +399,7 @@ export function GroupChatPage() {
                 setError("")
                 setShowCreate(true)
               }}
-              disabled={groupCreateLimit <= 0 || ownedGroupCount >= groupCreateLimit || joinedGroupCount >= groupJoinLimit}
+              disabled={!canCreateGroup}
               title={text.newGroup}
             >
               <Plus className="h-4 w-4" />
@@ -589,7 +591,7 @@ export function GroupChatPage() {
                   {text.retry}
                 </Button>
               )}
-              <Button className="mt-5" disabled={groupCreateLimit <= 0 || joinedGroupCount >= groupJoinLimit} onClick={() => setShowCreate(true)}>
+              <Button className="mt-5" disabled={!canCreateGroup} onClick={() => setShowCreate(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 {text.newGroup}
               </Button>
@@ -1062,6 +1064,7 @@ const groupText = {
     title: "Chat nhóm",
     groupsCreated: "nhóm đã tạo",
     groupsJoined: "nhóm đã tham gia",
+    unlimited: "không giới hạn",
     newGroup: "Tạo nhóm mới",
     search: "Tìm kiếm nhóm",
     groupId: "Group ID",
@@ -1150,7 +1153,7 @@ const groupText = {
     emptyTitle: "Chọn hoặc tạo một nhóm",
     emptyBody: "Nhóm dùng để chat với bạn học và chia sẻ tài liệu học tập.",
     createTitle: "Tạo nhóm học tập",
-    createHint: (created: number, joined: number) => `Gói hiện tại cho phép tạo tối đa ${created} nhóm và tham gia tối đa ${joined} nhóm.`,
+    createHint: (created: number, joined: number) => `Gói hiện tại cho phép tạo tối đa ${created === -1 ? "không giới hạn" : created} nhóm và tham gia tối đa ${joined === -1 ? "không giới hạn" : joined} nhóm.`,
     groupName: "Tên nhóm",
     description: "Mô tả",
     descriptionPlaceholder: "Mục tiêu học tập, môn học, hoặc ghi chú cho nhóm",
@@ -1170,6 +1173,7 @@ const groupText = {
     title: "Group Chat",
     groupsCreated: "groups created",
     groupsJoined: "groups joined",
+    unlimited: "unlimited",
     newGroup: "Create group",
     search: "Search groups",
     groupId: "Group ID",
@@ -1258,7 +1262,7 @@ const groupText = {
     emptyTitle: "Choose or create a group",
     emptyBody: "Groups are for classmate chat and shared study materials.",
     createTitle: "Create study group",
-    createHint: (created: number, joined: number) => `Your current package allows up to ${created} created groups and ${joined} joined groups.`,
+    createHint: (created: number, joined: number) => `Your current package allows up to ${created === -1 ? "unlimited" : created} created groups and ${joined === -1 ? "unlimited" : joined} joined groups.`,
     groupName: "Group name",
     description: "Description",
     descriptionPlaceholder: "Study goal, subject, or note for this group",

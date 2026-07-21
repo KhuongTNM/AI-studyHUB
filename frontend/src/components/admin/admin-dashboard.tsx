@@ -6,7 +6,8 @@ import {
   Pencil, Plus, RefreshCw, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useApp, type ActivityLog, type PackageTier, type User } from "@/lib/store"
+import { useApp, type ActivityLog, type User } from "@/lib/store"
+import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
 import { getLocalizedPlanName, isBuiltInPlanName } from "@/configs/subscription-plan-labels"
 import { StatsOverview } from "./stats-overview"
@@ -29,7 +30,6 @@ interface EditablePkg {
   tier: string
   planName: string
   name: string
-  description?: string | null
   price: number
   maxUsers: number
   storage: string
@@ -92,8 +92,7 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
     id: String(plan.id),
     tier,
     planName: plan.name,
-    name: plan.displayName,
-    description: plan.description ?? null,
+    name: plan.displayName?.trim() || plan.name,
     price: Number(plan.price),
     maxUsers: plan.maxRoomMembers,
     storage: formatStorage(plan.defaultStorageBytes),
@@ -107,23 +106,22 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
   }
 }
 
-function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: number; maxUsers: number }): EditablePkg {
-  const defaultStorageBytes = pkg.tier === "free" ? 512 * 1024 * 1024 : pkg.tier === "2-4" ? 1024 * 1024 * 1024 : 5 * 1024 * 1024 * 1024
-  const joinGroupLimit = pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60
+function pkgFromPrice(pkg: PackagePrice): EditablePkg {
+  const defaultStorageBytes = pkg.defaultStorageBytes ?? (pkg.tier === "free" ? 512 * 1024 * 1024 : pkg.tier === "2-4" ? 1024 * 1024 * 1024 : 5 * 1024 * 1024 * 1024)
+  const joinGroupLimit = pkg.joinGroupLimit ?? (pkg.tier === "free" ? 5 : pkg.tier === "2-4" ? 30 : 60)
   return {
     id: pkg.id,
     tier: pkg.tier,
-    planName: tierToPlanName(pkg.tier),
+    planName: pkg.planName ?? tierToPlanName(pkg.tier),
     name: pkg.name,
-    description: null,
     price: pkg.price,
     maxUsers: pkg.maxUsers,
     storage: formatStorage(defaultStorageBytes),
     defaultStorageBytes,
-    createGroupLimit: pkg.tier === "free" ? 0 : pkg.tier === "2-4" ? 20 : 50,
+    createGroupLimit: pkg.createGroupLimit ?? (pkg.tier === "free" ? 0 : pkg.tier === "2-4" ? 20 : 50),
     joinGroupLimit,
-    dailyAiChatLimit: pkg.tier === "5+" ? -1 : 5,
-    maxFlashcards: pkg.tier === "5+" ? -1 : pkg.tier === "2-4" ? 100 : 5,
+    dailyAiChatLimit: pkg.dailyAiChatLimit ?? 5,
+    maxFlashcards: pkg.maxFlashcards ?? 5,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -159,7 +157,7 @@ export function AdminDashboard() {
   const [resetLoading, setResetLoading] = useState(false)
   const [subAdminForm, setSubAdminForm] = useState({ displayName: "", email: "", password: "" })
   const [grantTarget, setGrantTarget] = useState<User | null>(null)
-  const [grantTier, setGrantTier] = useState<PackageTier>("2-4")
+  const [grantTier, setGrantTier] = useState("2-4")
   const [grantDuration, setGrantDuration] = useState<number>(1)
 
   // ── Upload settings — TOÀN HỆ THỐNG, không gắn với gói dịch vụ ───────────
@@ -473,11 +471,16 @@ export function AdminDashboard() {
       }
       onGrant={(user) => {
         setGrantTarget(user)
-        setGrantTier(user.subscriptionTier || "free")
+        const userPlan = user.subscriptionPlanId == null
+          ? packagePrices.find(plan => (plan.planName ?? plan.tier) === tierToPlanName(user.subscriptionTier || "free"))
+          : packagePrices.find(plan => Number(plan.id) === Number(user.subscriptionPlanId))
+        setGrantTier(userPlan?.planName ?? user.subscriptionTier ?? "free")
         setGrantDuration(1)
       }}
       onStorageLimit={updateStorageLimit}
       text={text}
+      packagePrices={packagePrices}
+      language={language}
     />
   )
 
@@ -521,14 +524,15 @@ export function AdminDashboard() {
   }
 
   const buildPlanUpdatePayload = (pkg: EditablePkg): { error: string } | { payload: UpdateSubscriptionPlanInput } => {
+    if (!pkg.name.trim() || pkg.name.trim().length > 50) return { error: "Tên gói phải có từ 1 đến 50 ký tự." }
     if (!Number.isFinite(pkg.price) || pkg.price < 0) return { error: "Giá gói không hợp lệ." }
-    if (pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải từ -1 trở lên." }
-    if (pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải từ -1 trở lên." }
-    if (pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải từ -1 trở lên." }
+    if (!Number.isInteger(pkg.createGroupLimit) || pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
 
     return {
       payload: {
-        description: pkg.description?.trim() ?? "",
+        name: pkg.name.trim(),
         price: pkg.price,
         createGroupLimit: pkg.createGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
@@ -550,9 +554,6 @@ export function AdminDashboard() {
         const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword)
         const savedPlan = {
           ...pkgFromPlan(responsePlan),
-          // The current backend response does not expose description yet.
-          // Preserve the value entered in this session until that response is expanded.
-          description: updated.description ?? null,
         }
         setEditablePackages(prev => prev.map(p => p.id === pkg.id ? savedPlan : p))
         setMessage(`Đã cập nhật gói "${savedPlan.name}".`)
@@ -590,8 +591,8 @@ export function AdminDashboard() {
       setMessage("Số thành viên tối đa phải từ 1 trở lên.")
       return
     }
-    if (!Number.isInteger(newPkgForm.createGroupLimit) || newPkgForm.createGroupLimit < 0) {
-      setMessage("Giới hạn tạo nhóm phải từ 0 trở lên.")
+    if (!Number.isInteger(newPkgForm.createGroupLimit) || newPkgForm.createGroupLimit < -1) {
+      setMessage("Giới hạn tạo nhóm phải từ -1 trở lên.")
       return
     }
     if (!Number.isInteger(newPkgForm.joinGroupLimit) || newPkgForm.joinGroupLimit < 1) {
@@ -610,7 +611,7 @@ export function AdminDashboard() {
     requirePassword(text.addPackage, async (adminPassword) => {
       try {
         const created = await createSubscriptionPlanApi({
-          displayName: newPkgForm.name.trim(),
+          name: newPkgForm.name.trim(),
           price: newPkgForm.price,
           defaultStorageBytes,
           maxRoomMembers: newPkgForm.maxRoomMembers,
@@ -745,21 +746,23 @@ export function AdminDashboard() {
               )}
 
               <div className="flex flex-1 flex-col p-6">
-                {/* displayName is intentionally read-only in the new PUT contract. */}
-                <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
-                <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
-
-                {isEditing && (
-                  <label className="mb-4 block">
-                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.descriptionField}</span>
-                    <textarea
-                      rows={2}
-                      value={draft.description ?? ""}
-                      onChange={e => setPkgDraft(d => ({ ...d, description: e.target.value }))}
-                      placeholder={text.descriptionPlaceholder}
-                      className="w-full resize-none rounded-lg border border-primary bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                {isEditing ? (
+                  <label className="mb-3 block">
+                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.packageNameField}</span>
+                    <input
+                      type="text"
+                      maxLength={50}
+                      value={draft.name ?? pkg.name}
+                      onChange={e => setPkgDraft(d => ({ ...d, name: e.target.value }))}
+                      className="w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
+                    <span className="mt-1 block text-xs text-muted-foreground">{pkg.planName}</span>
                   </label>
+                ) : (
+                  <>
+                    <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
+                    <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
+                  </>
                 )}
 
                 {/* Price */}
@@ -789,12 +792,6 @@ export function AdminDashboard() {
 
                 {/* Features list */}
                 <ul className="mb-6 flex-1 space-y-3 border-t border-border pt-4 text-sm">
-                  {/* AI Chat — always on */}
-                  <li className="flex items-start gap-2 text-muted-foreground">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>{formatPlanLimit(pkg.dailyAiChatLimit, text.aiChatLimitFeature, text.aiChatUnlimitedFeature, text.aiChatDisabledFeature)}</span>
-                  </li>
-
                   {/* Group limits */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <Users className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
@@ -807,6 +804,7 @@ export function AdminDashboard() {
                             min="-1"
                             value={draft.createGroupLimit ?? 0}
                             onChange={e => setPkgDraft(d => ({ ...d, createGroupLimit: Number(e.target.value) }))}
+                            title={text.unlimitedInputHint}
                             className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           />
                           <span className="text-xs">{text.groupsUnit}</span>
@@ -845,6 +843,7 @@ export function AdminDashboard() {
                           min="-1"
                           value={draft.dailyAiChatLimit ?? 5}
                           onChange={e => setPkgDraft(d => ({ ...d, dailyAiChatLimit: Number(e.target.value) }))}
+                          title={text.unlimitedInputHint}
                           className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
@@ -862,6 +861,7 @@ export function AdminDashboard() {
                           min="-1"
                           value={draft.maxFlashcards ?? 5}
                           onChange={e => setPkgDraft(d => ({ ...d, maxFlashcards: Number(e.target.value) }))}
+                          title={text.unlimitedInputHint}
                           className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
@@ -979,9 +979,10 @@ export function AdminDashboard() {
                   <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.createLimitField}</span>
                   <input
                     type="number"
-                    min="0"
+                    min="-1"
                     value={newPkgForm.createGroupLimit}
                     onChange={e => setNewPkgForm(f => ({ ...f, createGroupLimit: Number(e.target.value) }))}
+                    title={text.unlimitedInputHint}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </label>
@@ -1016,6 +1017,7 @@ export function AdminDashboard() {
                     min="-1"
                     value={newPkgForm.dailyAiChatLimit}
                     onChange={e => setNewPkgForm(f => ({ ...f, dailyAiChatLimit: Number(e.target.value) }))}
+                    title={text.unlimitedInputHint}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </label>
@@ -1026,6 +1028,7 @@ export function AdminDashboard() {
                     min="-1"
                     value={newPkgForm.maxFlashcards}
                     onChange={e => setNewPkgForm(f => ({ ...f, maxFlashcards: Number(e.target.value) }))}
+                    title={text.unlimitedInputHint}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </label>
@@ -1123,6 +1126,8 @@ export function AdminDashboard() {
       {grantTarget && (
         <GrantPackageModal
           target={grantTarget}
+          plans={packagePrices}
+          language={language}
           tier={grantTier}
           duration={grantDuration}
           setTier={setGrantTier}
@@ -1131,13 +1136,17 @@ export function AdminDashboard() {
           formatAdminText={formatAdminText}
           onCancel={() => setGrantTarget(null)}
           onConfirm={() => {
-            const planLabel = grantTier === "free" ? "Free" : grantTier === "2-4" ? text.plan2To4 : text.plan5Plus
+            const selectedPlan = packagePrices.find(plan => (plan.planName ?? plan.tier) === grantTier)
+            const planLabel = selectedPlan
+              ? getLocalizedPlanName(selectedPlan, language)
+              : grantTier
             requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async (adminPassword) => {
               const res = await grantSubscription(grantTarget.id, grantTier, grantDuration, adminPassword)
               runAccountAction(res, text.grantSuccess)
               if (res.success) {
-                const storageLimit = grantTier === "free" ? 1024 * 1024 * 512 : grantTier === "2-4" ? 1024 * 1024 * 1024 : 1024 * 1024 * 1024 * 5
-                updateUser(grantTarget.id, { storageLimit })
+                if (selectedPlan?.defaultStorageBytes) {
+                  updateUser(grantTarget.id, { storageLimit: selectedPlan.defaultStorageBytes })
+                }
               }
             })
             setGrantTarget(null)
@@ -1225,12 +1234,14 @@ function Rule({ valid, label }: { valid: boolean; label: string }) {
 }
 
 function GrantPackageModal({
-  target, tier, duration, setTier, setDuration, text, formatAdminText, onCancel, onConfirm,
+  target, plans, language, tier, duration, setTier, setDuration, text, formatAdminText, onCancel, onConfirm,
 }: {
   target: User
-  tier: PackageTier
+  plans: PackagePrice[]
+  language: "vi" | "en"
+  tier: string
   duration: number
-  setTier: (tier: PackageTier) => void
+  setTier: (tier: string) => void
   setDuration: (duration: number) => void
   text: any
   formatAdminText: (template: string, values: Record<string, string | number>) => string
@@ -1248,15 +1259,17 @@ function GrantPackageModal({
             <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.choosePackage}</span>
             <select
               value={tier}
-              onChange={e => setTier(e.target.value as PackageTier)}
+              onChange={e => setTier(e.target.value)}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              <option value="free">{text.freeCancelPlan}</option>
-              <option value="2-4">{text.package2To4People}</option>
-              <option value="5+">{text.package5PlusPeople}</option>
+              {plans.map(plan => (
+                <option key={plan.id} value={plan.planName ?? plan.tier}>
+                  {getLocalizedPlanName(plan, language)}
+                </option>
+              ))}
             </select>
           </label>
-          {tier !== "free" && (
+          {Boolean(plans.find(plan => (plan.planName ?? plan.tier) === tier)?.price) && (
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.durationLabel}</span>
               <select
