@@ -17,24 +17,40 @@ public class AuthDataSeeder implements ApplicationRunner {
 
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final com.aistudyhub.backend.repository.UploadSettingsRepository uploadSettingsRepository;
     private final PasswordEncoder passwordEncoder;
 
     public AuthDataSeeder(
             UserRepository userRepository,
             SubscriptionPlanRepository subscriptionPlanRepository,
+            com.aistudyhub.backend.repository.UploadSettingsRepository uploadSettingsRepository,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.uploadSettingsRepository = uploadSettingsRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // Seed upload settings singleton nếu chưa có
+        if (uploadSettingsRepository.findById(com.aistudyhub.backend.entity.UploadSettings.SINGLETON_ID).isEmpty()) {
+            com.aistudyhub.backend.entity.UploadSettings settings = new com.aistudyhub.backend.entity.UploadSettings();
+            settings.setId(com.aistudyhub.backend.entity.UploadSettings.SINGLETON_ID);
+            settings.setMaxFileSizeBytes(50L * 1024L * 1024L);
+            settings.setMaxFilesPerUpload(10);
+            settings.setUpdatedAt(now);
+            try {
+                uploadSettingsRepository.save(settings);
+            } catch (Exception ignored) {}
+        }
+
         if (userRepository.count() > 0) {
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
         SubscriptionPlan freePlan = subscriptionPlanRepository.findByNameIgnoreCase(SubscriptionPlan.FREE_PLAN_NAME)
                 .orElseThrow(() -> new IllegalStateException("Free subscription plan is not configured."));
         List<SeedUser> seeds = List.of(

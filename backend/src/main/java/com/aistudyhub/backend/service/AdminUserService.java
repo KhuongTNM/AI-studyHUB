@@ -304,7 +304,7 @@ public class AdminUserService {
         log.setUserId(admin.getId());
         log.setAction(ActivityLog.Action.CREATE_SUB_ADMIN);
         log.setTargetType(ActivityLog.TargetType.USER);
-        log.setTargetId(subAdmin.getId());
+        log.setTargetId(subAdmin.getId()); // helper method converts UUID -> String
         log.setDescription(toJson(Map.of(
                 "email", subAdmin.getEmail(),
                 "displayName", subAdmin.getDisplayName(),

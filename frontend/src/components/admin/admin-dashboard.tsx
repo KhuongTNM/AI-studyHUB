@@ -17,11 +17,11 @@ import {
   createSubscriptionPlanApi,
   deleteSubscriptionPlanApi,
   fetchSubscriptionPlansApi,
-  updatePackagePriceApi,
   updateSubscriptionPlanApi,
   type ApiSubscriptionPlan,
   type UpdateSubscriptionPlanInput,
 } from "@/services/api/subscription-plans"
+import { fetchUploadSettingsApi, updateUploadSettingsApi } from "@/services/api/upload-settings"
 
 // ─── Editable package type used only in admin UI ───────────────────────────
 interface EditablePkg {
@@ -29,12 +29,15 @@ interface EditablePkg {
   tier: string
   planName: string
   name: string
+  description?: string | null
   price: number
   maxUsers: number
   storage: string
   defaultStorageBytes: number
   createGroupLimit: number
   joinGroupLimit: number
+  dailyAiChatLimit: number
+  maxFlashcards: number
   hasAiChat: boolean
   hasFlashcards: boolean
 }
@@ -72,6 +75,17 @@ function parseStorageBytes(value: string) {
   return Math.round(amount * multiplier)
 }
 
+function formatPlanLimit(
+  value: number,
+  limited: (value: number) => string,
+  unlimited: string,
+  disabled: string,
+) {
+  if (value === -1) return unlimited
+  if (value === 0) return disabled
+  return limited(value)
+}
+
 function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
   const tier = tierFromPlanName(plan.name)
   return {
@@ -79,12 +93,15 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
     tier,
     planName: plan.name,
     name: plan.displayName,
+    description: plan.description ?? null,
     price: Number(plan.price),
     maxUsers: plan.maxRoomMembers,
     storage: formatStorage(plan.defaultStorageBytes),
     defaultStorageBytes: plan.defaultStorageBytes,
     createGroupLimit: plan.createGroupLimit,
     joinGroupLimit: plan.joinGroupLimit,
+    dailyAiChatLimit: plan.dailyAiChatLimit,
+    maxFlashcards: plan.maxFlashcards,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -98,25 +115,28 @@ function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: numb
     tier: pkg.tier,
     planName: tierToPlanName(pkg.tier),
     name: pkg.name,
+    description: null,
     price: pkg.price,
     maxUsers: pkg.maxUsers,
     storage: formatStorage(defaultStorageBytes),
     defaultStorageBytes,
     createGroupLimit: pkg.tier === "free" ? 0 : pkg.tier === "2-4" ? 20 : 50,
     joinGroupLimit,
+    dailyAiChatLimit: pkg.tier === "5+" ? -1 : 5,
+    maxFlashcards: pkg.tier === "5+" ? -1 : pkg.tier === "2-4" ? 100 : 5,
     hasAiChat: true,
     hasFlashcards: true,
   }
 }
 
-type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs"
+type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs" | "upload-settings"
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
 const ADMIN_SECTION_EVENT = "admin-section-change"
 
 function getStoredAdminSection(): AdminSection {
   if (typeof window === "undefined") return "overview"
   const stored = window.sessionStorage.getItem("admin-section")
-  return ["overview", "accounts", "sub-admins", "packages", "activity-logs"].includes(stored ?? "")
+  return ["overview", "accounts", "sub-admins", "packages", "activity-logs", "upload-settings"].includes(stored ?? "")
     ? stored as AdminSection
     : "overview"
 }
@@ -142,6 +162,10 @@ export function AdminDashboard() {
   const [grantTier, setGrantTier] = useState<PackageTier>("2-4")
   const [grantDuration, setGrantDuration] = useState<number>(1)
 
+  // ── Upload settings — TOÀN HỆ THỐNG, không gắn với gói dịch vụ ───────────
+  const [uploadSettings, setUploadSettings] = useState({ maxFileSizeMb: 50, maxFilesPerUpload: 5 })
+  const [uploadSettingsLoading, setUploadSettingsLoading] = useState(false)
+
   // ── Package management local state ────────────────────────────────────────
   const [editablePackages, setEditablePackages] = useState<EditablePkg[]>([])
   const [pkgEditId, setPkgEditId] = useState<string | null>(null)
@@ -149,7 +173,14 @@ export function AdminDashboard() {
   const [showAddPkgModal, setShowAddPkgModal] = useState(false)
   const [packagesLoading, setPackagesLoading] = useState(false)
   const [newPkgForm, setNewPkgForm] = useState({
-    name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30,
+    name: "",
+    price: 0,
+    maxRoomMembers: 4,
+    storage: "1 GB",
+    createGroupLimit: 20,
+    joinGroupLimit: 30,
+    dailyAiChatLimit: 5,
+    maxFlashcards: 5,
   })
 
   const isAdmin = currentUser?.role === "admin"
@@ -179,6 +210,46 @@ export function AdminDashboard() {
   useEffect(() => {
     if (section === "packages") void loadEditablePackages()
   }, [loadEditablePackages, section])
+
+  const loadUploadSettings = useCallback(async () => {
+    setUploadSettingsLoading(true)
+    try {
+      const data = await fetchUploadSettingsApi()
+      setUploadSettings({ maxFileSizeMb: data.maxFileSizeMb, maxFilesPerUpload: data.maxFilesPerUpload })
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : text.actionFailed)
+    } finally {
+      setUploadSettingsLoading(false)
+    }
+  }, [text.actionFailed])
+
+  useEffect(() => {
+    if (section === "upload-settings") void loadUploadSettings()
+  }, [loadUploadSettings, section])
+
+  const saveUploadSettings = () => {
+    if (!Number.isFinite(uploadSettings.maxFileSizeMb) || uploadSettings.maxFileSizeMb <= 0) {
+      setMessage("Dung lượng tối đa mỗi file phải lớn hơn 0.")
+      return
+    }
+    if (!Number.isInteger(uploadSettings.maxFilesPerUpload) || uploadSettings.maxFilesPerUpload < 1) {
+      setMessage("Số lượng file tối đa phải từ 1 trở lên.")
+      return
+    }
+    requirePassword("Cập nhật cấu hình upload", async (adminPassword) => {
+      try {
+        const updated = await updateUploadSettingsApi(
+          uploadSettings.maxFileSizeMb,
+          uploadSettings.maxFilesPerUpload,
+          adminPassword,
+        )
+        setUploadSettings({ maxFileSizeMb: updated.maxFileSizeMb, maxFilesPerUpload: updated.maxFilesPerUpload })
+        setMessage("Đã cập nhật cấu hình upload.")
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : text.actionFailed)
+      }
+    })
+  }
 
   const selectSection = (nextSection: AdminSection) => {
     window.sessionStorage.setItem("admin-section", nextSection)
@@ -217,6 +288,10 @@ export function AdminDashboard() {
   }
 
   const confirmAction = async () => {
+    if (!adminPassword.trim()) {
+      setMessage(text.adminPasswordRequired)
+      return
+    }
     await pendingAction?.run(adminPassword)
     setPendingAction(null)
     setAdminPassword("")
@@ -281,6 +356,13 @@ export function AdminDashboard() {
           <AdminTaskButton label={text.accountsPage} body={text.accountsPageHint} onClick={() => selectSection("accounts")} />
           {isAdmin && <AdminTaskButton label={text.subAdminsPage} body={text.subAdminsPageHint} onClick={() => selectSection("sub-admins")} />}
           {isAdmin && <AdminTaskButton label={text.packagesPage} body={text.packagesPageHint} onClick={() => selectSection("packages")} />}
+          {isAdmin && (
+            <AdminTaskButton
+              label="Cấu hình Upload"
+              body="Chỉnh dung lượng & số lượng file tối đa, áp dụng cho mọi user"
+              onClick={() => selectSection("upload-settings")}
+            />
+          )}
           <AdminTaskButton label={text.activityLogsPage} body={text.activityLogsPageHint} onClick={() => selectSection("activity-logs")} />
         </div>
       </section>
@@ -439,21 +521,18 @@ export function AdminDashboard() {
   }
 
   const buildPlanUpdatePayload = (pkg: EditablePkg): { error: string } | { payload: UpdateSubscriptionPlanInput } => {
-    const defaultStorageBytes = parseStorageBytes(pkg.storage)
-    if (!pkg.name.trim()) return { error: "Tên gói không được để trống." }
-    if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) {
-      return { error: "Dung lượng mặc định không hợp lệ." }
-    }
-    if (pkg.createGroupLimit < 0) return { error: "Giới hạn tạo nhóm phải lớn hơn hoặc bằng 0." }
-    if (pkg.joinGroupLimit < 1) return { error: "Giới hạn tham gia nhóm phải lớn hơn hoặc bằng 1." }
+    if (!Number.isFinite(pkg.price) || pkg.price < 0) return { error: "Giá gói không hợp lệ." }
+    if (pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải từ -1 trở lên." }
+    if (pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải từ -1 trở lên." }
+    if (pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải từ -1 trở lên." }
 
     return {
       payload: {
-        displayName: pkg.name.trim(),
-        maxRoomMembers: pkg.joinGroupLimit,
-        defaultStorageBytes,
+        description: pkg.description?.trim() ?? "",
+        price: pkg.price,
         createGroupLimit: pkg.createGroupLimit,
-        joinGroupLimit: pkg.joinGroupLimit,
+        dailyAiChatLimit: pkg.dailyAiChatLimit,
+        maxFlashcards: pkg.maxFlashcards,
       },
     }
   }
@@ -468,12 +547,12 @@ export function AdminDashboard() {
 
     const runSave = async (adminPassword: string) => {
       try {
-        let savedPlan = pkgFromPlan(
-          await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword),
-        )
-        if (updated.price !== pkg.price) {
-          const pricedPlan = await updatePackagePriceApi(pkg.planName, updated.price, adminPassword)
-          savedPlan = pkgFromPlan(pricedPlan)
+        const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword)
+        const savedPlan = {
+          ...pkgFromPlan(responsePlan),
+          // The current backend response does not expose description yet.
+          // Preserve the value entered in this session until that response is expanded.
+          description: updated.description ?? null,
         }
         setEditablePackages(prev => prev.map(p => p.id === pkg.id ? savedPlan : p))
         setMessage(`Đã cập nhật gói "${savedPlan.name}".`)
@@ -507,6 +586,26 @@ export function AdminDashboard() {
       setMessage("Dung lượng mặc định không hợp lệ.")
       return
     }
+    if (!Number.isInteger(newPkgForm.maxRoomMembers) || newPkgForm.maxRoomMembers < 1) {
+      setMessage("Số thành viên tối đa phải từ 1 trở lên.")
+      return
+    }
+    if (!Number.isInteger(newPkgForm.createGroupLimit) || newPkgForm.createGroupLimit < 0) {
+      setMessage("Giới hạn tạo nhóm phải từ 0 trở lên.")
+      return
+    }
+    if (!Number.isInteger(newPkgForm.joinGroupLimit) || newPkgForm.joinGroupLimit < 1) {
+      setMessage("Giới hạn tham gia nhóm phải từ 1 trở lên.")
+      return
+    }
+    if (!Number.isInteger(newPkgForm.dailyAiChatLimit) || newPkgForm.dailyAiChatLimit < -1) {
+      setMessage("Giới hạn AI Chat phải từ -1 trở lên.")
+      return
+    }
+    if (!Number.isInteger(newPkgForm.maxFlashcards) || newPkgForm.maxFlashcards < -1) {
+      setMessage("Giới hạn flashcard phải từ -1 trở lên.")
+      return
+    }
 
     requirePassword(text.addPackage, async (adminPassword) => {
       try {
@@ -514,20 +613,83 @@ export function AdminDashboard() {
           displayName: newPkgForm.name.trim(),
           price: newPkgForm.price,
           defaultStorageBytes,
-          maxRoomMembers: newPkgForm.joinGroupLimit,
+          maxRoomMembers: newPkgForm.maxRoomMembers,
           createGroupLimit: newPkgForm.createGroupLimit,
           joinGroupLimit: newPkgForm.joinGroupLimit,
+          dailyAiChatLimit: newPkgForm.dailyAiChatLimit,
+          maxFlashcards: newPkgForm.maxFlashcards,
         }, adminPassword)
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
         setShowAddPkgModal(false)
-        setNewPkgForm({ name: "", price: 0, storage: "1 GB", createGroupLimit: 20, joinGroupLimit: 30 })
+        setNewPkgForm({
+          name: "",
+          price: 0,
+          maxRoomMembers: 4,
+          storage: "1 GB",
+          createGroupLimit: 20,
+          joinGroupLimit: 30,
+          dailyAiChatLimit: 5,
+          maxFlashcards: 5,
+        })
         setMessage(`Đã thêm gói "${newPkg.name}".`)
       } catch (error) {
         setMessage(error instanceof Error ? error.message : text.actionFailed)
       }
     })
   }
+
+  const renderUploadSettings = () => (
+    <div className="max-w-md space-y-6">
+      <div className="flex items-center gap-2">
+        <HardDrive className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold text-foreground">Cấu hình giới hạn Upload</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Áp dụng cho toàn bộ user, hoàn toàn độc lập với gói dịch vụ (subscription plan).
+      </p>
+
+      {uploadSettingsLoading ? (
+        <p className="text-sm text-muted-foreground">{text.loading}</p>
+      ) : (
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Dung lượng tối đa mỗi file (MB)
+            </span>
+            <input
+              type="number"
+              min="0.1"
+              step="1"
+              value={uploadSettings.maxFileSizeMb}
+              onChange={e => setUploadSettings(s => ({ ...s, maxFileSizeMb: Number(e.target.value) }))}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Số lượng file tối đa mỗi lần upload
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={uploadSettings.maxFilesPerUpload}
+              onChange={e => setUploadSettings(s => ({ ...s, maxFilesPerUpload: Number(e.target.value) }))}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </label>
+
+          <Button onClick={saveUploadSettings} className="gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Lưu cấu hình
+          </Button>
+        </section>
+      )}
+    </div>
+  )
 
   const renderPackages = () => (
     <div className="space-y-6">
@@ -583,19 +745,22 @@ export function AdminDashboard() {
               )}
 
               <div className="flex flex-1 flex-col p-6">
-                {/* Package name */}
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={draft.name}
-                    onChange={e => setPkgDraft(d => ({ ...d, name: e.target.value }))}
-                    className="mb-1 w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder={text.packageName}
-                  />
-                ) : (
-                  <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
-                )}
+                {/* displayName is intentionally read-only in the new PUT contract. */}
+                <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
                 <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
+
+                {isEditing && (
+                  <label className="mb-4 block">
+                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.descriptionField}</span>
+                    <textarea
+                      rows={2}
+                      value={draft.description ?? ""}
+                      onChange={e => setPkgDraft(d => ({ ...d, description: e.target.value }))}
+                      placeholder={text.descriptionPlaceholder}
+                      className="w-full resize-none rounded-lg border border-primary bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                )}
 
                 {/* Price */}
                 <div className="mb-5 flex items-baseline gap-1">
@@ -627,7 +792,7 @@ export function AdminDashboard() {
                   {/* AI Chat — always on */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>{text.aiChatFeature}</span>
+                    <span>{formatPlanLimit(pkg.dailyAiChatLimit, text.aiChatLimitFeature, text.aiChatUnlimitedFeature, text.aiChatDisabledFeature)}</span>
                   </li>
 
                   {/* Group limits */}
@@ -639,7 +804,7 @@ export function AdminDashboard() {
                           <span className="text-xs w-24 shrink-0">{text.createLimitLabel}</span>
                           <input
                             type="number"
-                            min="0"
+                            min="-1"
                             value={draft.createGroupLimit ?? 0}
                             onChange={e => setPkgDraft(d => ({ ...d, createGroupLimit: Number(e.target.value) }))}
                             className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -648,21 +813,17 @@ export function AdminDashboard() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs w-24 shrink-0">{text.joinLimitLabel}</span>
-                          <input
-                            type="number"
-                            min="0"
-                            value={draft.joinGroupLimit ?? 0}
-                            onChange={e => setPkgDraft(d => ({ ...d, joinGroupLimit: Number(e.target.value) }))}
-                            className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
-                          <span className="text-xs">{text.groupsUnit}</span>
+                          <span className="text-xs">{formatPlanLimit(pkg.joinGroupLimit, limit => `${limit} ${text.groupsUnit}`, text.unlimited, text.unlimited)}</span>
                         </div>
                       </div>
                     ) : (
                       <span>
                         {pkg.createGroupLimit === 0
-                          ? formatAdminText(text.noCreateGroupLimit, { join: pkg.joinGroupLimit })
-                          : formatAdminText(text.createJoinGroupLimit, { create: pkg.createGroupLimit, join: pkg.joinGroupLimit })}
+                          ? text.noCreateGroupFeature(formatPlanLimit(pkg.joinGroupLimit, value => `${value} ${text.groupsUnit}`, text.unlimited, text.unlimited))
+                          : text.groupLimitsFeature(
+                              formatPlanLimit(pkg.createGroupLimit, value => `${value} ${text.groupsUnit}`, text.unlimited, text.unlimited),
+                              formatPlanLimit(pkg.joinGroupLimit, value => `${value} ${text.groupsUnit}`, text.unlimited, text.unlimited),
+                            )}
                       </span>
                     )}
                   </li>
@@ -670,26 +831,43 @@ export function AdminDashboard() {
                   {/* Storage */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    <span>{formatAdminText(text.storageFeature, { storage: pkg.storage })}</span>
+                  </li>
+
+                  {/* Daily AI chat and total flashcard limits are editable in PUT. */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
                     {isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs shrink-0">{text.storageShortLabel}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">{text.dailyAiChatLimitField}</span>
                         <input
-                          type="text"
-                          value={draft.storage ?? ""}
-                          onChange={e => setPkgDraft(d => ({ ...d, storage: e.target.value }))}
-                          className="w-24 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                          placeholder={text.storagePlaceholder}
+                          type="number"
+                          min="-1"
+                          value={draft.dailyAiChatLimit ?? 5}
+                          onChange={e => setPkgDraft(d => ({ ...d, dailyAiChatLimit: Number(e.target.value) }))}
+                          className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
                     ) : (
-                      <span>{formatAdminText(text.storageFeature, { storage: pkg.storage })}</span>
+                      <span>{formatPlanLimit(pkg.dailyAiChatLimit, text.aiChatLimitFeature, text.aiChatUnlimitedFeature, text.aiChatDisabledFeature)}</span>
                     )}
                   </li>
-
-                  {/* Flashcards — always on */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>{text.flashcardsFeature}</span>
+                    {isEditing ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">{text.maxFlashcardsField}</span>
+                        <input
+                          type="number"
+                          min="-1"
+                          value={draft.maxFlashcards ?? 5}
+                          onChange={e => setPkgDraft(d => ({ ...d, maxFlashcards: Number(e.target.value) }))}
+                          className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    ) : (
+                      <span>{formatPlanLimit(pkg.maxFlashcards, text.flashcardsLimitFeature, text.flashcardsUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
+                    )}
                   </li>
                 </ul>
 
@@ -745,7 +923,7 @@ export function AdminDashboard() {
       {/* Add Package Modal */}
       {showAddPkgModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-2xl">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
                 <Plus className="h-5 w-5 text-primary" />
@@ -788,6 +966,16 @@ export function AdminDashboard() {
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.maxRoomMembersField}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newPkgForm.maxRoomMembers}
+                    onChange={e => setNewPkgForm(f => ({ ...f, maxRoomMembers: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.createLimitField}</span>
                   <input
                     type="number"
@@ -819,6 +1007,29 @@ export function AdminDashboard() {
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.dailyAiChatLimitField}</span>
+                  <input
+                    type="number"
+                    min="-1"
+                    value={newPkgForm.dailyAiChatLimit}
+                    onChange={e => setNewPkgForm(f => ({ ...f, dailyAiChatLimit: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.maxFlashcardsField}</span>
+                  <input
+                    type="number"
+                    min="-1"
+                    value={newPkgForm.maxFlashcards}
+                    onChange={e => setNewPkgForm(f => ({ ...f, maxFlashcards: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
@@ -866,6 +1077,7 @@ export function AdminDashboard() {
           {section === "accounts" && renderAccounts()}
           {section === "sub-admins" && isAdmin && renderSubAdmins()}
           {section === "packages" && isAdmin && renderPackages()}
+          {section === "upload-settings" && isAdmin && renderUploadSettings()}
           {section === "activity-logs" && renderActivityLogs()}
         </main>
       </div>

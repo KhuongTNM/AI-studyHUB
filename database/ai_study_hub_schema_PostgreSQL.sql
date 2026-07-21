@@ -485,3 +485,17 @@ ALTER TABLE core.email_otp_tokens ADD FOREIGN KEY (user_id)
 CREATE INDEX idx_eot_user_id   ON core.email_otp_tokens (user_id);
 CREATE INDEX idx_eot_email     ON core.email_otp_tokens (email);
 CREATE INDEX idx_eot_user_used ON core.email_otp_tokens (user_id, used);
+
+-- Chạy 1 lần trên Supabase SQL editor (project không dùng Flyway/Liquibase,
+-- ddl-auto=none nên bảng phải tạo tay).
+CREATE TABLE core.upload_settings (
+    id                     SMALLINT PRIMARY KEY DEFAULT 1,
+    max_file_size_bytes    BIGINT  NOT NULL DEFAULT 52428800,   -- 50MB
+    max_files_per_upload   INTEGER NOT NULL DEFAULT 5,
+    updated_at             TIMESTAMP NOT NULL DEFAULT now(),
+    updated_by_admin_id    UUID,
+    CONSTRAINT chk_single_row CHECK (id = 1)
+);
+
+INSERT INTO core.upload_settings (id, max_file_size_bytes, max_files_per_upload)
+VALUES (1, 52428800, 5);
