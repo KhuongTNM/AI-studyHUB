@@ -72,6 +72,12 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function isGroupUnavailableError(error: unknown) {
+  const message = getErrorMessage(error, "").toUpperCase()
+  return ["GROUP_NOT_FOUND", "GROUP_ACCESS_DENIED", "GROUP_MEMBER_NOT_FOUND"]
+    .some(code => message.includes(code))
+}
+
 function mergeOwnerName(group: GroupChat): GroupChat {
   const owner = group.members.find(member => member.userId === group.ownerId)
   return {
@@ -192,6 +198,44 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       setGroupsLoading(false)
     }
   }, [activeGroupId, currentUser, hydrateGroup])
+
+  // Keep the sidebar in sync across separate browser sessions without
+  // rehydrating every group on each poll. The open group has dedicated
+  // member/message polling below; this lightweight list refresh detects when
+  // a group was deleted or the current user was kicked from it.
+  const refreshGroupList = useCallback(async () => {
+    if (!currentUser) return
+
+    try {
+      const apiGroups = await fetchGroupsApi()
+      setGroups(previousGroups => {
+        const previousById = new Map(previousGroups.map(group => [group.id, group]))
+
+        return apiGroups.map(group => {
+          const previous = previousById.get(group.id)
+          if (!previous) return group
+
+          return {
+            ...previous,
+            groupCode: group.groupCode,
+            name: group.name,
+            description: group.description,
+            ownerId: group.ownerId,
+            ownerName: group.ownerName,
+            maxMembers: group.maxMembers,
+            createdAt: group.createdAt,
+            updatedAt: group.updatedAt,
+          }
+        })
+      })
+      setActiveGroupId(previousId => {
+        if (previousId && apiGroups.some(group => group.id === previousId)) return previousId
+        return apiGroups[0]?.id ?? null
+      })
+    } catch (error) {
+      console.warn("[GroupChat] Failed to refresh group list", error)
+    }
+  }, [currentUser])
 
   const loadGroups = useCallback(async (): Promise<ActionResult> => {
     try {
@@ -331,6 +375,43 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser?.id, hydrateGroup])
 
+  // A group can be deleted or a member can be kicked from another session.
+  // Refresh only the lightweight group list so those changes appear without
+  // a full page reload or repeated hydration of every group.
+  useEffect(() => {
+    if (!currentUser?.id) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refresh = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+      try {
+        await refreshGroupList()
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void refresh() }, 3000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh()
+    }
+
+    window.addEventListener("focus", refresh)
+    window.addEventListener("online", refresh)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("online", refresh)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [currentUser?.id, refreshGroupList])
+
   // The backend currently exposes history but no push channel. Refresh only
   // the open group so separate sessions converge without reloading every group.
   useEffect(() => {
@@ -354,6 +435,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       } catch (error) {
         if (!cancelled) {
           console.warn("[GroupChat] Failed to refresh group messages", { groupId: activeGroupId, error })
+          if (isGroupUnavailableError(error)) void refreshGroupList()
         }
       } finally {
         requestInFlight = false
@@ -367,7 +449,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [activeGroupId, currentUser])
+  }, [activeGroupId, currentUser, refreshGroupList])
 
   // Membership changes happen in another session when someone accepts an
   // invitation or leaves the group. Refresh the open group's members so the
@@ -393,6 +475,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       } catch (error) {
         if (!cancelled) {
           console.warn("[GroupChat] Failed to refresh group members", { groupId: activeGroupId, error })
+          if (isGroupUnavailableError(error)) void refreshGroupList()
         }
       } finally {
         requestInFlight = false
@@ -411,7 +494,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       window.clearInterval(intervalId)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [activeGroupId, currentUser?.id])
+  }, [activeGroupId, currentUser?.id, refreshGroupList])
 
   const createGroup = useCallback(async (
     name: string,
