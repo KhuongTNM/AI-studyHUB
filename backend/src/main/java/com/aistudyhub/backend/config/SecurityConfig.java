@@ -60,6 +60,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/payos/webhook").permitAll()
                         // Bank sync — no JWT, authenticated at network level
                         .requestMatchers("/bank/api/transaction-sync").permitAll()
+                        // Swagger UI / OpenAPI docs — chỉ mở giao diện xem/thử API, các endpoint
+                        // thật sự phía dưới (vd /api/flashcards/**) vẫn yêu cầu Bearer token như cũ.
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
 
                         // ── Authenticated user endpoints ───────────────────────────────────────
                         .requestMatchers("/api/auth/**").authenticated()
