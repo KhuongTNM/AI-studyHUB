@@ -10,10 +10,8 @@ import {
   ACCEPTED_UPLOAD_INPUT_TYPES,
   ACCEPTED_UPLOAD_LABEL,
   ACCEPTED_UPLOAD_MIME_TYPES,
-  MAX_UPLOAD_FILE_SIZE_BYTES,
-  MAX_UPLOAD_FILE_SIZE_MB,
-  MAX_UPLOAD_FILES_COUNT,
 } from "@/configs/upload"
+import { useUploadSettings } from "@/hooks/useUploadSettings"
 
 export function UploadModal({
   initialSubject = "",
@@ -40,6 +38,7 @@ export function UploadModal({
   const inputRef = useRef<HTMLInputElement>(null)
   const { language } = useApp()
   const text = uploadText[language]
+  const { maxFileSizeBytes, maxFileSizeMb, maxFilesPerUpload } = useUploadSettings()
 
   const handleFiles = (files: File[]) => {
     setError(null)
@@ -57,7 +56,7 @@ export function UploadModal({
         continue
       }
 
-      if (f.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
+      if (f.size > maxFileSizeBytes) {
         hasOversized = true
         continue
       }
@@ -72,19 +71,19 @@ export function UploadModal({
       )
     } else if (hasOversized) {
       setError(language === "vi" 
-        ? `Có file vượt quá dung lượng tối đa cho phép (${MAX_UPLOAD_FILE_SIZE_MB}MB).`
-        : `Some files exceed the maximum allowed size (${MAX_UPLOAD_FILE_SIZE_MB}MB).`
+        ? `Có file vượt quá dung lượng tối đa cho phép (${maxFileSizeMb}MB).`
+        : `Some files exceed the maximum allowed size (${maxFileSizeMb}MB).`
       )
     }
 
     setSelectedFiles(prev => {
       const combined = [...prev, ...valid]
-      if (combined.length > MAX_UPLOAD_FILES_COUNT) {
+      if (combined.length > maxFilesPerUpload) {
         setError(language === "vi" 
-          ? `Chỉ được upload tối đa ${MAX_UPLOAD_FILES_COUNT} file cùng lúc.`
-          : `You can only upload up to ${MAX_UPLOAD_FILES_COUNT} files at a time.`
+          ? `Chỉ được upload tối đa ${maxFilesPerUpload} file cùng lúc.`
+          : `You can only upload up to ${maxFilesPerUpload} files at a time.`
         )
-        return combined.slice(0, MAX_UPLOAD_FILES_COUNT)
+        return combined.slice(0, maxFilesPerUpload)
       }
       return combined
     })
@@ -185,8 +184,8 @@ export function UploadModal({
             <p className="text-xs text-muted-foreground">{ACCEPTED_UPLOAD_LABEL}</p>
             <p className="mt-1 text-xs text-amber-500 font-medium">
               {language === "vi" 
-                ? `Tối đa ${MAX_UPLOAD_FILES_COUNT} file, mỗi file không quá ${MAX_UPLOAD_FILE_SIZE_MB}MB`
-                : `Max ${MAX_UPLOAD_FILES_COUNT} files, up to ${MAX_UPLOAD_FILE_SIZE_MB}MB per file`}
+                ? `Tối đa ${maxFilesPerUpload} file, mỗi file không quá ${maxFileSizeMb}MB`
+                : `Max ${maxFilesPerUpload} files, up to ${maxFileSizeMb}MB per file`}
             </p>
             <input
               ref={inputRef}

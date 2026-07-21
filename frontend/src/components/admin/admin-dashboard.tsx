@@ -21,6 +21,7 @@ import {
   type ApiSubscriptionPlan,
   type UpdateSubscriptionPlanInput,
 } from "@/services/api/subscription-plans"
+import { fetchUploadSettingsApi, updateUploadSettingsApi } from "@/services/api/upload-settings"
 
 // ─── Editable package type used only in admin UI ───────────────────────────
 interface EditablePkg {
@@ -128,14 +129,14 @@ function pkgFromPrice(pkg: { id: string; tier: string; name: string; price: numb
   }
 }
 
-type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs"
+type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs" | "upload-settings"
 type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
 const ADMIN_SECTION_EVENT = "admin-section-change"
 
 function getStoredAdminSection(): AdminSection {
   if (typeof window === "undefined") return "overview"
   const stored = window.sessionStorage.getItem("admin-section")
-  return ["overview", "accounts", "sub-admins", "packages", "activity-logs"].includes(stored ?? "")
+  return ["overview", "accounts", "sub-admins", "packages", "activity-logs", "upload-settings"].includes(stored ?? "")
     ? stored as AdminSection
     : "overview"
 }
@@ -160,6 +161,10 @@ export function AdminDashboard() {
   const [grantTarget, setGrantTarget] = useState<User | null>(null)
   const [grantTier, setGrantTier] = useState<PackageTier>("2-4")
   const [grantDuration, setGrantDuration] = useState<number>(1)
+
+  // ── Upload settings — TOÀN HỆ THỐNG, không gắn với gói dịch vụ ───────────
+  const [uploadSettings, setUploadSettings] = useState({ maxFileSizeMb: 50, maxFilesPerUpload: 5 })
+  const [uploadSettingsLoading, setUploadSettingsLoading] = useState(false)
 
   // ── Package management local state ────────────────────────────────────────
   const [editablePackages, setEditablePackages] = useState<EditablePkg[]>([])
@@ -205,6 +210,46 @@ export function AdminDashboard() {
   useEffect(() => {
     if (section === "packages") void loadEditablePackages()
   }, [loadEditablePackages, section])
+
+  const loadUploadSettings = useCallback(async () => {
+    setUploadSettingsLoading(true)
+    try {
+      const data = await fetchUploadSettingsApi()
+      setUploadSettings({ maxFileSizeMb: data.maxFileSizeMb, maxFilesPerUpload: data.maxFilesPerUpload })
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : text.actionFailed)
+    } finally {
+      setUploadSettingsLoading(false)
+    }
+  }, [text.actionFailed])
+
+  useEffect(() => {
+    if (section === "upload-settings") void loadUploadSettings()
+  }, [loadUploadSettings, section])
+
+  const saveUploadSettings = () => {
+    if (!Number.isFinite(uploadSettings.maxFileSizeMb) || uploadSettings.maxFileSizeMb <= 0) {
+      setMessage("Dung lượng tối đa mỗi file phải lớn hơn 0.")
+      return
+    }
+    if (!Number.isInteger(uploadSettings.maxFilesPerUpload) || uploadSettings.maxFilesPerUpload < 1) {
+      setMessage("Số lượng file tối đa phải từ 1 trở lên.")
+      return
+    }
+    requirePassword("Cập nhật cấu hình upload", async (adminPassword) => {
+      try {
+        const updated = await updateUploadSettingsApi(
+          uploadSettings.maxFileSizeMb,
+          uploadSettings.maxFilesPerUpload,
+          adminPassword,
+        )
+        setUploadSettings({ maxFileSizeMb: updated.maxFileSizeMb, maxFilesPerUpload: updated.maxFilesPerUpload })
+        setMessage("Đã cập nhật cấu hình upload.")
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : text.actionFailed)
+      }
+    })
+  }
 
   const selectSection = (nextSection: AdminSection) => {
     window.sessionStorage.setItem("admin-section", nextSection)
@@ -311,6 +356,13 @@ export function AdminDashboard() {
           <AdminTaskButton label={text.accountsPage} body={text.accountsPageHint} onClick={() => selectSection("accounts")} />
           {isAdmin && <AdminTaskButton label={text.subAdminsPage} body={text.subAdminsPageHint} onClick={() => selectSection("sub-admins")} />}
           {isAdmin && <AdminTaskButton label={text.packagesPage} body={text.packagesPageHint} onClick={() => selectSection("packages")} />}
+          {isAdmin && (
+            <AdminTaskButton
+              label="Cấu hình Upload"
+              body="Chỉnh dung lượng & số lượng file tối đa, áp dụng cho mọi user"
+              onClick={() => selectSection("upload-settings")}
+            />
+          )}
           <AdminTaskButton label={text.activityLogsPage} body={text.activityLogsPageHint} onClick={() => selectSection("activity-logs")} />
         </div>
       </section>
@@ -586,6 +638,58 @@ export function AdminDashboard() {
       }
     })
   }
+
+  const renderUploadSettings = () => (
+    <div className="max-w-md space-y-6">
+      <div className="flex items-center gap-2">
+        <HardDrive className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold text-foreground">Cấu hình giới hạn Upload</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Áp dụng cho toàn bộ user, hoàn toàn độc lập với gói dịch vụ (subscription plan).
+      </p>
+
+      {uploadSettingsLoading ? (
+        <p className="text-sm text-muted-foreground">{text.loading}</p>
+      ) : (
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Dung lượng tối đa mỗi file (MB)
+            </span>
+            <input
+              type="number"
+              min="0.1"
+              step="1"
+              value={uploadSettings.maxFileSizeMb}
+              onChange={e => setUploadSettings(s => ({ ...s, maxFileSizeMb: Number(e.target.value) }))}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Số lượng file tối đa mỗi lần upload
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={uploadSettings.maxFilesPerUpload}
+              onChange={e => setUploadSettings(s => ({ ...s, maxFilesPerUpload: Number(e.target.value) }))}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </label>
+
+          <Button onClick={saveUploadSettings} className="gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Lưu cấu hình
+          </Button>
+        </section>
+      )}
+    </div>
+  )
 
   const renderPackages = () => (
     <div className="space-y-6">
@@ -973,6 +1077,7 @@ export function AdminDashboard() {
           {section === "accounts" && renderAccounts()}
           {section === "sub-admins" && isAdmin && renderSubAdmins()}
           {section === "packages" && isAdmin && renderPackages()}
+          {section === "upload-settings" && isAdmin && renderUploadSettings()}
           {section === "activity-logs" && renderActivityLogs()}
         </main>
       </div>

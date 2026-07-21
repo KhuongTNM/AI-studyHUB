@@ -23,7 +23,8 @@ public class ActivityLog {
         DELETE_DOCUMENT,
         RESTORE_DOCUMENT,
         PREVIEW_DOCUMENT,
-        CREATE_SUB_ADMIN
+        CREATE_SUB_ADMIN,
+        UPDATE_UPLOAD_SETTINGS
     }
 
     public enum TargetType {
