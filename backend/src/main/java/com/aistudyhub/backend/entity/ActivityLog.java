@@ -36,7 +36,8 @@ public class ActivityLog {
     @Id
     private UUID id;
 
-    @Column(name = "user_id", nullable = false)
+    /** Khớp với cột actor_id trong Supabase (schema dùng actor_id, không phải user_id). */
+    @Column(name = "actor_id", nullable = false)
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
@@ -47,12 +48,19 @@ public class ActivityLog {
     @Column(name = "target_type", length = 50)
     private TargetType targetType;
 
-    @Column(name = "target_id")
-    private UUID targetId;
+    /** Cột target_id trong Supabase là VARCHAR(255), không phải UUID. */
+    @Column(name = "target_id", length = 255)
+    private String targetId;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    /** Cột details trong Supabase là JSONB — lưu dưới dạng String TEXT từ phía Java. */
+    @Column(name = "details", columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    /** Helper — đặt target_id từ UUID (tự convert sang String). */
+    public void setTargetId(UUID uuid) {
+        this.targetId = uuid != null ? uuid.toString() : null;
+    }
 }
