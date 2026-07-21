@@ -9,12 +9,12 @@ import java.math.BigDecimal;
 
 public class CreateSubscriptionPlanRequest {
 
-    @NotBlank(message = "Tên gói không được để trống.")
-    @Size(max = 50, message = "Tên gói không được vượt quá 50 ký tự.")
+    private String name;
+
     private String displayName;
 
     @NotNull(message = "Giá không được để trống.")
-    @DecimalMin(value = "0.0", inclusive = true, message = "Giá không được âm.")
+    @DecimalMin(value = "0.01", message = "Giá gói cước phải lớn hơn 0.")
     private BigDecimal price;
 
     @Min(value = 1, message = "Số lượng thành viên tối đa không hợp lệ.")
@@ -37,6 +37,14 @@ public class CreateSubscriptionPlanRequest {
 
     @NotBlank(message = "Mật khẩu Admin không được để trống.")
     private String adminPassword;
+
+    public String getName() {
+        return name != null && !name.isBlank() ? name : displayName;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 
     public String getDisplayName() {
         return displayName;

@@ -105,21 +105,12 @@ public class FlashcardService {
     public FlashcardResponse createFlashcard(CreateFlashcardRequest request) {
         UUID userId = getCurrentUserId();
 
-        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
-        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+        if (request.getDocumentId() != null) {
+            Document doc = documentRepository.findById(request.getDocumentId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Document not found"));
 
-        if (!isAdmin) {
-            com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-            com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
-
-            int maxCards = plan.getMaxFlashcards();
-            if (maxCards != -1) {
-                long currentCards = flashcardRepository.countByUserId(userId);
-                if (currentCards >= maxCards) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "Gói của bạn chỉ được tạo tối đa " + maxCards + " flashcards. Vui lòng nâng cấp gói.");
-                }
+            if (!doc.getUserId().equals(userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "You don't own this document");
             }
         }
 
@@ -223,7 +214,7 @@ public class FlashcardService {
             // BR-101/BR-103: quota tổng — giữ nguyên hành vi & pattern lỗi (ApiException) đã có.
             int maxCards = plan.getMaxFlashcards();
             if (maxCards != -1) {
-                long currentCards = flashcardRepository.countByUserId(userId);
+                long currentCards = flashcardRepository.countByUserIdAndIsAiGeneratedTrue(userId);
                 if (currentCards + requestedCount > maxCards) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "Gói của bạn chỉ cho phép tạo tối đa " + maxCards + " flashcards. Bạn hiện có " + currentCards + " thẻ, không thể tạo thêm " + requestedCount + " thẻ.");
                 }

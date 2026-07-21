@@ -424,15 +424,13 @@ CREATE TABLE IF NOT EXISTS payment.subscriptions (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- 3. THÊM CÁC CỘT QUẢN LÝ VÀ GIỚI HẠN MỚI CHO BẢNG GÓI DỊCH VỤ
--- is_deleted: Phục vụ soft-delete bảo vệ dữ liệu lịch sử
--- description: Mô tả chi tiết gói dịch vụ
--- daily_ai_chat_limit: Giới hạn số câu hỏi Chat AI mỗi ngày (-1 = không giới hạn)
--- max_flashcards: Giới hạn số lượng thẻ flashcard tối đa (-1 = không giới hạn)
+-- 3. THÊM CÁC CỘT QUẢN LÝ VÀ GIỚI HẠN MỚI CHO BẢNG GÓI DỊCH VỤ & XÓA CÁC CỘT KHÔNG DÙNG
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
-ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS description VARCHAR(500);
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS daily_ai_chat_limit INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS max_flashcards INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS display_name;
+ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS description;
+
 
 -- 4. CẬP NHẬT CẤU HÌNH HẠN MỨC MẶC ĐỊNH CHO CÁC GÓI HIỆN TẠI
 

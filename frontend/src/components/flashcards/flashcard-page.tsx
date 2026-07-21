@@ -97,6 +97,9 @@ export function FlashcardPage() {
     refreshError: "Không thể tải lại flashcard.",
     refreshing: "Đang tải lại...",
     validationError: "Vui lòng nhập cả câu hỏi và câu trả lời.",
+    termTooLong: "Term/Front không được vượt quá 250 ký tự.",
+    definitionTooLong: "Definition/Back không được vượt quá 250 ký tự.",
+    documentNotOwned: "Bạn không có quyền truy cập tài liệu này.",
     aiBadge: "AI",
     manualBadge: "Tùy chỉnh",
     generateSuccess: (count: number) => `Đã tạo ${count} flashcard từ tài liệu.`,
@@ -158,6 +161,9 @@ export function FlashcardPage() {
     refreshError: "Could not refresh flashcards.",
     refreshing: "Refreshing...",
     validationError: "Please enter both a question and an answer.",
+    termTooLong: "The question must not exceed 250 characters.",
+    definitionTooLong: "The answer must not exceed 250 characters.",
+    documentNotOwned: "You don't have access to this document.",
     aiBadge: "AI",
     manualBadge: "Manual",
     generateSuccess: (count: number) => `Generated ${count} flashcard${count === 1 ? "" : "s"} from the document.`,
@@ -290,10 +296,8 @@ export function FlashcardPage() {
           toast.error(result.message ?? text.updateError)
         }
       } else {
-        if (!isUnlimited && remainingQuota <= 0) {
-          toast.error(text.quotaExhausted)
-          return
-        }
+        // BR-107: không chặn tạo thủ công dù user đã hết quota AI.
+        // Quota check (remainingQuota <= 0) chỉ áp dụng cho nút "Tạo bằng AI".
         const result = await addFlashcards([
           {
             question: question.trim(),
@@ -307,7 +311,12 @@ export function FlashcardPage() {
           setFlipped(false)
           setActiveIndex(0)
         } else {
-          toast.error(result.message ?? text.createError)
+          // Hiển thị thẳng field message từ BE (theo API Contract Mục 6, Gap #5):
+          // BE đã trả sẵn message tiếng Việt cho tất cả kịch bản lỗi
+          // (vượt độ dài — BR-108, tài liệu không thuộc sở hữu — Gap #2,
+          // cũng như các lỗi ĐÃ CÓ: NotBlank, 401, 500).
+          // FE KHÔNG switch/case theo nội dung message vì BE chưa có ErrorCode ổn định.
+          toast.error(result.message || text.createError)
         }
       }
     } finally {

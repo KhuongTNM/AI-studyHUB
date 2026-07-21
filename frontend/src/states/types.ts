@@ -81,7 +81,6 @@ export interface GroupChatMessage {
 export interface GroupChat {
   id: string
   groupCode: string
-  password: string
   name: string
   description?: string
   ownerId: string

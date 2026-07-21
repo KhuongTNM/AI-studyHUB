@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
 import {
-  AlertCircle, Download, Eye, EyeOff, FileText, Image, Info, Loader2, LogOut, Mail, MessageCircle,
+  AlertCircle, Download, FileText, Image, Info, Loader2, LogOut, Mail, MessageCircle,
   MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, UserMinus, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,8 +13,8 @@ export function GroupChatPage() {
   const {
     currentUser, openAuthModal, language, documents,
     groups, activeGroupId, groupsLoading, groupLoadError, groupCreateLimit, groupJoinLimit,
-    setActiveGroupId, loadGroups, createGroup, joinGroup, searchGroupInvitationUser, inviteGroupMemberByEmail,
-    leaveGroup, kickGroupMember, deleteGroup, getGroupPassword,
+    setActiveGroupId, loadGroups, createGroup, searchGroupInvitationUser, inviteGroupMemberByEmail,
+    leaveGroup, kickGroupMember, deleteGroup,
     updateGroupMuted, updateGroupPinned,
     sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
     exportGroupChat, reportGroup, generateGroupCode,
@@ -24,7 +24,6 @@ export function GroupChatPage() {
   const [search, setSearch] = useState("")
   const [message, setMessage] = useState("")
   const [showCreate, setShowCreate] = useState(false)
-  const [showJoin, setShowJoin] = useState(false)
   const [showFileShare, setShowFileShare] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
@@ -33,26 +32,17 @@ export function GroupChatPage() {
   const [newGroupName, setNewGroupName] = useState("")
   const [newGroupDesc, setNewGroupDesc] = useState("")
   const [newGroupCode, setNewGroupCode] = useState(generateGroupCode)
-  const [newGroupPassword, setNewGroupPassword] = useState("")
-  const [joinGroupCode, setJoinGroupCode] = useState("")
-  const [joinGroupPassword, setJoinGroupPassword] = useState("")
   const [error, setError] = useState("")
   const [mockNotice, setMockNotice] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deletePassword, setDeletePassword] = useState("")
   const [showKickConfirm, setShowKickConfirm] = useState(false)
   const [memberToKick, setMemberToKick] = useState<GroupChatMember | null>(null)
-  const [kickPassword, setKickPassword] = useState("")
   const [kickError, setKickError] = useState("")
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteCandidate, setInviteCandidate] = useState<GroupInvitationCandidate | null>(null)
   const [inviteSearching, setInviteSearching] = useState(false)
   const [inviteBusy, setInviteBusy] = useState(false)
   const [inviteError, setInviteError] = useState("")
-  const [groupPassword, setGroupPassword] = useState("")
-  const [groupPasswordVisible, setGroupPasswordVisible] = useState(false)
-  const [groupPasswordBusy, setGroupPasswordBusy] = useState(false)
-  const [groupPasswordError, setGroupPasswordError] = useState("")
   const [groupActionBusy, setGroupActionBusy] = useState(false)
   const [reportReason, setReportReason] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
@@ -82,13 +72,6 @@ export function GroupChatPage() {
   useEffect(() => {
     if (!activeGroupId && activeGroup) setActiveGroupId(activeGroup.id)
   }, [activeGroup, activeGroupId, setActiveGroupId])
-
-  useEffect(() => {
-    setGroupPassword("")
-    setGroupPasswordVisible(false)
-    setGroupPasswordBusy(false)
-    setGroupPasswordError("")
-  }, [activeGroup?.id])
 
   const getInviteErrorText = useMemo(() => (inviteErrorCode?: string) => {
     const code = inviteErrorCode?.toUpperCase() ?? ""
@@ -148,7 +131,7 @@ export function GroupChatPage() {
 
   const handleCreateGroup = async () => {
     setGroupActionBusy(true)
-    const result = await createGroup(newGroupName, newGroupDesc, newGroupPassword, newGroupCode)
+    const result = await createGroup(newGroupName, newGroupDesc, newGroupCode)
     setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.createFailed)
@@ -157,23 +140,8 @@ export function GroupChatPage() {
     setError("")
     setNewGroupName("")
     setNewGroupDesc("")
-    setNewGroupPassword("")
     setNewGroupCode(generateGroupCode())
     setShowCreate(false)
-  }
-
-  const handleJoinGroup = async () => {
-    setGroupActionBusy(true)
-    const result = await joinGroup(joinGroupCode, joinGroupPassword)
-    setGroupActionBusy(false)
-    if (!result.success) {
-      setError(result.error ?? text.joinFailed)
-      return
-    }
-    setError("")
-    setJoinGroupCode("")
-    setJoinGroupPassword("")
-    setShowJoin(false)
   }
 
   const handleInviteMember = async () => {
@@ -196,7 +164,6 @@ export function GroupChatPage() {
   const handleLeaveOrDelete = async () => {
     if (!activeGroup || !currentUser) return
     if (activeGroup.ownerId === currentUser.id) {
-      setDeletePassword("")
       setShowDeleteConfirm(true)
       return
     }
@@ -214,21 +181,19 @@ export function GroupChatPage() {
   const handleConfirmDelete = async () => {
     if (!activeGroup) return
     setGroupActionBusy(true)
-    const result = await deleteGroup(activeGroup.id, deletePassword)
+    const result = await deleteGroup(activeGroup.id)
     setGroupActionBusy(false)
     if (!result.success) {
       setError(result.error ?? text.actionFailed)
       return
     }
     setError("")
-    setDeletePassword("")
     setShowDeleteConfirm(false)
   }
 
   const openKickConfirm = (member: GroupChatMember) => {
     if (!isActiveGroupOwner || member.role === "owner") return
     setMemberToKick(member)
-    setKickPassword("")
     setKickError("")
     setShowKickConfirm(true)
   }
@@ -236,14 +201,11 @@ export function GroupChatPage() {
   const closeKickConfirm = () => {
     setShowKickConfirm(false)
     setMemberToKick(null)
-    setKickPassword("")
     setKickError("")
   }
 
   const getKickErrorText = (error?: string) => {
     switch (error) {
-      case "GROUP_PASSWORD_INVALID":
-        return text.kickPasswordWrong
       case "GROUP_OWNER_REQUIRED":
         return text.kickOwnerOnly
       case "GROUP_CANNOT_KICK_SELF":
@@ -261,7 +223,7 @@ export function GroupChatPage() {
     if (!activeGroup || !memberToKick) return
     setGroupActionBusy(true)
     setKickError("")
-    const result = await kickGroupMember(activeGroup.id, memberToKick.userId, kickPassword)
+    const result = await kickGroupMember(activeGroup.id, memberToKick.userId)
     setGroupActionBusy(false)
     if (!result.success) {
       setKickError(getKickErrorText(result.error))
@@ -272,51 +234,8 @@ export function GroupChatPage() {
     closeKickConfirm()
   }
 
-  const getGroupPasswordErrorText = (error?: string) => {
-    switch (error) {
-      case "GROUP_OWNER_REQUIRED":
-        return text.passwordOwnerOnly
-      case "GROUP_NOT_FOUND":
-        return text.groupNotFound
-      case "UNAUTHENTICATED":
-        return text.sessionExpired
-      case "GROUP_PASSWORD_NOT_AVAILABLE":
-        return text.passwordFetchFailed
-      default:
-        return error || text.passwordFetchFailed
-    }
-  }
-
-  const handleToggleGroupPassword = async () => {
-    if (!activeGroup || !isActiveGroupOwner) return
-
-    setGroupPasswordError("")
-    if (groupPasswordVisible) {
-      setGroupPasswordVisible(false)
-      return
-    }
-    if (groupPassword) {
-      setGroupPasswordVisible(true)
-      return
-    }
-
-    setGroupPasswordBusy(true)
-    const result = await getGroupPassword(activeGroup.id)
-    setGroupPasswordBusy(false)
-    if (!result.success || !result.password) {
-      setGroupPasswordError(getGroupPasswordErrorText(result.error))
-      return
-    }
-
-    setGroupPassword(result.password)
-    setGroupPasswordVisible(true)
-  }
-
   const closeGroupInfo = () => {
     setShowInfo(false)
-    setGroupPassword("")
-    setGroupPasswordVisible(false)
-    setGroupPasswordError("")
   }
 
   const closeMembers = () => {
@@ -482,20 +401,6 @@ export function GroupChatPage() {
               className="h-9 w-full rounded-lg border border-border bg-muted/50 pl-9 pr-3 text-sm outline-none focus:border-primary"
             />
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-3 w-full justify-center"
-            disabled={joinedGroupCount >= groupJoinLimit}
-            onClick={() => {
-              setError("")
-              setShowJoin(true)
-            }}
-          >
-            <Users className="mr-2 h-4 w-4" />
-            {text.joinGroup}
-          </Button>
-          <p className="mt-2 text-[11px] text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
           {groupLoadError && (
             <div className="mt-3 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-xs text-destructive">
               <div className="flex items-start gap-2">
@@ -682,40 +587,6 @@ export function GroupChatPage() {
         )}
       </section>
 
-      {showJoin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">{text.joinGroup}</h2>
-                <p className="text-sm text-muted-foreground">{text.joinHint(groupJoinLimit)}</p>
-              </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowJoin(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-3">
-              <input
-                value={joinGroupCode}
-                onChange={event => setJoinGroupCode(event.target.value.toUpperCase())}
-                placeholder={text.groupId}
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-              />
-              <input
-                value={joinGroupPassword}
-                onChange={event => setJoinGroupPassword(event.target.value)}
-                placeholder={text.password}
-                type="password"
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-              />
-              <Button type="button" className="w-full" disabled={joinedGroupCount >= groupJoinLimit || groupActionBusy} onClick={handleJoinGroup}>
-                {text.join}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showMembers && activeGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
@@ -821,19 +692,9 @@ export function GroupChatPage() {
               {text.kickConfirmBody(memberToKick.displayName, activeGroup.name)}
             </p>
             {kickError && <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{kickError}</p>}
-            <label className="mt-4 block">
-              <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
-              <input
-                value={kickPassword}
-                onChange={event => setKickPassword(event.target.value)}
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                placeholder={text.kickPasswordPlaceholder}
-                type="password"
-              />
-            </label>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={closeKickConfirm}>{text.cancel}</Button>
-              <Button variant="destructive" onClick={handleConfirmKick} disabled={groupActionBusy || !kickPassword.trim()}>
+              <Button variant="destructive" onClick={handleConfirmKick} disabled={groupActionBusy}>
                 <UserMinus className="mr-2 h-4 w-4" />
                 {text.kickMember}
               </Button>
@@ -854,33 +715,6 @@ export function GroupChatPage() {
             <div className="space-y-3 text-sm">
               <InfoRow label={text.groupName} value={activeGroup.name} />
               <InfoRow label={text.groupId} value={activeGroup.groupCode} />
-              <InfoRow
-                label={text.password}
-                value={
-                  isActiveGroupOwner ? (
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 break-all font-mono">
-                          {groupPasswordVisible && groupPassword ? groupPassword : "••••••••"}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          onClick={handleToggleGroupPassword}
-                          disabled={groupPasswordBusy}
-                          title={groupPasswordVisible ? text.hidePassword : text.showPassword}
-                          aria-label={groupPasswordVisible ? text.hidePassword : text.showPassword}
-                        >
-                          {groupPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      {groupPasswordError && <p className="mt-1 text-xs text-destructive">{groupPasswordError}</p>}
-                    </div>
-                  ) : text.passwordProtected
-                }
-              />
               <InfoRow label={text.owner} value={activeGroup.ownerName} />
               <InfoRow label={text.memberCount} value={`${activeGroup.members.length}/${activeGroup.maxMembers}`} />
               <InfoRow label={text.createdAt} value={activeGroup.createdAt.toLocaleString()} />
@@ -971,16 +805,6 @@ export function GroupChatPage() {
               />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
-              <input
-                value={newGroupPassword}
-                onChange={event => setNewGroupPassword(event.target.value)}
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                placeholder={text.passwordPlaceholder}
-                type="password"
-              />
-            </label>
-            <label className="mt-3 block">
               <span className="mb-1 block text-sm font-medium text-foreground">{text.description}</span>
               <textarea
                 value={newGroupDesc}
@@ -1004,19 +828,9 @@ export function GroupChatPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {text.deleteConfirmBody(activeGroup.name, activeGroup.groupCode)}
             </p>
-            <label className="mt-4 block">
-              <span className="mb-1 block text-sm font-medium text-foreground">{text.password}</span>
-              <input
-                value={deletePassword}
-                onChange={event => setDeletePassword(event.target.value)}
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                placeholder={text.deletePasswordPlaceholder}
-                type="password"
-              />
-            </label>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>{text.cancel}</Button>
-              <Button variant="destructive" onClick={handleConfirmDelete} disabled={groupActionBusy || !deletePassword.trim()}>{text.deleteGroup}</Button>
+              <Button variant="destructive" onClick={handleConfirmDelete} disabled={groupActionBusy}>{text.deleteGroup}</Button>
             </div>
           </div>
         </div>
@@ -1239,26 +1053,13 @@ const groupText = {
     groupsJoined: "nhóm đã tham gia",
     newGroup: "Tạo nhóm mới",
     search: "Tìm kiếm nhóm",
-    joinGroup: "Tham gia nhóm",
-    join: "Tham gia",
-    joinHint: (groups: number) => `Bạn có thể tham gia tối đa ${groups} nhóm, tính cả nhóm tự tạo.`,
     groupId: "Group ID",
-    password: "Mật khẩu nhóm",
-    passwordPlaceholder: "Nhập mật khẩu để bạn học tham gia",
-    passwordProtected: "Chỉ chủ nhóm có thể xem",
-    showPassword: "Hiện mật khẩu nhóm",
-    hidePassword: "Ẩn mật khẩu nhóm",
-    passwordOwnerOnly: "Chỉ chủ nhóm mới có quyền xem mật khẩu nhóm.",
-    passwordFetchFailed: "Không thể lấy mật khẩu nhóm.",
-    groupNotFound: "Không tìm thấy nhóm.",
     sessionExpired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
     regenerate: "Tạo lại",
     leaveGroup: "Rời nhóm",
     deleteGroup: "Xóa nhóm",
     deleteConfirmTitle: "Xác nhận xóa nhóm",
-    deleteConfirmBody: (name: string, code: string) => `Nhập mật khẩu nhóm để xóa "${name}" (${code}). Backend sẽ xác thực mật khẩu trước khi xóa.`,
-    deletePasswordPlaceholder: "Nhập mật khẩu nhóm",
-    deletePasswordWrong: "Mật khẩu nhóm không đúng.",
+    deleteConfirmBody: (name: string, code: string) => `Bạn có chắc muốn xóa nhóm "${name}" (${code})? Hành động này không thể hoàn tác.`,
     uploadImage: "Upload hình ảnh",
     imageUploaded: "Hình ảnh đã được upload vào chat nhóm.",
     imageUploadFailed: "Không thể upload hình ảnh.",
@@ -1282,9 +1083,7 @@ const groupText = {
     member: "Thành viên",
     kickMember: "Xóa thành viên",
     kickConfirmTitle: "Xóa thành viên khỏi nhóm",
-    kickConfirmBody: (member: string, group: string) => `Nhập mật khẩu nhóm để xóa "${member}" khỏi nhóm "${group}". Backend sẽ xác thực trước khi xóa.`,
-    kickPasswordPlaceholder: "Nhập mật khẩu nhóm",
-    kickPasswordWrong: "Mật khẩu nhóm không đúng.",
+    kickConfirmBody: (member: string, group: string) => `Bạn có chắc muốn xóa "${member}" khỏi nhóm "${group}"?`,
     kickOwnerOnly: "Chỉ chủ nhóm mới có thể xóa thành viên.",
     kickSelf: "Chủ nhóm không thể tự xóa mình.",
     memberNotFound: "Không tìm thấy thành viên trong nhóm.",
@@ -1293,7 +1092,7 @@ const groupText = {
     groupInfo: "Thông tin nhóm",
     memberCount: "Số thành viên",
     createdAt: "Ngày tạo",
-    groupInfoBackendNote: "Mật khẩu chỉ được lấy khi chủ nhóm bấm hiện. Thành viên khác không thấy nút này.",
+    groupInfoBackendNote: "Thành viên mới tham gia bằng lời mời và xác nhận trong thông báo.",
     groupOptions: "Tùy chọn nhóm",
     muteGroup: "Tắt thông báo nhóm",
     unmuteGroup: "Bật thông báo nhóm",
@@ -1324,7 +1123,6 @@ const groupText = {
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
     login: "Đăng nhập",
     createFailed: "Không thể tạo nhóm.",
-    joinFailed: "Không thể tham gia nhóm.",
     actionFailed: "Không thể thực hiện thao tác.",
     sendFailed: "Không thể gửi tin nhắn.",
     shareFailed: "Không thể chia sẻ tài liệu.",
@@ -1358,26 +1156,13 @@ const groupText = {
     groupsJoined: "groups joined",
     newGroup: "Create group",
     search: "Search groups",
-    joinGroup: "Join group",
-    join: "Join",
-    joinHint: (groups: number) => `You can join up to ${groups} groups, including groups you created.`,
     groupId: "Group ID",
-    password: "Group password",
-    passwordPlaceholder: "Enter the password classmates will use to join",
-    passwordProtected: "Only the group owner can view it",
-    showPassword: "Show group password",
-    hidePassword: "Hide group password",
-    passwordOwnerOnly: "Only the group owner can view this group password.",
-    passwordFetchFailed: "Could not retrieve the group password.",
-    groupNotFound: "Group not found.",
     sessionExpired: "Your session has expired. Please log in again.",
     regenerate: "Regenerate",
     leaveGroup: "Leave group",
     deleteGroup: "Delete group",
     deleteConfirmTitle: "Confirm group deletion",
-    deleteConfirmBody: (name: string, code: string) => `Enter the group password to delete "${name}" (${code}). The backend will verify the password before deletion.`,
-    deletePasswordPlaceholder: "Enter group password",
-    deletePasswordWrong: "Group password is incorrect.",
+    deleteConfirmBody: (name: string, code: string) => `Are you sure you want to delete "${name}" (${code})? This action cannot be undone.`,
     uploadImage: "Upload image",
     imageUploaded: "Image uploaded to the group chat.",
     imageUploadFailed: "Could not upload image.",
@@ -1401,9 +1186,7 @@ const groupText = {
     member: "Member",
     kickMember: "Remove member",
     kickConfirmTitle: "Remove member from group",
-    kickConfirmBody: (member: string, group: string) => `Enter the group password to remove "${member}" from "${group}". The backend will verify it before removal.`,
-    kickPasswordPlaceholder: "Enter group password",
-    kickPasswordWrong: "The group password is incorrect.",
+    kickConfirmBody: (member: string, group: string) => `Are you sure you want to remove "${member}" from "${group}"?`,
     kickOwnerOnly: "Only the group owner can remove members.",
     kickSelf: "The group owner cannot remove themselves.",
     memberNotFound: "That member is no longer in the group.",
@@ -1412,7 +1195,7 @@ const groupText = {
     groupInfo: "Group info",
     memberCount: "Member count",
     createdAt: "Created at",
-    groupInfoBackendNote: "The password is fetched only after the owner chooses to reveal it. Other members do not see this control.",
+    groupInfoBackendNote: "New members join through invitations and confirm them from notifications.",
     groupOptions: "Group options",
     muteGroup: "Mute group notifications",
     unmuteGroup: "Unmute group notifications",
@@ -1443,7 +1226,6 @@ const groupText = {
     loginBody: "Group chat lets students discuss together and share public study documents.",
     login: "Log in",
     createFailed: "Could not create group.",
-    joinFailed: "Could not join group.",
     actionFailed: "Could not complete this action.",
     sendFailed: "Could not send message.",
     shareFailed: "Could not share document.",

@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 public class UpdatePackagePriceRequest {
 
     @NotNull(message = "Giá gói không được để trống.")
-    @DecimalMin(value = "0.00", message = "Giá gói không được âm.")
+    @DecimalMin(value = "0.01", message = "Giá gói cước phải lớn hơn 0.")
     private BigDecimal price;
 
     @NotBlank(message = "Mật khẩu Admin không được để trống.")

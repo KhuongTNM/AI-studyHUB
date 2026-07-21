@@ -40,3 +40,14 @@ backend/AI/**/*.pyc
 
 # Thư mục upload file của user
 backend/AI/uploads/
+
+# Dev migration utilities
+DbMigrator.*
+DbUpdater.*
+TestFormat.*
+postgresql.jar
+fe_changes.md
+scratch/
+subscription_api_contract.json
+subscription_business_rules.md
+

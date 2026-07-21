@@ -1,19 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Document, GroupChat, GroupChatMessage, GroupInvitation, GroupInvitationCandidate, PackageTier, User } from "@/states/types"
 import {
   createGroupApi,
   deleteGroupApi,
   downloadGroupDocumentApi,
   exportGroupChatApi,
-  fetchGroupPasswordApi,
   fetchGroupMessagesApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
   fetchPendingGroupInvitationsApi,
-  joinGroupApi,
   kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
@@ -32,7 +30,6 @@ interface GroupChatStateDeps {
 }
 
 type ActionResult = { success: boolean; error?: string }
-type GroupPasswordResult = ActionResult & { password?: string }
 
 const GROUP_CREATE_LIMIT_BY_TIER: Record<PackageTier, number> = {
   free: 0,
@@ -45,6 +42,8 @@ const GROUP_JOIN_LIMIT_BY_TIER: Record<PackageTier, number> = {
   "2-4": 30,
   "5+": 60,
 }
+
+const GROUP_INVITATION_POLL_INTERVAL_MS = 5000
 
 function getEffectiveTier(user: User | null): PackageTier {
   if (!user) return "free"
@@ -71,12 +70,6 @@ function makeGroupCode() {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
-}
-
-function getHttpStatus(error: unknown) {
-  if (!error || typeof error !== "object") return undefined
-  const status = (error as { status?: unknown }).status
-  return typeof status === "number" ? status : undefined
 }
 
 function mergeOwnerName(group: GroupChat): GroupChat {
@@ -133,6 +126,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [pendingGroupInvitations, setPendingGroupInvitations] = useState<GroupInvitation[]>([])
   const [groupInvitationsLoading, setGroupInvitationsLoading] = useState(false)
   const [groupInvitationsError, setGroupInvitationsError] = useState<string | null>(null)
+  const pendingInvitationRequestRef = useRef(false)
 
   const ruleTier = useMemo(() => getRuleTier(currentUser), [currentUser])
   const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
@@ -215,19 +209,29 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return { success: true }
     }
 
+    if (pendingInvitationRequestRef.current) {
+      return { success: true }
+    }
+
+    pendingInvitationRequestRef.current = true
+
     setGroupInvitationsLoading(true)
     setGroupInvitationsError(null)
 
     try {
       const invitations = await fetchPendingGroupInvitationsApi()
-      setPendingGroupInvitations(invitations)
+      if (currentUser?.id) {
+        setPendingGroupInvitations(invitations)
+      }
       return { success: true }
     } catch (error) {
       const message = getErrorMessage(error, "Could not load group invitations.")
-      setPendingGroupInvitations([])
+      // Keep the last successful list during a transient polling failure so
+      // one failed request does not hide an invitation already shown to the user.
       setGroupInvitationsError(message)
       return { success: false, error: message }
     } finally {
+      pendingInvitationRequestRef.current = false
       setGroupInvitationsLoading(false)
     }
   }, [currentUser?.id])
@@ -267,12 +271,24 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return
     }
 
-    void loadPendingGroupInvitations()
-    const intervalId = window.setInterval(() => {
-      void loadPendingGroupInvitations()
-    }, 30000)
+    const refreshInvitations = () => {
+      if (document.visibilityState === "visible") {
+        void loadPendingGroupInvitations()
+      }
+    }
 
-    return () => window.clearInterval(intervalId)
+    void loadPendingGroupInvitations()
+    const intervalId = window.setInterval(refreshInvitations, GROUP_INVITATION_POLL_INTERVAL_MS)
+    window.addEventListener("focus", refreshInvitations)
+    window.addEventListener("online", refreshInvitations)
+    document.addEventListener("visibilitychange", refreshInvitations)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refreshInvitations)
+      window.removeEventListener("online", refreshInvitations)
+      document.removeEventListener("visibilitychange", refreshInvitations)
+    }
   }, [currentUser?.id, loadPendingGroupInvitations])
 
   useEffect(() => {
@@ -353,10 +369,53 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [activeGroupId, currentUser])
 
+  // Membership changes happen in another session when someone accepts an
+  // invitation or leaves the group. Refresh the open group's members so the
+  // header, sidebar count, info modal, and member modal stay in sync.
+  useEffect(() => {
+    if (!currentUser?.id || !activeGroupId) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refreshMembers = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+
+      try {
+        const members = await fetchGroupMembersApi(activeGroupId)
+        if (cancelled) return
+
+        setGroups(prev => prev.map(group => group.id === activeGroupId
+          ? mergeOwnerName({ ...group, members })
+          : group,
+        ))
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[GroupChat] Failed to refresh group members", { groupId: activeGroupId, error })
+        }
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    void refreshMembers()
+    const intervalId = window.setInterval(() => { void refreshMembers() }, 3000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshMembers()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeGroupId, currentUser?.id])
+
   const createGroup = useCallback(async (
     name: string,
     description: string | undefined,
-    password: string,
     groupCode = makeGroupCode(),
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to create a group." }
@@ -366,25 +425,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
         groupCode: groupCode.trim().toUpperCase(),
         name: name.trim(),
         description: description?.trim() || undefined,
-        password: password.trim(),
       })
       await reloadGroups(group.id, group.groupCode)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not create group.") }
-    }
-  }, [currentUser, reloadGroups])
-
-  const joinGroup = useCallback(async (groupCode: string, password: string): Promise<ActionResult> => {
-    if (!currentUser) return { success: false, error: "Please log in to join a group." }
-
-    const trimmedCode = groupCode.trim().toUpperCase()
-    try {
-      await joinGroupApi(trimmedCode, password.trim())
-      await reloadGroups(null, trimmedCode)
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error, "Could not join group.") }
     }
   }, [currentUser, reloadGroups])
 
@@ -442,7 +487,6 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const kickGroupMember = useCallback(async (
     groupId: string,
     targetUserId: string,
-    groupPassword: string,
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
@@ -450,10 +494,9 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
     if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
     if (targetUserId === currentUser.id) return { success: false, error: "GROUP_CANNOT_KICK_SELF" }
-    if (!groupPassword.trim()) return { success: false, error: "GROUP_PASSWORD_INVALID" }
 
     try {
-      await kickGroupMemberApi(groupId, targetUserId, groupPassword)
+      await kickGroupMemberApi(groupId, targetUserId)
       await reloadGroups(groupId, null)
       return { success: true }
     } catch (error) {
@@ -461,32 +504,17 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, groups, reloadGroups])
 
-  const deleteGroup = useCallback(async (groupId: string, password: string): Promise<ActionResult> => {
+  const deleteGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
     try {
-      await deleteGroupApi(groupId, password.trim())
+      await deleteGroupApi(groupId)
       await reloadGroups(null, null)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not delete group.") }
     }
   }, [currentUser, reloadGroups])
-
-  const getGroupPassword = useCallback(async (groupId: string): Promise<GroupPasswordResult> => {
-    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
-
-    try {
-      const password = await fetchGroupPasswordApi(groupId)
-      return { success: true, password }
-    } catch (error) {
-      const status = getHttpStatus(error)
-      if (status === 401) return { success: false, error: "UNAUTHENTICATED" }
-      if (status === 403) return { success: false, error: "GROUP_OWNER_REQUIRED" }
-      if (status === 404) return { success: false, error: "GROUP_NOT_FOUND" }
-      return { success: false, error: getErrorMessage(error, "GROUP_PASSWORD_NOT_AVAILABLE") }
-    }
-  }, [currentUser])
 
   const updateGroupMuted = useCallback(async (groupId: string, muted: boolean): Promise<ActionResult> => {
     try {
@@ -554,13 +582,15 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   }, [appendGroupMessage, currentUser])
 
   const downloadGroupDocument = useCallback(async (groupId: string, documentId: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "Please log in to download documents." }
+
     try {
       await downloadGroupDocumentApi(groupId, documentId)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not download document.") }
     }
-  }, [])
+  }, [currentUser])
 
   const exportGroupChat = useCallback(async (groupId: string): Promise<ActionResult> => {
     try {
@@ -595,13 +625,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     loadPendingGroupInvitations,
     respondGroupInvitation,
     createGroup,
-    joinGroup,
     searchGroupInvitationUser,
     inviteGroupMemberByEmail,
     leaveGroup,
     kickGroupMember,
     deleteGroup,
-    getGroupPassword,
     updateGroupMuted,
     updateGroupPinned,
     sendGroupMessage,
