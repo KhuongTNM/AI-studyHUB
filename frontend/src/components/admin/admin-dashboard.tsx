@@ -11,6 +11,7 @@ import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
 import { getLocalizedPlanName, isBuiltInPlanName } from "@/configs/subscription-plan-labels"
 import { StatsOverview } from "./stats-overview"
+import { AdminAnalytics } from "./admin-analytics"
 import { UserTable } from "./user-table"
 import { ConfirmModal } from "./confirm-modal"
 import { SubAdminForm } from "./sub-admin-form"
@@ -332,6 +333,12 @@ export function AdminDashboard() {
         activeUsers={activeUsers}
         lockedUsers={lockedUsers}
         totalStorageUsed={totalStorage}
+        text={text}
+      />
+      <AdminAnalytics
+        users={users}
+        packages={packagePrices}
+        language={language}
         text={text}
       />
       <section className="rounded-lg border border-border bg-card p-5">
