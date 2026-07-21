@@ -70,6 +70,8 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState("")
+  // BR-097 — khi login trả ACCOUNT_NOT_VERIFIED, hiện CTA dẫn sang màn OTP thay vì lỗi chung chung
+  const [unverifiedEmail, setUnverifiedEmail] = useState("")
 
   const tokenClientRef = useRef<TokenClient | null>(null)
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
@@ -119,6 +121,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setUnverifiedEmail("")
     if (!email || !password) {
       setError("Vui lòng nhập đầy đủ email và mật khẩu.")
       return
@@ -129,6 +132,11 @@ export default function LoginPage() {
     setLoading(false)
     if (!result.success) {
       setError(result.error || "Đăng nhập thất bại.")
+      // BR-097 — tài khoản chưa xác thực OTP: hiện CTA dẫn thẳng sang màn OTP,
+      // không bắt người dùng gõ lại email.
+      if (result.code === "ACCOUNT_NOT_VERIFIED") {
+        setUnverifiedEmail(result.email || email)
+      }
     } else {
       router.replace("/")
     }
@@ -149,7 +157,7 @@ export default function LoginPage() {
         <div className="p-6">
           <div className="mb-5 text-center">
             <h1 className="text-xl font-semibold text-foreground">Đăng nhập</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Chào mừng bạn quay lại!</p>
+            <p className="mt-1 text-sm text-muted-foreground">Chào mừng bạn đến AI-Study!</p>
           </div>
 
           {/* Google Sign-In */}
@@ -179,9 +187,22 @@ export default function LoginPage() {
 
           {/* Error */}
           {error && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+            <div className="mb-4 space-y-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+              {unverifiedEmail && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.push(`/verify-otp?email=${encodeURIComponent(unverifiedEmail)}`)}
+                >
+                  Gửi lại mã xác thực
+                </Button>
+              )}
             </div>
           )}
 

@@ -48,8 +48,27 @@ export interface AppState {
   authLoading: boolean
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  register: (email: string, password: string, confirmPassword: string, displayName: string) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<
+    | { success: true }
+    /** code "ACCOUNT_NOT_VERIFIED" (BR-097) kèm email để điều hướng sang màn OTP */
+    | { success: false; error: string; code?: "ACCOUNT_NOT_VERIFIED"; email?: string }
+  >
+  /** BR-095 — requiresVerification true nghĩa là chưa đăng nhập được, phải điều hướng sang màn OTP */
+  register: (email: string, password: string, confirmPassword: string, displayName: string) => Promise<
+    | { success: true; requiresVerification: true; email: string; otpExpiresInSeconds?: number }
+    | { success: true; requiresVerification: false; message?: string }
+    | { success: false; error: string }
+  >
+  /** BR-096 — xác thực mã OTP 6 số; thành công thì tự động đăng nhập luôn */
+  verifyOtp: (email: string, otpCode: string) => Promise<
+    | { success: true }
+    | { success: false; error: string; code?: string; attemptsRemaining?: number }
+  >
+  /** BR-098 — gửi lại mã OTP (cooldown 60s) */
+  resendOtp: (email: string) => Promise<
+    | { success: true; message: string }
+    | { success: false; error: string; code?: string; retryAfterSeconds?: number }
+  >
   /** Đăng nhập/đăng ký bằng Google — idToken là JWT từ Google Identity Services */
   loginWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
@@ -335,6 +354,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         authModalTab: ui.authModalTab,
         login: auth.login,
         register: auth.register,
+        verifyOtp: auth.verifyOtp,
+        resendOtp: auth.resendOtp,
         loginWithGoogle: auth.loginWithGoogle,
         logout,
         updateOwnProfile: auth.updateOwnProfile,

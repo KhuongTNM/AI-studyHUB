@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { X, Eye, EyeOff, Loader2, GraduationCap, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
@@ -9,12 +10,15 @@ import { cn } from "@/lib/utils"
 import { forgotPasswordApi } from "@/services/api/auth"
 
 export function AuthModal() {
+  const router = useRouter()
   const { showAuthModal, authModalTab, closeAuthModal, login, register, loginWithGoogle, language } = useApp()
   const [tab, setTab] = useState<"login" | "register" | "forgot">(authModalTab)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  // BR-097 — khi login trả ACCOUNT_NOT_VERIFIED, hiện CTA dẫn sang màn OTP
+  const [unverifiedEmail, setUnverifiedEmail] = useState("")
 
   // Form states
   const [email, setEmail] = useState("")
@@ -54,6 +58,7 @@ export function AuthModal() {
     passwordPlaceholder: "Tối thiểu 8 ký tự, có chữ và số",
     orContinueWith: "Hoặc tiếp tục với",
     googleFailed: "Đăng nhập Google thất bại.",
+    resendVerification: "Gửi lại mã xác thực",
   } : {
     login: "Log in",
     register: "Sign up",
@@ -84,12 +89,14 @@ export function AuthModal() {
     passwordPlaceholder: "At least 8 characters with letters and numbers",
     orContinueWith: "Or continue with",
     googleFailed: "Google sign-in failed.",
+    resendVerification: "Resend verification code",
   }
 
   const switchTab = (t: typeof tab) => {
     setTab(t)
     setError("")
     setSuccess("")
+    setUnverifiedEmail("")
     setEmail("")
     setPassword("")
     setDisplayName("")
@@ -99,16 +106,25 @@ export function AuthModal() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setUnverifiedEmail("")
     if (!email || !password) { setError(text.required); return }
     setLoading(true)
     const result = await login(email, password)
     setLoading(false)
-    if (!result.success) setError(result.error || text.failedLogin)
+    if (!result.success) {
+      setError(result.error || text.failedLogin)
+      // BR-097 — tài khoản chưa xác thực OTP: hiện CTA dẫn thẳng sang màn OTP,
+      // không bắt người dùng gõ lại email.
+      if (result.code === "ACCOUNT_NOT_VERIFIED") {
+        setUnverifiedEmail(result.email || email)
+      }
+    }
   }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setUnverifiedEmail("")
     if (!email || !password || !displayName) { setError(text.required); return }
     if (password !== confirmPassword) { setError(text.mismatch); return }
     if (password.length < 8) { setError(text.minPassword); return }
@@ -118,7 +134,19 @@ export function AuthModal() {
     setLoading(true)
     const result = await register(email, password, confirmPassword, displayName)
     setLoading(false)
-    if (!result.success) setError(result.error || text.failedRegister)
+    if (!result.success) {
+      setError(result.error || text.failedRegister)
+      return
+    }
+    // BR-095 — đăng ký không còn cấp accessToken ngay, phải xác thực OTP trước.
+    if (result.requiresVerification) {
+      closeAuthModal()
+      const params = new URLSearchParams({ email: result.email })
+      if (result.otpExpiresInSeconds) {
+        params.set("expiresIn", String(result.otpExpiresInSeconds))
+      }
+      router.push(`/verify-otp?${params.toString()}`)
+    }
   }
 
   const handleForgot = async (e: React.FormEvent) => {
@@ -215,9 +243,25 @@ export function AuthModal() {
 
           {/* Error/Success */}
           {error && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+            <div className="mb-4 space-y-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+              {unverifiedEmail && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    closeAuthModal()
+                    router.push(`/verify-otp?email=${encodeURIComponent(unverifiedEmail)}`)
+                  }}
+                >
+                  {text.resendVerification}
+                </Button>
+              )}
             </div>
           )}
           {success && (

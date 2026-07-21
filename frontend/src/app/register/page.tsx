@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Eye, EyeOff, Loader2, GraduationCap,
   CheckCircle2, AlertCircle, ArrowRight,
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils"
 // ─── Register Page ────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [displayName, setDisplayName]         = useState("")
   const [email, setEmail]                     = useState("")
   const [password, setPassword]               = useState("")
@@ -52,8 +54,16 @@ export default function RegisterPage() {
       if (!result.success) {
         // ❌ Thất bại — ở lại trang, hiện lỗi
         setError(result.error || "Đăng ký thất bại. Vui lòng thử lại.")
+      } else if (result.requiresVerification) {
+        // ✅ BR-095 — chưa cấp accessToken, phải xác thực OTP trước.
+        // Điều hướng sang màn hình nhập mã, kèm email + thời gian hết hạn.
+        const params = new URLSearchParams({ email: result.email })
+        if (result.otpExpiresInSeconds) {
+          params.set("expiresIn", String(result.otpExpiresInSeconds))
+        }
+        router.push(`/verify-otp?${params.toString()}`)
       } else {
-        // ✅ Thành công — ở lại trang, hiện thông báo thành công
+        // Fallback — backend chưa triển khai OTP, giữ hành vi cũ.
         setSuccessMsg("Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.")
         setSuccess(true)
         // Reset form
@@ -98,7 +108,7 @@ export default function RegisterPage() {
           <div className="mb-5 text-center">
             <h1 className="text-xl font-semibold text-foreground">Tạo tài khoản</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tham gia AI Study Hub ngay hôm nay — miễn phí!
+              Tham gia AI Study Hub ngay hôm nay!
             </p>
           </div>
 
