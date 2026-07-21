@@ -53,6 +53,8 @@ export function GroupChatPage() {
   const isActiveGroupOwner = Boolean(activeGroup && currentUser && activeGroup.ownerId === currentUser.id)
   const ownedGroupCount = currentUser ? groups.filter(group => group.ownerId === currentUser.id).length : 0
   const joinedGroupCount = currentUser ? groups.filter(group => group.members.some(member => member.userId === currentUser.id)).length : 0
+  const canCreateGroup = (groupCreateLimit === -1 || (groupCreateLimit > 0 && ownedGroupCount < groupCreateLimit))
+    && (groupJoinLimit === -1 || joinedGroupCount < groupJoinLimit)
   const readyDocuments = documents.filter(document => document.status === "ready")
   const filteredGroups = groups.filter(group => {
     const query = search.trim().toLowerCase()
@@ -81,6 +83,17 @@ export function GroupChatPage() {
     if (code.includes("GROUP_OWNER_REQUIRED") || code.includes("GROUP_ACCESS_DENIED")) return text.inviteOwnerOnly
     if (code.includes("UNAUTHENTICATED")) return text.sessionExpired
     return inviteErrorCode || text.inviteFailed
+  }, [text])
+
+  const getDownloadErrorText = useMemo(() => (downloadErrorCode?: string) => {
+    const code = downloadErrorCode?.toUpperCase() ?? ""
+    if (code.includes("DOCUMENT_NOT_FOUND")) return text.documentNotFound
+    if (code.includes("DOCUMENT_NOT_PUBLIC")) return text.documentNotPublic
+    if (code.includes("DOCUMENT_NOT_READY")) return text.documentNotReady
+    if (code.includes("DOCUMENT_DELETED")) return text.documentDeleted
+    if (code.includes("GROUP_ACCESS_DENIED")) return text.groupAccessDenied
+    if (code.includes("UNAUTHENTICATED")) return text.sessionExpired
+    return downloadErrorCode || text.downloadFailed
   }, [text])
 
   useEffect(() => {
@@ -302,7 +315,7 @@ export function GroupChatPage() {
     if (!activeGroup) return
     const result = await downloadGroupDocument(activeGroup.id, documentId)
     if (!result.success) {
-      setError(result.error ?? text.downloadFailed)
+      setError(getDownloadErrorText(result.error))
       return
     }
     setError("")
@@ -376,7 +389,7 @@ export function GroupChatPage() {
             <div>
               <h1 className="text-lg font-bold text-foreground">{text.title}</h1>
               <p className="text-xs text-muted-foreground">
-                {ownedGroupCount}/{groupCreateLimit} {text.groupsCreated} • {joinedGroupCount}/{groupJoinLimit} {text.groupsJoined}
+                {ownedGroupCount}/{groupCreateLimit === -1 ? text.unlimited : groupCreateLimit} {text.groupsCreated} • {joinedGroupCount}/{groupJoinLimit === -1 ? text.unlimited : groupJoinLimit} {text.groupsJoined}
               </p>
             </div>
             <Button
@@ -386,7 +399,7 @@ export function GroupChatPage() {
                 setError("")
                 setShowCreate(true)
               }}
-              disabled={groupCreateLimit <= 0 || ownedGroupCount >= groupCreateLimit || joinedGroupCount >= groupJoinLimit}
+              disabled={!canCreateGroup}
               title={text.newGroup}
             >
               <Plus className="h-4 w-4" />
@@ -578,7 +591,7 @@ export function GroupChatPage() {
                   {text.retry}
                 </Button>
               )}
-              <Button className="mt-5" disabled={groupCreateLimit <= 0 || joinedGroupCount >= groupJoinLimit} onClick={() => setShowCreate(true)}>
+              <Button className="mt-5" disabled={!canCreateGroup} onClick={() => setShowCreate(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 {text.newGroup}
               </Button>
@@ -1051,6 +1064,7 @@ const groupText = {
     title: "Chat nhóm",
     groupsCreated: "nhóm đã tạo",
     groupsJoined: "nhóm đã tham gia",
+    unlimited: "không giới hạn",
     newGroup: "Tạo nhóm mới",
     search: "Tìm kiếm nhóm",
     groupId: "Group ID",
@@ -1139,7 +1153,7 @@ const groupText = {
     emptyTitle: "Chọn hoặc tạo một nhóm",
     emptyBody: "Nhóm dùng để chat với bạn học và chia sẻ tài liệu học tập.",
     createTitle: "Tạo nhóm học tập",
-    createHint: (created: number, joined: number) => `Gói hiện tại cho phép tạo tối đa ${created} nhóm và tham gia tối đa ${joined} nhóm.`,
+    createHint: (created: number, joined: number) => `Gói hiện tại cho phép tạo tối đa ${created === -1 ? "không giới hạn" : created} nhóm và tham gia tối đa ${joined === -1 ? "không giới hạn" : joined} nhóm.`,
     groupName: "Tên nhóm",
     description: "Mô tả",
     descriptionPlaceholder: "Mục tiêu học tập, môn học, hoặc ghi chú cho nhóm",
@@ -1147,6 +1161,11 @@ const groupText = {
     create: "Tạo nhóm",
     download: "Tải xuống",
     downloadFailed: "Không thể tải tài liệu.",
+    documentNotFound: "Tài liệu không tồn tại hoặc đã bị xóa.",
+    documentNotPublic: "Tài liệu này không còn ở chế độ công khai.",
+    documentNotReady: "Tài liệu chưa xử lý xong, vui lòng thử lại sau.",
+    documentDeleted: "Tài liệu đã bị xóa.",
+    groupAccessDenied: "Bạn không còn là thành viên của nhóm này.",
     previewUnavailable: "Chưa có URL",
     unavailable: "Không thể tải",
   },
@@ -1154,6 +1173,7 @@ const groupText = {
     title: "Group Chat",
     groupsCreated: "groups created",
     groupsJoined: "groups joined",
+    unlimited: "unlimited",
     newGroup: "Create group",
     search: "Search groups",
     groupId: "Group ID",
@@ -1242,7 +1262,7 @@ const groupText = {
     emptyTitle: "Choose or create a group",
     emptyBody: "Groups are for classmate chat and shared study materials.",
     createTitle: "Create study group",
-    createHint: (created: number, joined: number) => `Your current package allows up to ${created} created groups and ${joined} joined groups.`,
+    createHint: (created: number, joined: number) => `Your current package allows up to ${created === -1 ? "unlimited" : created} created groups and ${joined === -1 ? "unlimited" : joined} joined groups.`,
     groupName: "Group name",
     description: "Description",
     descriptionPlaceholder: "Study goal, subject, or note for this group",
@@ -1250,6 +1270,11 @@ const groupText = {
     create: "Create group",
     download: "Download",
     downloadFailed: "Could not download document.",
+    documentNotFound: "The document does not exist or has been deleted.",
+    documentNotPublic: "This document is no longer public.",
+    documentNotReady: "The document is still being processed. Please try again later.",
+    documentDeleted: "This document has been deleted.",
+    groupAccessDenied: "You are no longer a member of this group.",
     previewUnavailable: "No URL yet",
     unavailable: "Unavailable",
   },

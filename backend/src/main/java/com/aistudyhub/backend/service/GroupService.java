@@ -4,14 +4,18 @@ import com.aistudyhub.backend.dto.GroupMemberResponse;
 import com.aistudyhub.backend.dto.GroupResponse;
 import com.aistudyhub.backend.dto.GroupSettingsResponse;
 import com.aistudyhub.backend.dto.request.*;
+import com.aistudyhub.backend.dto.ws.GroupMemberEvent;
 import com.aistudyhub.backend.entity.*;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.exception.MaxGroupsLimitExceededException;
 import com.aistudyhub.backend.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,6 +35,36 @@ public class GroupService {
     private final UserRepository userRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final SubscriptionService subscriptionService;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    /**
+     * Đẩy sự kiện thay đổi thành viên nhóm qua WebSocket topic "/topic/groups/{groupId}/members"
+     * SAU KHI transaction commit thành công (tránh FE nhận event rồi gọi lại API nhưng dữ liệu
+     * chưa kịp ghi DB). FE hiện chưa có client lắng nghe kênh này (xem
+     * docs/group-member-realtime-update-gap.md) — hạ tầng chuẩn bị sẵn để FE tích hợp sau.
+     */
+    private void publishMemberEvent(UUID groupId, GroupMemberEvent.Type type, GroupMemberResponse member) {
+        long memberCount = groupMemberRepository.countByIdGroupId(groupId);
+        GroupMemberEvent event = GroupMemberEvent.builder()
+                .type(type)
+                .groupId(groupId)
+                .memberCount(memberCount)
+                .member(member)
+                .build();
+
+        Runnable publish = () -> messagingTemplate.convertAndSend("/topic/groups/" + groupId + "/members", event);
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
+    }
 
     // ==========================================
     // 1. UTILITY & SECURITY GUARDS
@@ -174,6 +208,13 @@ public class GroupService {
         sys.setMessageType("system");
         sys.setCreatedAt(LocalDateTime.now());
         groupMessageRepository.save(sys);
+
+        publishMemberEvent(groupId, GroupMemberEvent.Type.MEMBER_LEFT, GroupMemberResponse.builder()
+                .userId(userId)
+                .displayName(user.getDisplayName())
+                .role(member.getRole())
+                .joinedAt(member.getJoinedAt())
+                .build());
     }
 
     // ==========================================
@@ -324,6 +365,11 @@ public class GroupService {
         sys.setMessageType("system");
         sys.setCreatedAt(LocalDateTime.now());
         groupMessageRepository.save(sys);
+
+        publishMemberEvent(groupId, GroupMemberEvent.Type.MEMBER_KICKED, GroupMemberResponse.builder()
+                .userId(targetUserId)
+                .displayName(targetUser.getDisplayName())
+                .build());
     }
 
     // ==========================================
@@ -359,6 +405,7 @@ public class GroupService {
      * Chủ nhóm gửi lời mời tham gia nhóm cho 1 User thông qua Email.
      * Fail-fast: check đăng nhập -> group tồn tại -> quyền Chủ nhóm -> email hợp lệ -> tìm targetUser
      * -> chống tự mời chính mình -> chống mời trùng (đã là thành viên/đã được mời) -> tạo bản ghi PENDING.
+     * Không giới hạn số lượng thành viên tối đa trong nhóm.
      */
     @Transactional(rollbackFor = Exception.class)
     public void inviteMemberByEmail(UUID groupId, String email, UUID operatorId) {
@@ -369,15 +416,6 @@ public class GroupService {
 
         if (!g.getOwnerId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.GROUP_OWNER_REQUIRED);
-        }
-
-        // Kiểm tra sức chứa tối đa của nhóm theo gói cước của Owner (bao gồm cả các lời mời PENDING
-        // để tránh mời tràn lan vượt quá slot còn trống của nhóm).
-        User owner = userRepository.findById(g.getOwnerId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Limits ownerLim = limits(owner);
-        if (ownerLim.maxCapacity() != -1 && groupMemberRepository.countByIdGroupId(groupId) >= ownerLim.maxCapacity()) {
-            throw new BusinessException(ErrorCode.GROUP_FULL);
         }
 
         if (email == null || email.isBlank()) {
@@ -474,6 +512,13 @@ public class GroupService {
             sys.setMessageType("system");
             sys.setCreatedAt(LocalDateTime.now());
             groupMessageRepository.save(sys);
+
+            publishMemberEvent(groupId, GroupMemberEvent.Type.MEMBER_JOINED, GroupMemberResponse.builder()
+                    .userId(userId)
+                    .displayName(user.getDisplayName())
+                    .role(invitation.getRole())
+                    .joinedAt(invitation.getJoinedAt())
+                    .build());
         } else {
             groupMemberRepository.delete(invitation);
         }
