@@ -318,6 +318,23 @@ export async function uploadGroupImageApi(groupId: string, file: File): Promise<
   return mapMessage((await response.json()) as ApiGroupMessage)
 }
 
+function parseDownloadFilename(contentDisposition: string | null): string {
+  if (!contentDisposition) return "document"
+
+  const encodedMatch = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i)
+  if (encodedMatch?.[1]) {
+    const encodedFilename = encodedMatch[1].trim().replace(/^"(.*)"$/, "$1")
+    try {
+      return decodeURIComponent(encodedFilename) || "document"
+    } catch {
+      return encodedFilename || "document"
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i)
+  return (filenameMatch?.[1] ?? filenameMatch?.[2])?.trim() || "document"
+}
+
 /** GET /api/groups/{groupId}/documents/{documentId}/download — download shared file. */
 export async function downloadGroupDocumentApi(groupId: string, documentId: string): Promise<void> {
   const response = await fetch(
@@ -327,21 +344,18 @@ export async function downloadGroupDocumentApi(groupId: string, documentId: stri
   if (!response.ok) throw new Error(await parseError(response))
 
   const blob = await response.blob()
-  const contentDisposition = response.headers.get("Content-Disposition")
-  let filename = "document"
-  if (contentDisposition) {
-    const match = contentDisposition.match(/filename="?([^";\n]+)"?/)
-    if (match?.[1]) filename = match[1].trim()
-  }
-
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition"))
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
   anchor.href = url
   anchor.download = filename
+  anchor.style.display = "none"
   document.body.appendChild(anchor)
   anchor.click()
-  document.body.removeChild(anchor)
-  URL.revokeObjectURL(url)
+  anchor.remove()
+
+  // Keep the object URL alive until the browser has started the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 /** GET /api/groups/{groupId}/members — real member list for modal. */

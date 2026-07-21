@@ -513,13 +513,15 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   }, [appendGroupMessage, currentUser])
 
   const downloadGroupDocument = useCallback(async (groupId: string, documentId: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "Please log in to download documents." }
+
     try {
       await downloadGroupDocumentApi(groupId, documentId)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not download document.") }
     }
-  }, [])
+  }, [currentUser])
 
   const exportGroupChat = useCallback(async (groupId: string): Promise<ActionResult> => {
     try {
