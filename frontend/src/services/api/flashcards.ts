@@ -1,5 +1,17 @@
 import { getAccessToken } from "@/lib/auth-storage"
 import type { Flashcard, FlashcardStatus } from "@/states/types"
+import { MOCK_API } from "@/services/mock/mock-config"
+import {
+  mockFetchFlashcardQuotaRequest,
+  mockGenerateFlashcardsRequest,
+  mockFetchFlashcardsRequest,
+  mockFetchAllFlashcardsRequest,
+  mockCreateFlashcardRequest,
+  mockUpdateFlashcardStatusRequest,
+  mockUpdateFlashcardRequest,
+  mockDeleteFlashcardRequest,
+  mockDeleteAllFlashcardsForDocumentRequest,
+} from "@/services/mock/flashcards.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -38,6 +50,44 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+function tierToPlanName(tier: string): string {
+  if (tier === "2-4") return "plan_2_4"
+  if (tier === "5+") return "plan_5_plus"
+  return "free"
+}
+
+/**
+ * Lấy giới hạn số flashcard (maxFlashcards) của gói dịch vụ hiện tại của user,
+ * gọi trực tiếp endpoint public GET /api/subscription-plans/{planName}.
+ * Hàm này thuộc phạm vi tính năng flashcard, không đụng vào code/state của tính năng subscription.
+ * Trả về -1 nếu gói không giới hạn.
+ */
+export async function fetchFlashcardQuotaApi(subscriptionTier: string, subscriptionPlanId?: number | null): Promise<number> {
+  const planName = tierToPlanName(subscriptionTier)
+  if (MOCK_API) {
+    const response = await mockFetchFlashcardQuotaRequest(subscriptionTier)
+    if (!response.ok) throw new Error(await parseError(response))
+    const plan = (await response.json()) as { maxFlashcards: number }
+    return plan.maxFlashcards
+  }
+
+  // Custom plans cannot be mapped from the legacy tier union. Resolve the
+  // persisted plan id from the public list first, then fall back to the
+  // built-in slug for older sessions that do not have an id.
+  if (subscriptionPlanId !== null && subscriptionPlanId !== undefined) {
+    const listResponse = await fetch(`${API_BASE_URL}/api/subscription-plans`)
+    if (!listResponse.ok) throw new Error(await parseError(listResponse))
+    const plans = (await listResponse.json()) as Array<{ id: number; maxFlashcards: number }>
+    const currentPlan = plans.find(plan => Number(plan.id) === Number(subscriptionPlanId))
+    if (currentPlan) return currentPlan.maxFlashcards
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/subscription-plans/${planName}`)
+  if (!response.ok) throw new Error(await parseError(response))
+  const plan = (await response.json()) as { maxFlashcards: number }
+  return plan.maxFlashcards
+}
+
 function mapStatus(status: string): FlashcardStatus {
   switch (status) {
     case "learning": return "learning"
@@ -72,15 +122,17 @@ export async function generateFlashcardsApi(documentId: string, count?: number):
   const timeoutId = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/flashcards/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-      },
-      body: JSON.stringify(count ? { documentId, count } : { documentId }),
-      signal: controller.signal,
-    })
+    const response = MOCK_API
+      ? await mockGenerateFlashcardsRequest(documentId, count)
+      : await fetch(`${API_BASE_URL}/api/flashcards/generate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(),
+          },
+          body: JSON.stringify(count ? { documentId, count } : { documentId }),
+          signal: controller.signal,
+        })
     if (!response.ok) throw new Error(await parseError(response))
     const cards = (await response.json()) as ApiFlashcard[]
     return cards.map(mapApiFlashcard)
@@ -98,10 +150,12 @@ export async function generateFlashcardsApi(documentId: string, count?: number):
  * GET /api/flashcards?documentId={id} — lấy danh sách flashcard theo tài liệu (BR-039).
  */
 export async function fetchFlashcardsApi(documentId: string): Promise<Flashcard[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/flashcards?documentId=${encodeURIComponent(documentId)}`,
-    { headers: authHeaders() },
-  )
+  const response = MOCK_API
+    ? await mockFetchFlashcardsRequest(documentId)
+    : await fetch(
+        `${API_BASE_URL}/api/flashcards?documentId=${encodeURIComponent(documentId)}`,
+        { headers: authHeaders() },
+      )
   if (!response.ok) throw new Error(await parseError(response))
   const cards = (await response.json()) as ApiFlashcard[]
   return cards.map(mapApiFlashcard)
@@ -117,9 +171,11 @@ export async function fetchFlashcardsApi(documentId: string): Promise<Flashcard[
  * được nuốt (catch) ở phía gọi, không làm crash UI.
  */
 export async function fetchAllFlashcardsApi(): Promise<Flashcard[]> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchAllFlashcardsRequest()
+    : await fetch(`${API_BASE_URL}/api/flashcards`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   const cards = (await response.json()) as ApiFlashcard[]
   return cards.map(mapApiFlashcard)
@@ -133,14 +189,16 @@ export async function updateFlashcardStatusApi(
   id: string,
   status: FlashcardStatus,
 ): Promise<Flashcard> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards/${id}/status`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ status }),
-  })
+  const response = MOCK_API
+    ? await mockUpdateFlashcardStatusRequest(id, status)
+    : await fetch(`${API_BASE_URL}/api/flashcards/${id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ status }),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiFlashcard((await response.json()) as ApiFlashcard)
 }
@@ -154,11 +212,13 @@ export async function createFlashcardApi(payload: {
   answer: string
   documentId?: string
 }): Promise<Flashcard> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(payload),
-  })
+  const response = MOCK_API
+    ? await mockCreateFlashcardRequest(payload)
+    : await fetch(`${API_BASE_URL}/api/flashcards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiFlashcard((await response.json()) as ApiFlashcard)
 }
@@ -167,10 +227,12 @@ export async function createFlashcardApi(payload: {
  * DELETE /api/flashcards/{id} — Xoá 1 flashcard độc lập (BR-040).
  */
 export async function deleteFlashcardApi(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockDeleteFlashcardRequest(id)
+    : await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
 }
 
@@ -181,11 +243,13 @@ export async function updateFlashcardApi(
   id: string,
   payload: { question: string; answer: string },
 ): Promise<Flashcard> {
-  const response = await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(payload),
-  })
+  const response = MOCK_API
+    ? await mockUpdateFlashcardRequest(id, payload)
+    : await fetch(`${API_BASE_URL}/api/flashcards/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiFlashcard((await response.json()) as ApiFlashcard)
 }
@@ -195,12 +259,14 @@ export async function updateFlashcardApi(
  * Dùng khi user bấm nút "Làm mới" với 1 tài liệu cụ thể đang được chọn.
  */
 export async function deleteAllFlashcardsForDocumentApi(documentId: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/flashcards?documentId=${encodeURIComponent(documentId)}`,
-    {
-      method: "DELETE",
-      headers: authHeaders(),
-    },
-  )
+  const response = MOCK_API
+    ? await mockDeleteAllFlashcardsForDocumentRequest(documentId)
+    : await fetch(
+        `${API_BASE_URL}/api/flashcards?documentId=${encodeURIComponent(documentId)}`,
+        {
+          method: "DELETE",
+          headers: authHeaders(),
+        },
+      )
   if (!response.ok) throw new Error(await parseError(response))
 }

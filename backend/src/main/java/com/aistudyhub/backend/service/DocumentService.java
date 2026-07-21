@@ -52,6 +52,7 @@ public class DocumentService {
     private final TagRepository tagRepository;
     private final StorageService storageService;
     private final ApplicationContext applicationContext;
+    private final UploadSettingsService uploadSettingsService;
 
     @Value("${app.upload.dir:./uploads}")
     private String uploadDirPath;
@@ -108,6 +109,14 @@ public class DocumentService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại."));
+
+        // Giới hạn dung lượng MỖI FILE — cấu hình bởi admin qua UploadSettingsService,
+        // KHÔNG gắn với SubscriptionPlan, áp dụng cho mọi user.
+        long maxFileSizeBytes = uploadSettingsService.loadOrThrow().getMaxFileSizeBytes();
+        if (file.getSize() > maxFileSizeBytes) {
+            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    "File vượt quá dung lượng tối đa cho phép (" + (maxFileSizeBytes / (1024 * 1024)) + "MB).");
+        }
 
         if (user.getStorageUsedBytes() + file.getSize() > user.getStorageLimitBytes()) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");

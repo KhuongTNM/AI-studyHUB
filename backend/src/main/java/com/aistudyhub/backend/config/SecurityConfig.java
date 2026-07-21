@@ -54,6 +54,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/documents/public").permitAll()
                         // Public pricing info — intentionally open
                         .requestMatchers(HttpMethod.GET, "/api/subscription-plans/**").permitAll()
+                        // Public upload limits — FE dùng để hiển thị/validate, không nhạy cảm
+                        .requestMatchers(HttpMethod.GET, "/api/upload-settings").permitAll()
                         // PayOS webhook — không gửi JWT, xác thực bằng HMAC checksum riêng
                         .requestMatchers("/api/payos/webhook").permitAll()
                         // Bank sync — no JWT, authenticated at network level

@@ -56,12 +56,15 @@ export function useSubscriptionState({
           planName: plan.name,
           tier: tierFromPlanName(plan.name),
           name: plan.displayName,
+          description: plan.description ?? null,
           price: Number(plan.price),
           maxUsers: plan.maxRoomMembers,
           defaultStorageBytes: plan.defaultStorageBytes,
           storageLabel: formatStorage(plan.defaultStorageBytes),
           createGroupLimit: plan.createGroupLimit,
           joinGroupLimit: plan.joinGroupLimit,
+          dailyAiChatLimit: plan.dailyAiChatLimit,
+          maxFlashcards: plan.maxFlashcards,
         })))
       })
       .catch(() => {
