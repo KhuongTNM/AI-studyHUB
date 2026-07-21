@@ -51,11 +51,21 @@ public class UploadSettingsService {
     }
 
     /** Dùng nội bộ bởi DocumentService khi enforce lúc upload. */
-    @Transactional(readOnly = true)
+    @Transactional
     public UploadSettings loadOrThrow() {
         return uploadSettingsRepository.findById(UploadSettings.SINGLETON_ID)
-                .orElseThrow(() -> new SystemConfigurationException(
-                        "Hệ thống chưa được cấu hình giới hạn upload."));
+                .orElseGet(() -> {
+                    UploadSettings defaultSettings = new UploadSettings();
+                    defaultSettings.setId(UploadSettings.SINGLETON_ID);
+                    defaultSettings.setMaxFileSizeBytes(50L * 1024L * 1024L); // 50MB default
+                    defaultSettings.setMaxFilesPerUpload(10);
+                    defaultSettings.setUpdatedAt(LocalDateTime.now());
+                    try {
+                        return uploadSettingsRepository.save(defaultSettings);
+                    } catch (Exception e) {
+                        return defaultSettings;
+                    }
+                });
     }
 
     @Transactional
