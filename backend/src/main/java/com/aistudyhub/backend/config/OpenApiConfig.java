@@ -16,11 +16,7 @@ public class OpenApiConfig {
         final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .info(new Info()
-                        .title("AI Study Hub# 1. Kích hoạt môi trường ảo bằng script của PowerShell\n" +
-                                ".\\.venv\\Scripts\\Activate.ps1\n" +
-                                "\n" +
-                                "# 2. Khởi động lại server AI cổng 8000\n" +
-                                "uvicorn main:app --reload --port 8000\n API")
+                        .title("AI Study Hub API")
                         .version("1.0.0")
                         .description("Tài liệu API tích hợp môi trường thử nghiệm"))
                 .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
