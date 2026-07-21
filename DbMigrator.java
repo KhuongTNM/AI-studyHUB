@@ -81,14 +81,16 @@ public class DbMigrator {
                 System.out.println("Error adding is_deleted: " + e.getMessage());
             }
 
-            // 4. Thêm cột description
-            System.out.println("Adding column description...");
+            // 4. Xóa cột display_name và description không dùng
+            System.out.println("Dropping columns display_name and description...");
             try {
-                stmt.execute("ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS description VARCHAR(500);");
-                System.out.println("description column verified/created.");
+                stmt.execute("ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS display_name;");
+                stmt.execute("ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS description;");
+                System.out.println("display_name and description columns dropped/verified.");
             } catch (Exception e) {
-                System.out.println("Error adding description: " + e.getMessage());
+                System.out.println("Error dropping columns: " + e.getMessage());
             }
+
 
             // 5. Thêm cột daily_ai_chat_limit
             System.out.println("Adding column daily_ai_chat_limit...");
