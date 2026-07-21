@@ -168,6 +168,41 @@ public class DbMigrator {
                 System.out.println("Error creating core.email_otp_tokens table: " + e.getMessage());
             }
 
+            // 10. Tạo bảng core.upload_settings nếu chưa có
+            System.out.println("Creating table core.upload_settings...");
+            try {
+                stmt.execute("CREATE TABLE IF NOT EXISTS core.upload_settings (\n" +
+                        "    id SMALLINT PRIMARY KEY,\n" +
+                        "    max_file_size_bytes BIGINT NOT NULL,\n" +
+                        "    max_files_per_upload INT NOT NULL,\n" +
+                        "    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),\n" +
+                        "    updated_by_admin_id UUID\n" +
+                        ");");
+                stmt.execute("INSERT INTO core.upload_settings (id, max_file_size_bytes, max_files_per_upload, updated_at)\n" +
+                        "VALUES (1, 52428800, 10, NOW())\n" +
+                        "ON CONFLICT (id) DO NOTHING;");
+                System.out.println("core.upload_settings table verified/created successfully.");
+            } catch (Exception e) {
+                System.out.println("Error creating core.upload_settings table: " + e.getMessage());
+            }
+
+            // 11. Tạo bảng core.activity_logs nếu chưa có
+            System.out.println("Creating table core.activity_logs...");
+            try {
+                stmt.execute("CREATE TABLE IF NOT EXISTS core.activity_logs (\n" +
+                        "    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n" +
+                        "    user_id UUID NOT NULL,\n" +
+                        "    action VARCHAR(100) NOT NULL,\n" +
+                        "    target_type VARCHAR(50),\n" +
+                        "    target_id UUID,\n" +
+                        "    description TEXT,\n" +
+                        "    created_at TIMESTAMP NOT NULL DEFAULT NOW()\n" +
+                        ");");
+                System.out.println("core.activity_logs table verified/created successfully.");
+            } catch (Exception e) {
+                System.out.println("Error creating core.activity_logs table: " + e.getMessage());
+            }
+
             System.out.println("All migrations applied successfully to active database!");
 
 
