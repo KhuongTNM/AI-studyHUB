@@ -14,15 +14,21 @@ interface PackagesTabProps {
 export function PackagesTab({ currentUser, packagePrices, onBuy, language }: PackagesTabProps) {
   const text = packagesText[language]
 
-  const currentPlan = packagePrices.find(pkg => Number(pkg.id) === currentUser.subscriptionPlanId)
-  const hasExplicitPlan = currentUser.subscriptionPlanId !== null && currentUser.subscriptionPlanId !== undefined
+  const planFromId = packagePrices.find(pkg => Number(pkg.id) === Number(currentUser.subscriptionPlanId))
+  const legacyPlanKey = currentUser.subscriptionTier === "2-4"
+    ? "plan_2_4"
+    : currentUser.subscriptionTier === "5+"
+      ? "plan_5_plus"
+      : "free"
+  const currentPlan = planFromId ?? packagePrices.find(pkg => (pkg.planName ?? pkg.tier) === legacyPlanKey)
   const currentPlanExpired = Boolean(
-    currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now(),
+    currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() <= Date.now(),
   )
+  const freePlan = packagePrices.find(pkg => (pkg.planName ?? pkg.tier) === "free")
+  const effectiveCurrentPlan = currentPlanExpired ? freePlan ?? currentPlan : currentPlan
+  const effectivePlanId = effectiveCurrentPlan?.id ?? currentUser.subscriptionPlanId
   const currentPlanLabel =
-    currentPlanExpired
-      ? text.expiredPlan
-      : currentPlan ? getLocalizedPlanName(currentPlan, language) :
+    effectiveCurrentPlan ? getLocalizedPlanName(effectiveCurrentPlan, language) :
         (currentUser.subscriptionTier === "2-4"
           ? text.plan2To4
           : currentUser.subscriptionTier === "5+"
@@ -41,7 +47,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
             <p className="text-sm text-muted-foreground">{text.planName}</p>
             <p className="text-lg font-bold text-foreground">{currentPlanLabel}</p>
           </div>
-          {((currentPlan && currentPlan.price > 0) || (!currentPlan && currentUser.subscriptionTier !== "free")) && currentUser.subscriptionExpiresAt && (
+          {effectiveCurrentPlan?.price && effectiveCurrentPlan.price > 0 && currentUser.subscriptionExpiresAt && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">{text.expiry}</p>
               <p className="flex items-center gap-1.5 text-lg font-bold text-foreground">
@@ -65,10 +71,10 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
             // The persisted plan id is authoritative. The tier fallback is
             // only for legacy/mock users without a plan id. This prevents a
             // custom paid plan from also being marked as the Free plan.
-            const matchesCurrentPlan = hasExplicitPlan
-              ? Number(pkg.id) === Number(currentUser.subscriptionPlanId)
+            const matchesCurrentPlan = effectivePlanId !== null && effectivePlanId !== undefined
+              ? Number(pkg.id) === Number(effectivePlanId)
               : currentUser.subscriptionTier === pkg.tier
-            const isActive = matchesCurrentPlan && !currentPlanExpired
+            const isActive = matchesCurrentPlan
             const planName = getLocalizedPlanName(pkg, language)
             const isFreePlan = (pkg.planName ?? pkg.tier) === "free"
             const createGroupLimit = pkg.createGroupLimit ?? 0

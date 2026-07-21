@@ -16,7 +16,8 @@ export interface User {
   storageUsed: number
   storageLimit: number
   subscriptionPlanId?: number | null
-  subscriptionTier?: PackageTier
+  /** Built-in tiers use free/2-4/5+; custom admin-created plans use their plan name. */
+  subscriptionTier?: string
   subscriptionExpiresAt?: Date
   languagePreference?: Language
 }
@@ -34,7 +35,6 @@ export interface PackagePrice {
   joinGroupLimit?: number
   dailyAiChatLimit?: number
   maxFlashcards?: number
-  description?: string | null
 }
 
 export interface GroupChatMember {
