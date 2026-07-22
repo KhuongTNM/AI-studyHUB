@@ -24,17 +24,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ex.getStatus()).body(Map.of("message", ex.getMessage()));
     }
 
-    @ExceptionHandler(SystemConfigurationException.class)
-    public ResponseEntity<Map<String, String>> handleSystemConfig(SystemConfigurationException ex) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("message", ex.getMessage()));
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         FieldError fieldError = ex.getBindingResult().getFieldError();
         String message = fieldError != null ? fieldError.getDefaultMessage() : "Dữ liệu không hợp lệ.";
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
+    }
+
+    // FIX: MaxGroupsLimitExceededException trước đây không có handler riêng nên rơi
+    // vào handleGeneric() (Exception chung) -> luôn trả 500 kèm message chung chung,
+    // ẩn mất message thật ("Bạn đã đạt giới hạn tạo nhóm..."). Bắt riêng để trả đúng
+    // 400 kèm message thật, cùng convention với các lỗi nghiệp vụ khác trong module Group.
+    @ExceptionHandler(MaxGroupsLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxGroupsLimitExceeded(MaxGroupsLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ex.getMessage()));
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)

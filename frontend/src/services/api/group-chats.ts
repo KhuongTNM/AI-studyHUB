@@ -1,4 +1,13 @@
 import { getAccessToken } from "@/lib/auth-storage"
+import { MOCK_API } from "@/services/mock/mock-config"
+import {
+  mockCreateGroupRequest,
+  mockFetchGroupDetailRequest,
+  mockFetchGroupMembersRequest,
+  mockFetchGroupMessagesRequest,
+  mockFetchGroupsRequest,
+  mockFetchGroupSettingsRequest,
+} from "@/services/mock/group-chats.mock"
 import { MOCK_USERS } from "@/states/mock-data"
 import type { GroupChat, GroupChatMember, GroupChatMessage, GroupInvitation, GroupInvitationCandidate } from "@/states/types"
 
@@ -240,10 +249,12 @@ export async function respondGroupInvitationApi(groupId: string, accept: boolean
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 /** GET /api/groups — list groups where current user is a member. */
-export async function fetchGroupsApi(): Promise<GroupChat[]> {
-  const response = await fetch(`${API_BASE_URL}/api/groups`, {
-    headers: authHeaders(),
-  })
+export async function fetchGroupsApi(mockOwnerId?: string): Promise<GroupChat[]> {
+  const response = MOCK_API
+    ? await mockFetchGroupsRequest(mockOwnerId)
+    : await fetch(`${API_BASE_URL}/api/groups`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   const groups = (await response.json()) as ApiGroup[]
   return groups.map(mapGroup)
@@ -251,34 +262,43 @@ export async function fetchGroupsApi(): Promise<GroupChat[]> {
 
 /** GET /api/groups/{groupId} — group detail with members and recent messages. */
 export async function fetchGroupDetailApi(groupId: string): Promise<GroupChat> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchGroupDetailRequest(groupId)
+    : await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return mapGroup((await response.json()) as ApiGroup)
 }
 
 /** GET /api/groups/{groupId}/messages — full member-visible message history. */
 export async function fetchGroupMessagesApi(groupId: string): Promise<GroupChatMessage[]> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/messages`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchGroupMessagesRequest(groupId)
+    : await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/messages`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   const messages = (await response.json()) as ApiGroupMessage[]
   return messages.map(mapMessage)
 }
 
 /** POST /api/groups — create group. The current contract has no group password. */
-export async function createGroupApi(input: {
-  groupCode?: string
-  name: string
-  description?: string
-}): Promise<GroupChat> {
-  const response = await fetch(`${API_BASE_URL}/api/groups`, {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify(input),
-  })
+export async function createGroupApi(
+  input: {
+    groupCode?: string
+    name: string
+    description?: string
+  },
+  mockOwner?: { id: string; displayName?: string },
+): Promise<GroupChat> {
+  const response = MOCK_API
+    ? await mockCreateGroupRequest(input, mockOwner ?? { id: "mock-current-user" })
+    : await fetch(`${API_BASE_URL}/api/groups`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify(input),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return mapGroup((await response.json()) as ApiGroup)
 }
@@ -361,9 +381,11 @@ export async function downloadGroupDocumentApi(groupId: string, documentId: stri
 
 /** GET /api/groups/{groupId}/members — real member list for modal. */
 export async function fetchGroupMembersApi(groupId: string): Promise<GroupChatMember[]> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/members`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchGroupMembersRequest(groupId)
+    : await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/members`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   const members = (await response.json()) as ApiGroupMember[]
   return members.map(mapMember)
@@ -371,9 +393,11 @@ export async function fetchGroupMembersApi(groupId: string): Promise<GroupChatMe
 
 /** GET /api/groups/{groupId}/settings — member-level group options. */
 export async function fetchGroupSettingsApi(groupId: string): Promise<ApiGroupSettings> {
-  const response = await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/settings`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchGroupSettingsRequest(groupId)
+    : await fetch(`${API_BASE_URL}/api/groups/${encodeURIComponent(groupId)}/settings`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return (await response.json()) as ApiGroupSettings
 }

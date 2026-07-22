@@ -85,6 +85,15 @@ export function GroupChatPage() {
     return inviteErrorCode || text.inviteFailed
   }, [text])
 
+  const getCreateGroupErrorText = useMemo(() => (createErrorCode?: string) => {
+    const code = createErrorCode?.toUpperCase() ?? ""
+    if (code.includes("GROUP_NAME_ALREADY_EXISTS")) return text.createGroupNameDuplicate
+    if (code.includes("GROUP_NAME_REQUIRED")) return text.createGroupNameRequired
+    if (code.includes("GROUP_CODE_ALREADY_EXISTS")) return text.createGroupCodeDuplicate
+    if (code.includes("UNAUTHENTICATED")) return text.sessionExpired
+    return createErrorCode || text.createFailed
+  }, [text])
+
   const getDownloadErrorText = useMemo(() => (downloadErrorCode?: string) => {
     const code = downloadErrorCode?.toUpperCase() ?? ""
     if (code.includes("DOCUMENT_NOT_FOUND")) return text.documentNotFound
@@ -147,7 +156,7 @@ export function GroupChatPage() {
     const result = await createGroup(newGroupName, newGroupDesc, newGroupCode)
     setGroupActionBusy(false)
     if (!result.success) {
-      setError(result.error ?? text.createFailed)
+      setError(getCreateGroupErrorText(result.error))
       return
     }
     setError("")
@@ -477,7 +486,7 @@ export function GroupChatPage() {
               </div>
             )}
 
-            {error && (
+            {error && !showCreate && (
               <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
                 {error}
@@ -591,7 +600,7 @@ export function GroupChatPage() {
                   {text.retry}
                 </Button>
               )}
-              <Button className="mt-5" disabled={!canCreateGroup} onClick={() => setShowCreate(true)}>
+              <Button className="mt-5" disabled={!canCreateGroup} onClick={() => { setError(""); setShowCreate(true) }}>
                 <Plus className="mr-2 h-4 w-4" />
                 {text.newGroup}
               </Button>
@@ -795,6 +804,15 @@ export function GroupChatPage() {
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-foreground">{text.createTitle}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{text.createHint(groupCreateLimit, groupJoinLimit)}</p>
+            {error && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{error}</span>
+                <button className="shrink-0" onClick={() => setError("")}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <label className="mt-4 block">
               <span className="mb-1 block text-sm font-medium text-foreground">{text.groupId}</span>
               <div className="flex gap-2">
@@ -827,7 +845,7 @@ export function GroupChatPage() {
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowCreate(false)}>{text.cancel}</Button>
+              <Button variant="outline" onClick={() => { setError(""); setShowCreate(false) }}>{text.cancel}</Button>
               <Button onClick={handleCreateGroup} disabled={groupActionBusy}>{text.create}</Button>
             </div>
           </div>
@@ -1137,6 +1155,9 @@ const groupText = {
     loginBody: "Chat nhóm cho phép trao đổi với bạn học và chia sẻ tài liệu công khai.",
     login: "Đăng nhập",
     createFailed: "Không thể tạo nhóm.",
+    createGroupNameDuplicate: "Bạn đã có một nhóm khác cùng tên này, vui lòng chọn tên khác.",
+    createGroupNameRequired: "Vui lòng nhập tên nhóm.",
+    createGroupCodeDuplicate: "Mã nhóm này đã tồn tại, vui lòng tạo lại mã khác.",
     actionFailed: "Không thể thực hiện thao tác.",
     sendFailed: "Không thể gửi tin nhắn.",
     shareFailed: "Không thể chia sẻ tài liệu.",
@@ -1246,6 +1267,9 @@ const groupText = {
     loginBody: "Group chat lets students discuss together and share public study documents.",
     login: "Log in",
     createFailed: "Could not create group.",
+    createGroupNameDuplicate: "You already have another group with this exact name. Please choose a different name.",
+    createGroupNameRequired: "Please enter a group name.",
+    createGroupCodeDuplicate: "This group code already exists. Please generate a new one.",
     actionFailed: "Could not complete this action.",
     sendFailed: "Could not send message.",
     shareFailed: "Could not share document.",
