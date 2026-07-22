@@ -1,6 +1,9 @@
 import os
+import time
+import threading
 import logging
 import tiktoken
+from collections import deque
 from openai import OpenAI
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 from typing import List, Dict, Any
@@ -8,6 +11,45 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 load_dotenv()
+
+# ─── Rate Limiter cho embedding API ───────────────────────────────────────────
+#
+# Free tier Gemini giới hạn 100 request/phút cho embed_content, nhưng thực tế
+# hay bị dồn (nhiều document upload cùng lúc + câu hỏi chat + retry của tenacity)
+# nên khống chế chủ động ở mức thấp hơn nhiều để không bao giờ chạm 429.
+# Giới hạn này áp dụng chung cho MỌI lời gọi generate_embeddings_batch()
+# (ingest lẫn chat search), vì tất cả đều đi qua cùng 1 hàm.
+#
+# Lưu ý: đây là rate limiter trong-process (in-memory). Chỉ đúng khi chạy
+# 1 worker process (WEB_CONCURRENCY=1, đúng với log hiện tại của bạn trên Render).
+# Nếu sau này scale lên nhiều worker/instance, cần chuyển sang giới hạn tập
+# trung (vd Redis) vì mỗi process sẽ có bộ đếm riêng.
+EMBEDDING_RATE_LIMIT_PER_MINUTE = int(os.getenv("EMBEDDING_RATE_LIMIT_PER_MINUTE", "10"))
+
+
+class _RateLimiter:
+    def __init__(self, max_calls: int, period_seconds: float):
+        self.max_calls = max_calls
+        self.period_seconds = period_seconds
+        self._call_times: deque = deque()
+        self._lock = threading.Lock()
+
+    def acquire(self):
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._call_times and now - self._call_times[0] >= self.period_seconds:
+                    self._call_times.popleft()
+                if len(self._call_times) < self.max_calls:
+                    self._call_times.append(now)
+                    return
+                wait_time = self.period_seconds - (now - self._call_times[0])
+            time.sleep(max(wait_time, 0.05))
+
+
+_embedding_rate_limiter = _RateLimiter(
+    max_calls=EMBEDDING_RATE_LIMIT_PER_MINUTE, period_seconds=60.0
+)
 
 # ─── Embedding Model Registry ─────────────────────────────────────────────────
 #
@@ -78,6 +120,12 @@ logger.info(
 # OPENAI_API_KEY trong .env là Gemini API key (https://aistudio.google.com/apikey)
 # Hoặc có thể set GEMINI_API_KEY riêng; GEMINI_API_KEY được ưu tiên hơn.
 def _build_client() -> OpenAI:
+    # max_retries=0: QUAN TRỌNG — mặc định SDK openai tự retry (2 lần) ngay bên
+    # trong 1 lần gọi .create(), bắn thêm request thật tới Gemini mà KHÔNG đi
+    # qua _embedding_rate_limiter (vì acquire() chỉ được gọi 1 lần ở đầu hàm
+    # generate_embeddings_batch). Tắt hẳn retry của SDK để mọi lần retry đều
+    # phải đi qua @retry (tenacity) ở tầng ngoài — nơi acquire() được gọi lại
+    # mỗi lần — thì rate limit 10 req/phút mới thực sự có tác dụng.
     if EMBED_PROVIDER == "gemini":
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -85,12 +133,13 @@ def _build_client() -> OpenAI:
         return OpenAI(
             api_key=api_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            max_retries=0,
         )
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("[Embedding] OPENAI_API_KEY must be set for OpenAI embeddings.")
-    return OpenAI(api_key=api_key)
+    return OpenAI(api_key=api_key, max_retries=0)
 
 
 client: OpenAI | None = None
@@ -121,13 +170,18 @@ def get_token_count(text: str) -> int:
 
 
 @retry(
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    stop=stop_after_attempt(6),
     retry=retry_if_exception_type(Exception),
 )
 def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
+
+    # Chờ tới khi có "chỗ trống" trong hạn mức 10 req/phút trước khi gọi thật.
+    # Đặt bên trong hàm được @retry bọc, nên mỗi lần retry sau 429 cũng bị
+    # throttle lại thay vì bắn liên tục.
+    _embedding_rate_limiter.acquire()
 
     response = get_client().embeddings.create(
         input=texts,
