@@ -120,6 +120,12 @@ logger.info(
 # OPENAI_API_KEY trong .env là Gemini API key (https://aistudio.google.com/apikey)
 # Hoặc có thể set GEMINI_API_KEY riêng; GEMINI_API_KEY được ưu tiên hơn.
 def _build_client() -> OpenAI:
+    # max_retries=0: QUAN TRỌNG — mặc định SDK openai tự retry (2 lần) ngay bên
+    # trong 1 lần gọi .create(), bắn thêm request thật tới Gemini mà KHÔNG đi
+    # qua _embedding_rate_limiter (vì acquire() chỉ được gọi 1 lần ở đầu hàm
+    # generate_embeddings_batch). Tắt hẳn retry của SDK để mọi lần retry đều
+    # phải đi qua @retry (tenacity) ở tầng ngoài — nơi acquire() được gọi lại
+    # mỗi lần — thì rate limit 10 req/phút mới thực sự có tác dụng.
     if EMBED_PROVIDER == "gemini":
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -127,12 +133,13 @@ def _build_client() -> OpenAI:
         return OpenAI(
             api_key=api_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            max_retries=0,
         )
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("[Embedding] OPENAI_API_KEY must be set for OpenAI embeddings.")
-    return OpenAI(api_key=api_key)
+    return OpenAI(api_key=api_key, max_retries=0)
 
 
 client: OpenAI | None = None
@@ -163,8 +170,8 @@ def get_token_count(text: str) -> int:
 
 
 @retry(
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    stop=stop_after_attempt(6),
     retry=retry_if_exception_type(Exception),
 )
 def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
