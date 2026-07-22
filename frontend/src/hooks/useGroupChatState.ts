@@ -201,7 +201,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     setGroupLoadError(null)
 
     try {
-      const apiGroups = await fetchGroupsApi()
+      const apiGroups = await fetchGroupsApi(currentUser.id)
       const hydratedGroups = await Promise.all(apiGroups.map(group => hydrateGroup(group)))
       setGroups(hydratedGroups)
 
@@ -234,7 +234,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     if (!currentUser) return
 
     try {
-      const apiGroups = await fetchGroupsApi()
+      const apiGroups = await fetchGroupsApi(currentUser.id)
       setGroups(previousGroups => {
         const previousById = new Map(previousGroups.map(group => [group.id, group]))
 
@@ -374,7 +374,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     setGroupsLoading(true)
     setGroupLoadError(null)
 
-    fetchGroupsApi()
+    fetchGroupsApi(currentUser.id)
       .then(apiGroups => Promise.all(apiGroups.map(group => hydrateGroup(group))))
       .then(hydratedGroups => {
         if (cancelled) return
@@ -535,7 +535,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
         groupCode: groupCode.trim().toUpperCase(),
         name: name.trim(),
         description: description?.trim() || undefined,
-      })
+      }, { id: currentUser.id, displayName: currentUser.displayName })
       await reloadGroups(group.id, group.groupCode)
       return { success: true }
     } catch (error) {
