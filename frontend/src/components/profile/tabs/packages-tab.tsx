@@ -14,11 +14,21 @@ interface PackagesTabProps {
 export function PackagesTab({ currentUser, packagePrices, onBuy, language }: PackagesTabProps) {
   const text = packagesText[language]
 
-  const currentPlan = packagePrices.find(pkg => Number(pkg.id) === currentUser.subscriptionPlanId)
+  const planFromId = packagePrices.find(pkg => Number(pkg.id) === Number(currentUser.subscriptionPlanId))
+  const legacyPlanKey = currentUser.subscriptionTier === "2-4"
+    ? "plan_2_4"
+    : currentUser.subscriptionTier === "5+"
+      ? "plan_5_plus"
+      : "free"
+  const currentPlan = planFromId ?? packagePrices.find(pkg => (pkg.planName ?? pkg.tier) === legacyPlanKey)
+  const currentPlanExpired = Boolean(
+    currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() <= Date.now(),
+  )
+  const freePlan = packagePrices.find(pkg => (pkg.planName ?? pkg.tier) === "free")
+  const effectiveCurrentPlan = currentPlanExpired ? freePlan ?? currentPlan : currentPlan
+  const effectivePlanId = effectiveCurrentPlan?.id ?? currentUser.subscriptionPlanId
   const currentPlanLabel =
-    currentUser.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now()
-      ? text.expiredPlan
-      : currentPlan ? getLocalizedPlanName(currentPlan, language) :
+    effectiveCurrentPlan ? getLocalizedPlanName(effectiveCurrentPlan, language) :
         (currentUser.subscriptionTier === "2-4"
           ? text.plan2To4
           : currentUser.subscriptionTier === "5+"
@@ -37,7 +47,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
             <p className="text-sm text-muted-foreground">{text.planName}</p>
             <p className="text-lg font-bold text-foreground">{currentPlanLabel}</p>
           </div>
-          {currentUser.subscriptionTier && currentUser.subscriptionTier !== "free" && currentUser.subscriptionExpiresAt && (
+          {effectiveCurrentPlan?.price && effectiveCurrentPlan.price > 0 && currentUser.subscriptionExpiresAt && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">{text.expiry}</p>
               <p className="flex items-center gap-1.5 text-lg font-bold text-foreground">
@@ -58,13 +68,19 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
         <h3 className="mb-6 text-center text-lg font-semibold text-foreground">{text.availablePlans}</h3>
         <div className="grid gap-6 md:grid-cols-3">
           {packagePrices.map((pkg) => {
-            const isActive = (
-              Number(pkg.id) === currentUser.subscriptionPlanId ||
-              currentUser.subscriptionTier === pkg.tier
-            ) &&
-              (!currentUser.subscriptionExpiresAt || new Date(currentUser.subscriptionExpiresAt).getTime() > Date.now())
+            // The persisted plan id is authoritative. The tier fallback is
+            // only for legacy/mock users without a plan id. This prevents a
+            // custom paid plan from also being marked as the Free plan.
+            const matchesCurrentPlan = effectivePlanId !== null && effectivePlanId !== undefined
+              ? Number(pkg.id) === Number(effectivePlanId)
+              : currentUser.subscriptionTier === pkg.tier
+            const isActive = matchesCurrentPlan
             const planName = getLocalizedPlanName(pkg, language)
             const isFreePlan = (pkg.planName ?? pkg.tier) === "free"
+            const createGroupLimit = pkg.createGroupLimit ?? 0
+            const joinGroupLimit = pkg.joinGroupLimit ?? pkg.maxUsers
+            const dailyAiChatLimit = pkg.dailyAiChatLimit ?? 5
+            const maxFlashcards = pkg.maxFlashcards ?? 5
             return (
               <div
                 key={pkg.id}
@@ -82,7 +98,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                   <h4 className="mb-1 text-lg font-bold text-foreground">{planName}</h4>
                   <div className="mb-4 flex items-baseline gap-1">
                     <span className="text-2xl font-extrabold text-foreground">
-                      {pkg.price === 0 ? text.freePrice : `${pkg.price.toLocaleString("vi-VN")}đ`}
+                      {pkg.price === 0 ? text.freePrice : formatPrice(pkg.price, language)}
                     </span>
                     {pkg.price > 0 && <span className="text-xs text-muted-foreground">{text.perMonth}</span>}
                   </div>
@@ -90,14 +106,14 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                   <ul className="mb-6 space-y-3 border-t border-border pt-4 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                      <span>{text.aiChat}</span>
+                      <span>{formatLimitText(dailyAiChatLimit, text.aiChatLimit, text.aiChatUnlimited, text.aiChatDisabled)}</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>
-                        {(pkg.createGroupLimit ?? 0) === 0
-                          ? text.noGroupChat(pkg.joinGroupLimit ?? pkg.maxUsers)
-                          : text.groupLimits(pkg.createGroupLimit ?? 0, pkg.joinGroupLimit ?? pkg.maxUsers)}
+                        {createGroupLimit === 0
+                          ? text.noGroupChat(joinGroupLimit)
+                          : text.groupLimits(createGroupLimit, joinGroupLimit)}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
@@ -108,7 +124,7 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                      <span>{text.flashcards}</span>
+                      <span>{formatLimitText(maxFlashcards, text.flashcardLimit, text.flashcardsUnlimited, text.flashcardsDisabled)}</span>
                     </li>
                   </ul>
                 </div>
@@ -153,11 +169,15 @@ const packagesText = {
     current: "Đang sử dụng",
     freePrice: "Miễn phí",
     perMonth: "/tháng",
-    aiChat: "AI Chat cá nhân hỏi đáp",
-    noGroupChat: (joinLimit: number) => `Không hỗ trợ tạo nhóm, tham gia tối đa ${joinLimit} nhóm`,
-    groupLimits: (createLimit: number, joinLimit: number) => `Tạo tối đa ${createLimit} nhóm, tham gia tối đa ${joinLimit} nhóm`,
+    aiChatLimit: (limit: number) => `AI Chat cá nhân: ${limit} lượt/ngày`,
+    aiChatUnlimited: "AI Chat cá nhân: không giới hạn",
+    aiChatDisabled: "Không có lượt AI Chat cá nhân",
+    noGroupChat: (joinLimit: number) => `Không hỗ trợ tạo nhóm, tham gia ${formatCount(joinLimit, "nhóm", "nhóm", "không giới hạn")}`,
+    groupLimits: (createLimit: number, joinLimit: number) => `Tạo ${formatCount(createLimit, "nhóm", "nhóm", "không giới hạn")}, tham gia ${formatCount(joinLimit, "nhóm", "nhóm", "không giới hạn")}`,
     storage: "Dung lượng lưu trữ",
-    flashcards: "Tạo flashcards từ tài liệu",
+    flashcardLimit: (limit: number) => `Tối đa ${limit} flashcards`,
+    flashcardsUnlimited: "Flashcards: không giới hạn",
+    flashcardsDisabled: "Không có flashcards",
     default: "Mặc định",
     renew: "Gia hạn gói",
     upgrade: "Nâng cấp ngay",
@@ -179,13 +199,38 @@ const packagesText = {
     current: "Current",
     freePrice: "Free",
     perMonth: "/month",
-    aiChat: "Personal AI chat Q&A",
-    noGroupChat: (joinLimit: number) => `Group creation is not available, join up to ${joinLimit} groups`,
-    groupLimits: (createLimit: number, joinLimit: number) => `Create up to ${createLimit} groups, join up to ${joinLimit} groups`,
+    aiChatLimit: (limit: number) => `Personal AI chat: ${limit} uses/day`,
+    aiChatUnlimited: "Personal AI chat: unlimited",
+    aiChatDisabled: "No personal AI chat uses",
+    noGroupChat: (joinLimit: number) => `Group creation is not available, join ${formatCount(joinLimit, "group", "groups", "unlimited")}`,
+    groupLimits: (createLimit: number, joinLimit: number) => `Create ${formatCount(createLimit, "group", "groups", "unlimited")}, join ${formatCount(joinLimit, "group", "groups", "unlimited")}`,
     storage: "Storage",
-    flashcards: "Create flashcards from documents",
+    flashcardLimit: (limit: number) => `Up to ${limit} flashcards`,
+    flashcardsUnlimited: "Flashcards: unlimited",
+    flashcardsDisabled: "No flashcards",
     default: "Default",
     renew: "Renew plan",
     upgrade: "Upgrade now",
   },
 } as const
+
+function formatPrice(price: number, language: Language) {
+  const amount = price.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
+  return language === "vi" ? `${amount}đ` : `${amount} VND`
+}
+
+function formatCount(value: number, singular: string, plural: string, unlimited: string) {
+  if (value === -1) return unlimited
+  return `${value} ${value === 1 ? singular : plural}`
+}
+
+function formatLimitText(
+  value: number,
+  limited: (value: number) => string,
+  unlimited: string,
+  disabled: string,
+) {
+  if (value === -1) return unlimited
+  if (value === 0) return disabled
+  return limited(value)
+}

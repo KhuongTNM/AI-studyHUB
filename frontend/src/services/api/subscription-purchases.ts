@@ -2,7 +2,7 @@
 import { mapApiUserToStoreUser, type ApiUser } from "@/services/api/auth"
 import type { User } from "@/lib/store"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-studyhub.onrender.com"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
 export interface SubscriptionPurchase {
   orderId: string

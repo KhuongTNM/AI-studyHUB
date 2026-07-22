@@ -210,9 +210,48 @@ export const MOCK_ACTIVITY: ActivityLog[] = [
 ]
 
 export const DEFAULT_PACKAGE_PRICES: PackagePrice[] = [
-  { id: "pkg-free", name: "Gói Free", tier: "free", price: 0, maxUsers: 5 },
-  { id: "pkg-medium", name: "Gói Pro", tier: "2-4", price: 99000, maxUsers: 30 },
-  { id: "pkg-large", name: "Gói VIP", tier: "5+", price: 199000, maxUsers: 60 }
+  {
+    id: "pkg-free",
+    planName: "free",
+    name: "Gói Free",
+    tier: "free",
+    price: 0,
+    maxUsers: 4,
+    defaultStorageBytes: 512 * 1024 * 1024,
+    storageLabel: "512 MB",
+    createGroupLimit: 0,
+    joinGroupLimit: 5,
+    dailyAiChatLimit: 5,
+    maxFlashcards: 5,
+  },
+  {
+    id: "pkg-medium",
+    planName: "plan_2_4",
+    name: "Gói Pro",
+    tier: "2-4",
+    price: 49000,
+    maxUsers: 4,
+    defaultStorageBytes: 1024 * 1024 * 1024,
+    storageLabel: "1 GB",
+    createGroupLimit: 20,
+    joinGroupLimit: 30,
+    dailyAiChatLimit: 50,
+    maxFlashcards: 100,
+  },
+  {
+    id: "pkg-large",
+    planName: "plan_5_plus",
+    name: "Gói VIP",
+    tier: "5+",
+    price: 99000,
+    maxUsers: 99,
+    defaultStorageBytes: 5 * 1024 * 1024 * 1024,
+    storageLabel: "5 GB",
+    createGroupLimit: 50,
+    joinGroupLimit: 60,
+    dailyAiChatLimit: -1,
+    maxFlashcards: -1,
+  },
 ]
 
 export const MOCK_FLASHCARDS: Flashcard[] = [

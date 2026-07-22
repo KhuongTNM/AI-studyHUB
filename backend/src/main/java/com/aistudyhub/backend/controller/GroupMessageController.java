@@ -74,14 +74,12 @@ public class GroupMessageController {
             @AuthenticationPrincipal AuthUserPrincipal principal) {
 
         UUID userId = principal.getId();
-        Resource resource = groupMessageService.downloadDocument(groupId, docId, userId);
-
-        String filename = resource.getFilename() != null ? resource.getFilename() : "document";
+        GroupMessageService.DocumentDownload download = groupMessageService.downloadDocument(groupId, docId, userId);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .body(resource);
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + download.filename() + "\"")
+                .body(download.resource());
     }
 
     // Image Upload Logic

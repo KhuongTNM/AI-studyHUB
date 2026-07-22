@@ -7,10 +7,10 @@ import java.math.BigDecimal;
 
 @Data
 public class UpdatePlanRequest {
+    private String name;
+
     private String displayName;
 
-    private String description;
-    
     private BigDecimal price;
     
     private Short maxRoomMembers;
@@ -27,4 +27,9 @@ public class UpdatePlanRequest {
     
     @NotBlank(message = "Mật khẩu Admin không được để trống.")
     private String adminPassword;
+
+    public String getEffectiveName() {
+        return name != null && !name.isBlank() ? name : displayName;
+    }
 }
+

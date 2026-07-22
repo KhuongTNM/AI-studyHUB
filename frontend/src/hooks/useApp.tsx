@@ -33,7 +33,7 @@ import { useUIState } from "./useUIState"
 import { useAuthState } from "./useAuthState"
 import { useDocumentState } from "./useDocumentState"
 import { useChatState } from "./useChatState"
-import { useFlashcardState } from "./useFlashcardState"
+import { useFlashcardState, type GenerateFlashcardsOutcome } from "./useFlashcardState"
 import { useAdminState } from "./useAdminState"
 import { useSubscriptionState } from "./useSubscriptionState"
 import { useGroupChatState } from "./useGroupChatState"
@@ -48,8 +48,27 @@ export interface AppState {
   authLoading: boolean
   showAuthModal: boolean
   authModalTab: "login" | "register" | "forgot"
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  register: (email: string, password: string, confirmPassword: string, displayName: string) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<
+    | { success: true }
+    /** code "ACCOUNT_NOT_VERIFIED" (BR-097) kèm email để điều hướng sang màn OTP */
+    | { success: false; error: string; code?: "ACCOUNT_NOT_VERIFIED"; email?: string }
+  >
+  /** BR-095 — requiresVerification true nghĩa là chưa đăng nhập được, phải điều hướng sang màn OTP */
+  register: (email: string, password: string, confirmPassword: string, displayName: string) => Promise<
+    | { success: true; requiresVerification: true; email: string; otpExpiresInSeconds?: number }
+    | { success: true; requiresVerification: false; message?: string }
+    | { success: false; error: string }
+  >
+  /** BR-096 — xác thực mã OTP 6 số; thành công thì tự động đăng nhập luôn */
+  verifyOtp: (email: string, otpCode: string) => Promise<
+    | { success: true }
+    | { success: false; error: string; code?: string; attemptsRemaining?: number }
+  >
+  /** BR-098 — gửi lại mã OTP (cooldown 60s) */
+  resendOtp: (email: string) => Promise<
+    | { success: true; message: string }
+    | { success: false; error: string; code?: string; retryAfterSeconds?: number }
+  >
   /** Đăng nhập/đăng ký bằng Google — idToken là JWT từ Google Identity Services */
   loginWithGoogle: (idToken: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
@@ -156,14 +175,12 @@ export interface AppState {
   loadGroups: () => Promise<{ success: boolean; error?: string }>
   loadPendingGroupInvitations: () => Promise<{ success: boolean; error?: string }>
   respondGroupInvitation: (groupId: string, accept: boolean) => Promise<{ success: boolean; error?: string }>
-  createGroup: (name: string, description: string | undefined, password: string, groupCode?: string) => Promise<{ success: boolean; error?: string }>
-  joinGroup: (groupCode: string, password: string) => Promise<{ success: boolean; error?: string }>
+  createGroup: (name: string, description: string | undefined, groupCode?: string) => Promise<{ success: boolean; error?: string }>
   searchGroupInvitationUser: (groupId: string, email: string) => Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }>
   inviteGroupMemberByEmail: (groupId: string, email: string) => Promise<{ success: boolean; error?: string }>
   leaveGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
-  kickGroupMember: (groupId: string, targetUserId: string, groupPassword: string) => Promise<{ success: boolean; error?: string }>
-  deleteGroup: (groupId: string, password: string) => Promise<{ success: boolean; error?: string }>
-  getGroupPassword: (groupId: string) => Promise<{ success: boolean; password?: string; error?: string }>
+  kickGroupMember: (groupId: string, targetUserId: string) => Promise<{ success: boolean; error?: string }>
+  deleteGroup: (groupId: string) => Promise<{ success: boolean; error?: string }>
   updateGroupMuted: (groupId: string, muted: boolean) => Promise<{ success: boolean; error?: string }>
   updateGroupPinned: (groupId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
   sendGroupMessage: (groupId: string, content: string) => Promise<{ success: boolean; error?: string }>
@@ -190,11 +207,15 @@ export interface AppState {
   ) => Promise<{ success: boolean; message?: string }>
   /** Cập nhật status qua PATCH /api/flashcards/{id}/status (BR-038) */
   updateFlashcardStatus: (id: string, status: Flashcard["status"]) => void
-  /** AI tạo flashcard qua POST /api/flashcards/generate (BR-036), không fallback mock khi lỗi */
+  /**
+   * AI tạo flashcard qua POST /api/flashcards/generate theo cơ chế Batching
+   * (BR-099 → BR-105), không fallback mock khi lỗi. Xem GenerateFlashcardsOutcome
+   * ở useFlashcardState.ts để biết đầy đủ field của 2 nhánh success/failure.
+   */
   generateFlashcardsFromDocument: (
     docId: string,
     count?: number,
-  ) => Promise<{ success: boolean; count: number; message?: string }>
+  ) => Promise<GenerateFlashcardsOutcome>
   /** Load flashcard từ API theo document (BR-039) */
   loadFlashcardsForDocument: (docId: string) => Promise<{ success: boolean; message?: string }>
   /** Load TOÀN BỘ flashcard của user (mọi document), dùng khi mount app và khi bấm "Làm mới" ở chế độ "Tất cả tài liệu" */
@@ -220,8 +241,8 @@ export interface AppState {
   packagePrices: PackagePrice[]
   updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
-  grantSubscription: (userId: string, tier: PackageTier, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  buySubscription: (tier: PackageTier) => { success: boolean; error?: string }
+  grantSubscription: (userId: string, tier: string, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  buySubscription: (tier: string) => { success: boolean; error?: string }
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -271,7 +292,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   // ── 4. Flashcards ────────────────────────────────────────────────────────
-  const flashcards = useFlashcardState()
+  // isAuthReady: chỉ true khi session đã được khôi phục xong (!authLoading)
+  // VÀ có user đăng nhập. FIX 401: trước đây hook tự fetch ngay khi mount,
+  // kể cả khi là khách chưa đăng nhập hoặc token chưa kịp đọc từ localStorage.
+  const flashcards = useFlashcardState({
+    isAuthReady: !auth.authLoading && !!auth.currentUser,
+  })
 
   // ── 5. Admin (cần currentUser + cross-domain setters) ──────────────────
   const admin = useAdminState({
@@ -290,7 +316,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addLog: logs.addLog,
   })
 
-  const groupChat = useGroupChatState({ currentUser: auth.currentUser })
+  const groupChat = useGroupChatState({
+    currentUser: auth.currentUser,
+    packagePrices: subscription.packagePrices,
+  })
 
   // ─── Cross-domain actions ───────────────────────────────────────────────
 
@@ -335,6 +364,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         authModalTab: ui.authModalTab,
         login: auth.login,
         register: auth.register,
+        verifyOtp: auth.verifyOtp,
+        resendOtp: auth.resendOtp,
         loginWithGoogle: auth.loginWithGoogle,
         logout,
         updateOwnProfile: auth.updateOwnProfile,
@@ -400,13 +431,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadPendingGroupInvitations: groupChat.loadPendingGroupInvitations,
         respondGroupInvitation: groupChat.respondGroupInvitation,
         createGroup: groupChat.createGroup,
-        joinGroup: groupChat.joinGroup,
         searchGroupInvitationUser: groupChat.searchGroupInvitationUser,
         inviteGroupMemberByEmail: groupChat.inviteGroupMemberByEmail,
         leaveGroup: groupChat.leaveGroup,
         kickGroupMember: groupChat.kickGroupMember,
         deleteGroup: groupChat.deleteGroup,
-        getGroupPassword: groupChat.getGroupPassword,
         updateGroupMuted: groupChat.updateGroupMuted,
         updateGroupPinned: groupChat.updateGroupPinned,
         sendGroupMessage: groupChat.sendGroupMessage,

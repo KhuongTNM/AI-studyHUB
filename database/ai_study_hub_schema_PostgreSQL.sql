@@ -424,15 +424,13 @@ CREATE TABLE IF NOT EXISTS payment.subscriptions (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- 3. THÊM CÁC CỘT QUẢN LÝ VÀ GIỚI HẠN MỚI CHO BẢNG GÓI DỊCH VỤ
--- is_deleted: Phục vụ soft-delete bảo vệ dữ liệu lịch sử
--- description: Mô tả chi tiết gói dịch vụ
--- daily_ai_chat_limit: Giới hạn số câu hỏi Chat AI mỗi ngày (-1 = không giới hạn)
--- max_flashcards: Giới hạn số lượng thẻ flashcard tối đa (-1 = không giới hạn)
+-- 3. THÊM CÁC CỘT QUẢN LÝ VÀ GIỚI HẠN MỚI CHO BẢNG GÓI DỊCH VỤ & XÓA CÁC CỘT KHÔNG DÙNG
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
-ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS description VARCHAR(500);
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS daily_ai_chat_limit INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE payment.subscription_plans ADD COLUMN IF NOT EXISTS max_flashcards INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS display_name;
+ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS description;
+
 
 -- 4. CẬP NHẬT CẤU HÌNH HẠN MỨC MẶC ĐỊNH CHO CÁC GÓI HIỆN TẠI
 
@@ -487,3 +485,17 @@ ALTER TABLE core.email_otp_tokens ADD FOREIGN KEY (user_id)
 CREATE INDEX idx_eot_user_id   ON core.email_otp_tokens (user_id);
 CREATE INDEX idx_eot_email     ON core.email_otp_tokens (email);
 CREATE INDEX idx_eot_user_used ON core.email_otp_tokens (user_id, used);
+
+-- Chạy 1 lần trên Supabase SQL editor (project không dùng Flyway/Liquibase,
+-- ddl-auto=none nên bảng phải tạo tay).
+CREATE TABLE core.upload_settings (
+    id                     SMALLINT PRIMARY KEY DEFAULT 1,
+    max_file_size_bytes    BIGINT  NOT NULL DEFAULT 52428800,   -- 50MB
+    max_files_per_upload   INTEGER NOT NULL DEFAULT 5,
+    updated_at             TIMESTAMP NOT NULL DEFAULT now(),
+    updated_by_admin_id    UUID,
+    CONSTRAINT chk_single_row CHECK (id = 1)
+);
+
+INSERT INTO core.upload_settings (id, max_file_size_bytes, max_files_per_upload)
+VALUES (1, 52428800, 5);

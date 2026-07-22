@@ -20,7 +20,7 @@ public class SubscriptionPlanResponse {
         SubscriptionPlanResponse response = new SubscriptionPlanResponse();
         response.id = plan.getId();
         response.name = plan.getName();
-        response.displayName = plan.getDisplayName();
+        response.displayName = plan.getName();
         response.price = plan.getPrice();
         response.maxRoomMembers = plan.getMaxRoomMembers();
         response.defaultStorageBytes = plan.getDefaultStorageBytes();

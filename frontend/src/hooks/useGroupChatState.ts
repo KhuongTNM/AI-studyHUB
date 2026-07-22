@@ -1,19 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import type { Document, GroupChat, GroupChatMessage, GroupInvitation, GroupInvitationCandidate, PackageTier, User } from "@/states/types"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { Document, GroupChat, GroupChatMessage, GroupInvitation, GroupInvitationCandidate, PackagePrice, PackageTier, User } from "@/states/types"
 import {
   createGroupApi,
   deleteGroupApi,
   downloadGroupDocumentApi,
   exportGroupChatApi,
-  fetchGroupPasswordApi,
   fetchGroupMessagesApi,
   fetchGroupMembersApi,
   fetchGroupsApi,
   fetchGroupSettingsApi,
   fetchPendingGroupInvitationsApi,
-  joinGroupApi,
   kickGroupMemberApi,
   leaveGroupApi,
   reportGroupApi,
@@ -29,10 +27,10 @@ import {
 
 interface GroupChatStateDeps {
   currentUser: User | null
+  packagePrices: PackagePrice[]
 }
 
 type ActionResult = { success: boolean; error?: string }
-type GroupPasswordResult = ActionResult & { password?: string }
 
 const GROUP_CREATE_LIMIT_BY_TIER: Record<PackageTier, number> = {
   free: 0,
@@ -46,23 +44,48 @@ const GROUP_JOIN_LIMIT_BY_TIER: Record<PackageTier, number> = {
   "5+": 60,
 }
 
-function getEffectiveTier(user: User | null): PackageTier {
-  if (!user) return "free"
-  if (user.role === "admin" || user.role === "sub-admin") return "5+"
-  return user.subscriptionTier ?? "free"
+const GROUP_INVITATION_POLL_INTERVAL_MS = 5000
+
+function tierToPlanName(tier: string): string {
+  if (tier === "2-4") return "plan_2_4"
+  if (tier === "5+") return "plan_5_plus"
+  if (tier === "free") return "free"
+  return tier
 }
 
-function hasActivePaidPlan(user: User | null) {
-  if (!user) return false
-  if (user.role === "admin" || user.role === "sub-admin") return true
-  if (user.subscriptionTier !== "2-4" && user.subscriptionTier !== "5+") return false
-  if (!user.subscriptionExpiresAt) return false
-  return new Date(user.subscriptionExpiresAt).getTime() > Date.now()
+function getFallbackLimits(user: User | null) {
+  const requestedTier = !user
+    ? "free"
+    : user.role === "admin" || user.role === "sub-admin"
+      ? "5+"
+      : user.subscriptionTier ?? "free"
+  const tier: PackageTier = requestedTier === "2-4" || requestedTier === "5+"
+    ? requestedTier
+    : "free"
+
+  return {
+    create: GROUP_CREATE_LIMIT_BY_TIER[tier],
+    join: GROUP_JOIN_LIMIT_BY_TIER[tier],
+  }
 }
 
-function getRuleTier(user: User | null): PackageTier {
-  if (!hasActivePaidPlan(user)) return "free"
-  return getEffectiveTier(user)
+function resolveGroupLimits(user: User | null, packagePrices: PackagePrice[]) {
+  const fallback = getFallbackLimits(user)
+  if (!user || user.role === "admin" || user.role === "sub-admin") return fallback
+
+  const freePlan = packagePrices.find(plan => (plan.planName ?? plan.tier) === "free")
+  const selectedPlan = user.subscriptionPlanId == null
+    ? packagePrices.find(plan => (plan.planName ?? plan.tier) === tierToPlanName(user.subscriptionTier ?? "free"))
+    : packagePrices.find(plan => Number(plan.id) === Number(user.subscriptionPlanId))
+  const planExpired = Boolean(
+    user.subscriptionExpiresAt && new Date(user.subscriptionExpiresAt).getTime() <= Date.now(),
+  )
+  const effectivePlan = planExpired ? freePlan : selectedPlan
+
+  return {
+    create: effectivePlan?.createGroupLimit ?? fallback.create,
+    join: effectivePlan?.joinGroupLimit ?? fallback.join,
+  }
 }
 
 function makeGroupCode() {
@@ -73,10 +96,10 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function getHttpStatus(error: unknown) {
-  if (!error || typeof error !== "object") return undefined
-  const status = (error as { status?: unknown }).status
-  return typeof status === "number" ? status : undefined
+function isGroupUnavailableError(error: unknown) {
+  const message = getErrorMessage(error, "").toUpperCase()
+  return ["GROUP_NOT_FOUND", "GROUP_ACCESS_DENIED", "GROUP_MEMBER_NOT_FOUND"]
+    .some(code => message.includes(code))
 }
 
 function mergeOwnerName(group: GroupChat): GroupChat {
@@ -125,7 +148,7 @@ function mergeGroupMessages(
   }
 }
 
-export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
+export function useGroupChatState({ currentUser, packagePrices }: GroupChatStateDeps) {
   const [groups, setGroups] = useState<GroupChat[]>([])
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [groupsLoading, setGroupsLoading] = useState(false)
@@ -133,10 +156,14 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const [pendingGroupInvitations, setPendingGroupInvitations] = useState<GroupInvitation[]>([])
   const [groupInvitationsLoading, setGroupInvitationsLoading] = useState(false)
   const [groupInvitationsError, setGroupInvitationsError] = useState<string | null>(null)
+  const pendingInvitationRequestRef = useRef(false)
 
-  const ruleTier = useMemo(() => getRuleTier(currentUser), [currentUser])
-  const groupCreateLimit = GROUP_CREATE_LIMIT_BY_TIER[ruleTier]
-  const groupJoinLimit = GROUP_JOIN_LIMIT_BY_TIER[ruleTier]
+  const groupLimits = useMemo(
+    () => resolveGroupLimits(currentUser, packagePrices),
+    [currentUser, packagePrices],
+  )
+  const groupCreateLimit = groupLimits.create
+  const groupJoinLimit = groupLimits.join
 
   const hydrateGroup = useCallback(async (group: GroupChat): Promise<GroupChat> => {
     const [members, settings, messages] = await Promise.all([
@@ -199,6 +226,44 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [activeGroupId, currentUser, hydrateGroup])
 
+  // Keep the sidebar in sync across separate browser sessions without
+  // rehydrating every group on each poll. The open group has dedicated
+  // member/message polling below; this lightweight list refresh detects when
+  // a group was deleted or the current user was kicked from it.
+  const refreshGroupList = useCallback(async () => {
+    if (!currentUser) return
+
+    try {
+      const apiGroups = await fetchGroupsApi()
+      setGroups(previousGroups => {
+        const previousById = new Map(previousGroups.map(group => [group.id, group]))
+
+        return apiGroups.map(group => {
+          const previous = previousById.get(group.id)
+          if (!previous) return group
+
+          return {
+            ...previous,
+            groupCode: group.groupCode,
+            name: group.name,
+            description: group.description,
+            ownerId: group.ownerId,
+            ownerName: group.ownerName,
+            maxMembers: group.maxMembers,
+            createdAt: group.createdAt,
+            updatedAt: group.updatedAt,
+          }
+        })
+      })
+      setActiveGroupId(previousId => {
+        if (previousId && apiGroups.some(group => group.id === previousId)) return previousId
+        return apiGroups[0]?.id ?? null
+      })
+    } catch (error) {
+      console.warn("[GroupChat] Failed to refresh group list", error)
+    }
+  }, [currentUser])
+
   const loadGroups = useCallback(async (): Promise<ActionResult> => {
     try {
       await reloadGroups(null, null)
@@ -215,19 +280,29 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return { success: true }
     }
 
+    if (pendingInvitationRequestRef.current) {
+      return { success: true }
+    }
+
+    pendingInvitationRequestRef.current = true
+
     setGroupInvitationsLoading(true)
     setGroupInvitationsError(null)
 
     try {
       const invitations = await fetchPendingGroupInvitationsApi()
-      setPendingGroupInvitations(invitations)
+      if (currentUser?.id) {
+        setPendingGroupInvitations(invitations)
+      }
       return { success: true }
     } catch (error) {
       const message = getErrorMessage(error, "Could not load group invitations.")
-      setPendingGroupInvitations([])
+      // Keep the last successful list during a transient polling failure so
+      // one failed request does not hide an invitation already shown to the user.
       setGroupInvitationsError(message)
       return { success: false, error: message }
     } finally {
+      pendingInvitationRequestRef.current = false
       setGroupInvitationsLoading(false)
     }
   }, [currentUser?.id])
@@ -267,12 +342,24 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       return
     }
 
-    void loadPendingGroupInvitations()
-    const intervalId = window.setInterval(() => {
-      void loadPendingGroupInvitations()
-    }, 30000)
+    const refreshInvitations = () => {
+      if (document.visibilityState === "visible") {
+        void loadPendingGroupInvitations()
+      }
+    }
 
-    return () => window.clearInterval(intervalId)
+    void loadPendingGroupInvitations()
+    const intervalId = window.setInterval(refreshInvitations, GROUP_INVITATION_POLL_INTERVAL_MS)
+    window.addEventListener("focus", refreshInvitations)
+    window.addEventListener("online", refreshInvitations)
+    document.addEventListener("visibilitychange", refreshInvitations)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refreshInvitations)
+      window.removeEventListener("online", refreshInvitations)
+      document.removeEventListener("visibilitychange", refreshInvitations)
+    }
   }, [currentUser?.id, loadPendingGroupInvitations])
 
   useEffect(() => {
@@ -315,6 +402,43 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser?.id, hydrateGroup])
 
+  // A group can be deleted or a member can be kicked from another session.
+  // Refresh only the lightweight group list so those changes appear without
+  // a full page reload or repeated hydration of every group.
+  useEffect(() => {
+    if (!currentUser?.id) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refresh = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+      try {
+        await refreshGroupList()
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void refresh() }, 3000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh()
+    }
+
+    window.addEventListener("focus", refresh)
+    window.addEventListener("online", refresh)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("online", refresh)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [currentUser?.id, refreshGroupList])
+
   // The backend currently exposes history but no push channel. Refresh only
   // the open group so separate sessions converge without reloading every group.
   useEffect(() => {
@@ -338,6 +462,7 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       } catch (error) {
         if (!cancelled) {
           console.warn("[GroupChat] Failed to refresh group messages", { groupId: activeGroupId, error })
+          if (isGroupUnavailableError(error)) void refreshGroupList()
         }
       } finally {
         requestInFlight = false
@@ -351,12 +476,56 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [activeGroupId, currentUser])
+  }, [activeGroupId, currentUser, refreshGroupList])
+
+  // Membership changes happen in another session when someone accepts an
+  // invitation or leaves the group. Refresh the open group's members so the
+  // header, sidebar count, info modal, and member modal stay in sync.
+  useEffect(() => {
+    if (!currentUser?.id || !activeGroupId) return
+
+    let cancelled = false
+    let requestInFlight = false
+
+    const refreshMembers = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+
+      try {
+        const members = await fetchGroupMembersApi(activeGroupId)
+        if (cancelled) return
+
+        setGroups(prev => prev.map(group => group.id === activeGroupId
+          ? mergeOwnerName({ ...group, members })
+          : group,
+        ))
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[GroupChat] Failed to refresh group members", { groupId: activeGroupId, error })
+          if (isGroupUnavailableError(error)) void refreshGroupList()
+        }
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    void refreshMembers()
+    const intervalId = window.setInterval(() => { void refreshMembers() }, 3000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshMembers()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeGroupId, currentUser?.id, refreshGroupList])
 
   const createGroup = useCallback(async (
     name: string,
     description: string | undefined,
-    password: string,
     groupCode = makeGroupCode(),
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in to create a group." }
@@ -366,25 +535,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
         groupCode: groupCode.trim().toUpperCase(),
         name: name.trim(),
         description: description?.trim() || undefined,
-        password: password.trim(),
       })
       await reloadGroups(group.id, group.groupCode)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not create group.") }
-    }
-  }, [currentUser, reloadGroups])
-
-  const joinGroup = useCallback(async (groupCode: string, password: string): Promise<ActionResult> => {
-    if (!currentUser) return { success: false, error: "Please log in to join a group." }
-
-    const trimmedCode = groupCode.trim().toUpperCase()
-    try {
-      await joinGroupApi(trimmedCode, password.trim())
-      await reloadGroups(null, trimmedCode)
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error, "Could not join group.") }
     }
   }, [currentUser, reloadGroups])
 
@@ -442,7 +597,6 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   const kickGroupMember = useCallback(async (
     groupId: string,
     targetUserId: string,
-    groupPassword: string,
   ): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
@@ -450,10 +604,9 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
     if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
     if (targetUserId === currentUser.id) return { success: false, error: "GROUP_CANNOT_KICK_SELF" }
-    if (!groupPassword.trim()) return { success: false, error: "GROUP_PASSWORD_INVALID" }
 
     try {
-      await kickGroupMemberApi(groupId, targetUserId, groupPassword)
+      await kickGroupMemberApi(groupId, targetUserId)
       await reloadGroups(groupId, null)
       return { success: true }
     } catch (error) {
@@ -461,32 +614,17 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     }
   }, [currentUser, groups, reloadGroups])
 
-  const deleteGroup = useCallback(async (groupId: string, password: string): Promise<ActionResult> => {
+  const deleteGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }
 
     try {
-      await deleteGroupApi(groupId, password.trim())
+      await deleteGroupApi(groupId)
       await reloadGroups(null, null)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not delete group.") }
     }
   }, [currentUser, reloadGroups])
-
-  const getGroupPassword = useCallback(async (groupId: string): Promise<GroupPasswordResult> => {
-    if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
-
-    try {
-      const password = await fetchGroupPasswordApi(groupId)
-      return { success: true, password }
-    } catch (error) {
-      const status = getHttpStatus(error)
-      if (status === 401) return { success: false, error: "UNAUTHENTICATED" }
-      if (status === 403) return { success: false, error: "GROUP_OWNER_REQUIRED" }
-      if (status === 404) return { success: false, error: "GROUP_NOT_FOUND" }
-      return { success: false, error: getErrorMessage(error, "GROUP_PASSWORD_NOT_AVAILABLE") }
-    }
-  }, [currentUser])
 
   const updateGroupMuted = useCallback(async (groupId: string, muted: boolean): Promise<ActionResult> => {
     try {
@@ -554,13 +692,15 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
   }, [appendGroupMessage, currentUser])
 
   const downloadGroupDocument = useCallback(async (groupId: string, documentId: string): Promise<ActionResult> => {
+    if (!currentUser) return { success: false, error: "Please log in to download documents." }
+
     try {
       await downloadGroupDocumentApi(groupId, documentId)
       return { success: true }
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not download document.") }
     }
-  }, [])
+  }, [currentUser])
 
   const exportGroupChat = useCallback(async (groupId: string): Promise<ActionResult> => {
     try {
@@ -595,13 +735,11 @@ export function useGroupChatState({ currentUser }: GroupChatStateDeps) {
     loadPendingGroupInvitations,
     respondGroupInvitation,
     createGroup,
-    joinGroup,
     searchGroupInvitationUser,
     inviteGroupMemberByEmail,
     leaveGroup,
     kickGroupMember,
     deleteGroup,
-    getGroupPassword,
     updateGroupMuted,
     updateGroupPinned,
     sendGroupMessage,

@@ -29,13 +29,30 @@ interface DocumentStateDeps {
   setCurrentUser: Dispatch<SetStateAction<User | null>>
 }
 
+type UploadPoll = {
+  intervalId?: number
+  cancelled: boolean
+}
+
 export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateDeps) {
   const [documents, setDocuments] = useState<Document[]>([])
   // Ref để uploadDocument luôn đọc documents mới nhất (tránh stale closure)
   const documentsRef = useRef<Document[]>(documents)
+  const uploadPollsRef = useRef(new Map<string, UploadPoll>())
   useEffect(() => { documentsRef.current = documents }, [documents])
   const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES)
   const [folders, setFolders] = useState<Folder[]>([])
+
+  // Upload processing polls must not survive an account switch or unmount.
+  useEffect(() => {
+    return () => {
+      for (const poll of uploadPollsRef.current.values()) {
+        poll.cancelled = true
+        if (poll.intervalId !== undefined) window.clearInterval(poll.intervalId)
+      }
+      uploadPollsRef.current.clear()
+    }
+  }, [currentUser?.id])
 
   // ── Load documents từ API khi user đăng nhập ────────────────────────────
   useEffect(() => {
@@ -152,14 +169,29 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
         void refreshStorageUsage()
 
         let attempts = 0
-        const poll = setInterval(async () => {
+        let requestInFlight = false
+        const pollState: UploadPoll = { cancelled: false }
+        const stopPolling = () => {
+          pollState.cancelled = true
+          if (pollState.intervalId !== undefined) window.clearInterval(pollState.intervalId)
+          if (uploadPollsRef.current.get(realDoc.id) === pollState) {
+            uploadPollsRef.current.delete(realDoc.id)
+          }
+        }
+
+        const poll = window.setInterval(async () => {
+          if (pollState.cancelled || requestInFlight) return
+          requestInFlight = true
           attempts++
           if (attempts > 40) {
-            clearInterval(poll)
+            stopPolling()
+            requestInFlight = false
             return
           }
           try {
             const refreshed = await fetchDocumentsApi()
+            if (pollState.cancelled) return
+
             const updated = refreshed.find(d => d.id === realDoc.id)
             if (updated) {
               setDocuments(prev =>
@@ -168,13 +200,17 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
               const isStatusReady = updated.status !== "scanning" && updated.status !== "uploading"
               const isEmbeddingReady = updated.embeddingStatus === "done" || updated.embeddingStatus === "failed"
               if (isStatusReady && isEmbeddingReady) {
-                clearInterval(poll)
+                stopPolling()
               }
             }
           } catch {
-            clearInterval(poll)
+            stopPolling()
+          } finally {
+            requestInFlight = false
           }
         }, 2500)
+        pollState.intervalId = poll
+        uploadPollsRef.current.set(realDoc.id, pollState)
 
         return { success: true }
       } catch (error) {

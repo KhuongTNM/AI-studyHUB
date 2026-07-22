@@ -2,7 +2,7 @@ import { getAccessToken } from "@/lib/auth-storage"
 import { formatBytes } from "@/utils/format"
 import type { Document, DocStatus } from "@/states/types"
 import { MOCK_API } from "@/services/mock/mock-config"
-import { mockPreviewRequest, mockDownloadRequest, mockUploadRequest } from "@/services/mock/documents.mock"
+import { mockPreviewRequest, mockDownloadRequest, mockUploadRequest, mockFetchDocumentsRequest } from "@/services/mock/documents.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -124,9 +124,11 @@ export function mapApiDocumentToDocument(api: ApiDocument): Document {
 
 /** GET /api/documents — lấy tài liệu của user hiện tại (BR-024) */
 export async function fetchDocumentsApi(): Promise<Document[]> {
-  const response = await fetch(`${API_BASE_URL}/api/documents`, {
-    headers: authHeaders(),
-  })
+  const response = MOCK_API
+    ? await mockFetchDocumentsRequest()
+    : await fetch(`${API_BASE_URL}/api/documents`, {
+        headers: authHeaders(),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   const docs = (await response.json()) as ApiDocument[]
   return docs.map(mapApiDocumentToDocument)

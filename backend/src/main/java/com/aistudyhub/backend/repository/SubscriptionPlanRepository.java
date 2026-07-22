@@ -8,11 +8,10 @@ public interface SubscriptionPlanRepository extends JpaRepository<SubscriptionPl
 
     Optional<SubscriptionPlan> findByNameIgnoreCase(String name);
 
-    boolean existsByDisplayName(String displayName);
-
     boolean existsByName(String name);
     
     boolean existsByNameIgnoreCaseAndIsDeletedFalse(String name);
     
     java.util.List<SubscriptionPlan> findAllByIsDeletedFalse();
 }
+
