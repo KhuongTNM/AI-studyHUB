@@ -24,5 +24,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("select u from User u where u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") UUID id);
 
+    /**
+     * BR-101: khoá bản ghi User theo email (nếu tồn tại) để 2 request đăng ký cùng email
+     * không thể đồng thời cùng đọc rồi ghi đè chồng chéo lên nhau (race condition ở TH2).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where lower(u.email) = lower(:email)")
+    Optional<User> findByEmailIgnoreCaseForUpdate(@Param("email") String email);
+
     boolean existsBySubscriptionPlanId(Integer subscriptionPlanId);
 }

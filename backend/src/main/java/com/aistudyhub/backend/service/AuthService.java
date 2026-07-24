@@ -44,6 +44,9 @@ public class AuthService {
     private static final int MAX_OTP_ATTEMPTS = 5;
     // BR-098: chỉ cho phép gửi lại OTP tối đa 1 lần mỗi 60 giây.
     private static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
+    // BR-100/BR-101: tối đa 5 lần sinh OTP (đăng ký mới lẫn ghi đè) trong cửa sổ trượt 24 giờ.
+    private static final int OTP_DAILY_LIMIT = 5;
+    private static final int OTP_DAILY_LIMIT_WINDOW_HOURS = 24;
     private static final Map<String, String> OTP_RESEND_GENERIC_RESPONSE =
             Map.of("message", "Nếu email tồn tại, mã xác thực đã được gửi.");
 
@@ -80,6 +83,13 @@ public class AuthService {
         this.subscriptionService = subscriptionService;
     }
 
+    /**
+     * BR-101 (Register-Overwrite Strategy): thay vì chặn cứng mọi email đã tồn tại, xét 3 nhánh
+     * theo đúng thứ tự: TH1 (email đã tồn tại + đã xác thực) -> từ chối 409; TH2 (email đã tồn tại
+     * + chưa xác thực) -> ghi đè thông tin, sinh OTP mới; TH3 (email chưa tồn tại) -> tạo mới như
+     * luồng đăng ký hiện có (BR-095). TH2 và TH3 trả về CÙNG một AuthResponse, không có field nào
+     * phân biệt 2 trường hợp.
+     */
     @Transactional(rollbackFor = Exception.class)
     public AuthResponse register(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
@@ -92,13 +102,47 @@ public class AuthService {
         if (!request.getPassword().equals(request.getConfirmPassword())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Mật khẩu xác nhận không trùng khớp.");
         }
-        if (userRepository.existsByEmailIgnoreCase(email)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Email này đã được đăng ký.");
+
+        // BR-101: khoá bản ghi User hiện có (nếu có) ngay từ đây để tránh 2 request đăng ký cùng
+        // email cùng lúc đọc rồi ghi đè chồng chéo lên nhau.
+        Optional<User> existingUser = userRepository.findByEmailIgnoreCaseForUpdate(email);
+        if (existingUser.isPresent() && existingUser.get().isEmailVerified()) {
+            // TH1: email đã có chủ và đã xác thực -> từ chối, không đụng tới dữ liệu hiện có.
+            throw new BusinessException(ErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 
         PasswordPolicyValidator.validate(request.getPassword());
-        SubscriptionPlan freePlan = getFreePlan();
 
+        User user = existingUser.isPresent()
+                ? overwriteUnverifiedUser(existingUser.get(), request, displayName)
+                : createNewUser(email, request, displayName);
+
+        // BR-100/BR-101: rate-limit 24h áp dụng như nhau cho cả TH2 (ghi đè) và TH3 (tạo mới),
+        // tái sử dụng nguyên bộ đếm COUNT(*) trên email_otp_tokens - không có bộ đếm riêng.
+        enforceOtpDailyLimit(user.getId());
+        // BR-095: sinh + gửi mã OTP ngay trong cùng transaction. Với TH2, việc này cũng đồng thời
+        // vô hiệu hoá OTP cũ chưa dùng của bản ghi bị ghi đè.
+        generateAndSendOtp(user);
+
+        UserResponse userResponse = UserResponse.from(user);
+        AuthResponse response = new AuthResponse(userResponse);
+        response.setPasswordStrength(PasswordPolicyValidator.calculateStrength(request.getPassword()));
+        response.setRequiresVerification(true);
+        response.setOtpExpiresInSeconds(OTP_EXPIRY_MINUTES * 60);
+        return response;
+    }
+
+    /** BR-101 (TH2): email đã tồn tại nhưng chưa xác thực -> ghi đè bằng thông tin vừa nhập. */
+    private User overwriteUnverifiedUser(User user, RegisterRequest request, String displayName) {
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setDisplayName(displayName);
+        user.setUpdatedAt(LocalDateTime.now());
+        return userRepository.save(user);
+    }
+
+    /** BR-101 (TH3): email chưa tồn tại -> tạo mới, giữ nguyên luồng đăng ký hiện có (BR-095). */
+    private User createNewUser(String email, RegisterRequest request, String displayName) {
+        SubscriptionPlan freePlan = getFreePlan();
         LocalDateTime now = LocalDateTime.now();
         User user = new User();
         user.setId(UUID.randomUUID());
@@ -118,17 +162,29 @@ public class AuthService {
         user.setThemePreference(User.ThemePreference.light);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
-        userRepository.save(user);
+        return userRepository.save(user);
+    }
 
-        // BR-095: sinh + gửi mã OTP ngay sau khi tạo user, trong cùng transaction.
-        generateAndSendOtp(user);
-
-        UserResponse userResponse = UserResponse.from(user);
-        AuthResponse response = new AuthResponse(userResponse);
-        response.setPasswordStrength(PasswordPolicyValidator.calculateStrength(request.getPassword()));
-        response.setRequiresVerification(true);
-        response.setOtpExpiresInSeconds(OTP_EXPIRY_MINUTES * 60);
-        return response;
+    /**
+     * BR-100/BR-101: chặn khi user đã có >= {@link #OTP_DAILY_LIMIT} bản ghi OTP sinh ra trong
+     * {@link #OTP_DAILY_LIMIT_WINDOW_HOURS} giờ gần nhất (sliding window, tính trên
+     * email_otp_tokens.created_at). retryAfterSeconds = thời gian tới khi bản ghi OTP cũ nhất
+     * trong cửa sổ hiện tại trượt ra khỏi cửa sổ.
+     */
+    private void enforceOtpDailyLimit(UUID userId) {
+        LocalDateTime windowStart = LocalDateTime.now().minusHours(OTP_DAILY_LIMIT_WINDOW_HOURS);
+        if (emailOtpTokenRepository.countByUserIdAndCreatedAtAfter(userId, windowStart) < OTP_DAILY_LIMIT) {
+            return;
+        }
+        long retryAfterSeconds = emailOtpTokenRepository
+                .findFirstByUserIdAndCreatedAtAfterOrderByCreatedAtAsc(userId, windowStart)
+                .map(oldest -> Duration.between(
+                        LocalDateTime.now(), oldest.getCreatedAt().plusHours(OTP_DAILY_LIMIT_WINDOW_HOURS))
+                        .getSeconds())
+                .filter(seconds -> seconds > 0)
+                .orElse(0L);
+        throw new BusinessException(ErrorCode.OTP_DAILY_LIMIT_REACHED,
+                Map.of("dailyLimit", OTP_DAILY_LIMIT, "retryAfterSeconds", retryAfterSeconds));
     }
 
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
