@@ -120,7 +120,10 @@ export async function fetchFlashcardQuotaApi(
 ): Promise<FlashcardLimits> {
   const planName = tierToPlanName(subscriptionTier)
   if (MOCK_API) {
-    const response = await mockFetchFlashcardQuotaRequest(subscriptionTier)
+    // FIXED: trước đây chỉ truyền subscriptionTier — mock quota luôn đoán theo
+    // tier hardcode nên gói custom (id >= 4) bị tính như free. Giờ truyền thêm
+    // subscriptionPlanId để mock tra đúng gói thật (xem flashcards.mock.ts).
+    const response = await mockFetchFlashcardQuotaRequest(subscriptionTier, subscriptionPlanId)
     if (!response.ok) throw new Error(await parseError(response))
     const plan = (await response.json()) as { maxFlashcards: number; perClickLimit?: number }
     return { maxFlashcards: plan.maxFlashcards, perClickLimit: plan.perClickLimit ?? FALLBACK_PER_CLICK_LIMIT }

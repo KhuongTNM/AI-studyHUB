@@ -193,8 +193,12 @@ export function FlashcardPage() {
   const [perClickLimit, setPerClickLimit] = useState<number>(5)
   useEffect(() => {
     let cancelled = false
-    if (!currentUser?.subscriptionTier) return
-    fetchFlashcardQuotaApi(currentUser.subscriptionTier, currentUser.subscriptionPlanId)
+    // FIXED: trước đây guard bằng `!currentUser?.subscriptionTier` — nhưng giờ
+    // subscriptionTier hợp lệ có thể là undefined cho user có gói custom (auth.ts
+    // không còn đoán bừa tier nữa). Guard đúng là còn user hay không; subscriptionPlanId
+    // mới là khoá tra cứu chính, subscriptionTier chỉ là fallback tên gói cũ.
+    if (!currentUser) return
+    fetchFlashcardQuotaApi(currentUser.subscriptionTier ?? "free", currentUser.subscriptionPlanId)
       .then(limits => {
         if (!cancelled) {
           setMaxFlashcards(limits.maxFlashcards)
@@ -207,7 +211,7 @@ export function FlashcardPage() {
     return () => {
       cancelled = true
     }
-  }, [currentUser?.subscriptionTier, currentUser?.subscriptionPlanId])
+  }, [currentUser?.id, currentUser?.subscriptionTier, currentUser?.subscriptionPlanId])
 
   const isUnlimited = maxFlashcards === -1
   // BR-108 limits the user's total flashcards, regardless of whether a card

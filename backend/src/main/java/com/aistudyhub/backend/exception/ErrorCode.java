@@ -59,7 +59,16 @@ public enum ErrorCode {
     OTP_EXPIRED(HttpStatus.BAD_REQUEST, "OTP_EXPIRED"),
     OTP_INVALID_CODE(HttpStatus.BAD_REQUEST, "OTP_INVALID_CODE"),
     OTP_MAX_ATTEMPTS_EXCEEDED(HttpStatus.BAD_REQUEST, "OTP_MAX_ATTEMPTS_EXCEEDED"),
-    OTP_RESEND_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "OTP_RESEND_COOLDOWN");
+    OTP_RESEND_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "OTP_RESEND_COOLDOWN"),
+
+    // ==== Bổ sung cho tính năng Register-Overwrite khi Email chưa xác thực (BR-101) ====
+    // TH1: email đã tồn tại và đã emailVerified = true -> từ chối đăng ký (không phải
+    // EMAIL_ALREADY_VERIFIED, vì code đó dùng cho verify-otp và trả 400, không phù hợp ngữ cảnh 409 ở đây).
+    EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT,
+            "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng chức năng Quên mật khẩu."),
+    // BR-100/BR-101: vượt quá 5 lần sinh OTP (đăng ký mới lẫn ghi đè) trong cửa sổ trượt 24 giờ.
+    OTP_DAILY_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS,
+            "Bạn đã thao tác quá nhiều lần trong 24 giờ qua. Vui lòng thử lại sau.");
 
     private final HttpStatus status;
     private final String message;

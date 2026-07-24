@@ -1,13 +1,27 @@
 import { getAccessToken } from "@/lib/auth-storage"
 import type { PackageTier } from "@/lib/store"
+import { MOCK_API } from "@/services/mock/mock-config"
+import {
+  mockFetchSubscriptionPlansRequest,
+  mockFetchSubscriptionPlanRequest,
+  mockCreateSubscriptionPlanRequest,
+  mockUpdateSubscriptionPlanRequest,
+  mockUpdatePackagePriceRequest,
+  mockDeleteSubscriptionPlanRequest,
+} from "@/services/mock/subscription-plans.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
+/**
+ * SubscriptionPlan object — theo AI-studyHUB_API_File_SubscriptionPlan.docx, mục 7.
+ *
+ * KHÔNG còn field displayName (BR-201, Business Logic File — Rule 1): "name" là
+ * field DUY NHẤT mang tên gói, vừa dùng để hiển thị vừa dùng làm khoá tra cứu.
+ * Không đọc / không gửi displayName ở bất kỳ đâu trong toàn bộ FE nữa.
+ */
 export interface ApiSubscriptionPlan {
   id: number
   name: string
-  /** Kept optional while older backend deployments still return this alias. */
-  displayName?: string | null
   price: number
   maxRoomMembers: number
   defaultStorageBytes: number
@@ -31,7 +45,9 @@ export interface CreateSubscriptionPlanInput {
 export interface UpdateSubscriptionPlanInput {
   name?: string | null
   price?: number | null
+  defaultStorageBytes?: number | null
   createGroupLimit?: number | null
+  joinGroupLimit?: number | null
   dailyAiChatLimit?: number | null
   maxFlashcards?: number | null
 }
@@ -64,30 +80,41 @@ function authHeaders(): HeadersInit {
 
 /** Public pricing endpoint. It intentionally does not send an admin-only request. */
 export async function fetchSubscriptionPlansApi(): Promise<ApiSubscriptionPlan[]> {
-  const response = await fetch(`${API_BASE_URL}/api/subscription-plans`)
+  const response = MOCK_API
+    ? await mockFetchSubscriptionPlansRequest()
+    : await fetch(`${API_BASE_URL}/api/subscription-plans`)
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
 export async function fetchSubscriptionPlanApi(planName: string): Promise<ApiSubscriptionPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/subscription-plans/${encodeURIComponent(planName)}`)
+  const response = MOCK_API
+    ? await mockFetchSubscriptionPlanRequest(planName)
+    : await fetch(`${API_BASE_URL}/api/subscription-plans/${encodeURIComponent(planName)}`)
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
+/**
+ * PATCH .../price — BR-203: BE (và mock) từ chối gọi API này trên gói "free",
+ * luôn trả 400 "Không thể thay đổi giá gói Miễn phí." bất kể giá trị gửi lên.
+ */
 export async function updatePackagePriceApi(
   plan: PackageTier | string,
   price: number,
   adminPassword: string
 ): Promise<ApiSubscriptionPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${getPlanName(plan)}/price`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ price, adminPassword }),
-  })
+  const planName = getPlanName(plan)
+  const response = MOCK_API
+    ? await mockUpdatePackagePriceRequest(planName, price, adminPassword)
+    : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${planName}/price`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ price, adminPassword }),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
@@ -96,42 +123,55 @@ export async function createSubscriptionPlanApi(
   input: CreateSubscriptionPlanInput,
   adminPassword: string,
 ): Promise<ApiSubscriptionPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ ...input, adminPassword }),
-  })
+  const response = MOCK_API
+    ? await mockCreateSubscriptionPlanRequest(input, adminPassword)
+    : await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ ...input, adminPassword }),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
+/**
+ * PUT .../{planName} — BR-203: khi planName hiện tại là "free", BE (và mock) từ
+ * chối riêng phần price (khác giá hiện tại) và riêng phần name (khác "free"),
+ * các field còn lại (maxRoomMembers, defaultStorageBytes, createGroupLimit,
+ * joinGroupLimit, dailyAiChatLimit, maxFlashcards) vẫn cập nhật bình thường.
+ */
 export async function updateSubscriptionPlanApi(
   planName: string,
   input: UpdateSubscriptionPlanInput,
   adminPassword: string,
 ): Promise<ApiSubscriptionPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ ...input, adminPassword }),
-  })
+  const response = MOCK_API
+    ? await mockUpdateSubscriptionPlanRequest(planName, input, adminPassword)
+    : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ ...input, adminPassword }),
+      })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
+/** DELETE .../{planName} — BR-202: gói "free" luôn bị từ chối xoá, không phụ thuộc subscription ACTIVE. */
 export async function deleteSubscriptionPlanApi(planName: string, adminPassword: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
-    method: "DELETE",
-    headers: {
-      ...authHeaders(),
-      "X-Admin-Password": adminPassword,
-    },
-  })
+  const response = MOCK_API
+    ? await mockDeleteSubscriptionPlanRequest(planName, adminPassword)
+    : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
+        method: "DELETE",
+        headers: {
+          ...authHeaders(),
+          "X-Admin-Password": adminPassword,
+        },
+      })
   if (!response.ok) throw new Error(await parseError(response))
 }

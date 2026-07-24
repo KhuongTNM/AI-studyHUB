@@ -79,8 +79,13 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
         }
 
-        String newName = request.getEffectiveName();
+        boolean isFreePlan = SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(plan.getName());
+
+        String newName = request.getName();
         if (newName != null && !newName.isBlank() && !newName.equalsIgnoreCase(plan.getName())) {
+            if (isFreePlan) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể đổi tên gói Miễn phí.");
+            }
             if (subscriptionPlanRepository.existsByNameIgnoreCaseAndIsDeletedFalse(newName.trim())) {
                 throw new PlanAlreadyExistsException("Tên gói dịch vụ đã tồn tại.");
             }
@@ -88,6 +93,9 @@ public class AdminSubscriptionPlanService {
         }
 
         if (request.getPrice() != null) {
+            if (isFreePlan) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể thay đổi giá gói Miễn phí.");
+            }
             if (request.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Giá gói cước phải lớn hơn 0.");
             }
@@ -124,6 +132,10 @@ public class AdminSubscriptionPlanService {
 
     @Transactional
     public void deletePlan(String planName) {
+        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(planName)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể xoá gói Miễn phí.");
+        }
+
         SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
 
@@ -148,6 +160,10 @@ public class AdminSubscriptionPlanService {
                 
         if (plan.isDeleted()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Gói dịch vụ này đã bị xóa.");
+        }
+
+        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(plan.getName())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể thay đổi giá gói Miễn phí.");
         }
 
         if (request.getPrice() == null || request.getPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
