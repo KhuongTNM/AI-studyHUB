@@ -113,7 +113,7 @@ function seedDefaultAccount() {
     email,
     password: "Admin123",
     displayName: "Student",
-    role: "user",
+    role: "admin",
     locked: false,
     emailVerified: true,
     storageUsedBytes: 52_428_800,

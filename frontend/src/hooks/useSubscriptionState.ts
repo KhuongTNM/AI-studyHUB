@@ -55,7 +55,7 @@ export function useSubscriptionState({
           id: String(plan.id),
           planName: plan.name,
           tier: tierFromPlanName(plan.name),
-          name: plan.displayName?.trim() || plan.name,
+          name: plan.name,
           price: Number(plan.price),
           maxUsers: plan.maxRoomMembers,
           defaultStorageBytes: plan.defaultStorageBytes,

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { useApp, type ActivityLog, type User } from "@/lib/store"
 import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
-import { getLocalizedPlanName, isBuiltInPlanName } from "@/configs/subscription-plan-labels"
+import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
 import { StatsOverview } from "./stats-overview"
 import { AdminAnalytics } from "./admin-analytics"
 import { UserTable } from "./user-table"
@@ -93,7 +93,7 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
     id: String(plan.id),
     tier,
     planName: plan.name,
-    name: plan.displayName?.trim() || plan.name,
+    name: plan.name,
     price: Number(plan.price),
     maxUsers: plan.maxRoomMembers,
     storage: formatStorage(plan.defaultStorageBytes),
@@ -170,6 +170,7 @@ export function AdminDashboard() {
   const [pkgEditId, setPkgEditId] = useState<string | null>(null)
   const [pkgDraft, setPkgDraft] = useState<Partial<EditablePkg>>({})
   const [showAddPkgModal, setShowAddPkgModal] = useState(false)
+  const [addPkgError, setAddPkgError] = useState("")
   const [packagesLoading, setPackagesLoading] = useState(false)
   const [newPkgForm, setNewPkgForm] = useState({
     name: "",
@@ -534,14 +535,19 @@ export function AdminDashboard() {
     if (!pkg.name.trim() || pkg.name.trim().length > 50) return { error: "Tên gói phải có từ 1 đến 50 ký tự." }
     if (!Number.isFinite(pkg.price) || pkg.price < 0) return { error: "Giá gói không hợp lệ." }
     if (!Number.isInteger(pkg.createGroupLimit) || pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.joinGroupLimit) || pkg.joinGroupLimit < -1) return { error: "Giới hạn tham gia nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
+    const defaultStorageBytes = parseStorageBytes(pkg.storage)
+    if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) return { error: "Dung lượng lưu trữ không hợp lệ." }
 
     return {
       payload: {
         name: pkg.name.trim(),
         price: pkg.price,
+        defaultStorageBytes,
         createGroupLimit: pkg.createGroupLimit,
+        joinGroupLimit: pkg.joinGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
         maxFlashcards: pkg.maxFlashcards,
       },
@@ -588,30 +594,31 @@ export function AdminDashboard() {
   }
 
   const addNewPkg = () => {
+    setAddPkgError("")
     if (!newPkgForm.name.trim()) return
     const defaultStorageBytes = parseStorageBytes(newPkgForm.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) {
-      setMessage("Dung lượng mặc định không hợp lệ.")
+      setAddPkgError("Dung lượng mặc định không hợp lệ.")
       return
     }
     if (!Number.isInteger(newPkgForm.maxRoomMembers) || newPkgForm.maxRoomMembers < 1) {
-      setMessage("Số thành viên tối đa phải từ 1 trở lên.")
+      setAddPkgError("Số thành viên tối đa phải từ 1 trở lên.")
       return
     }
     if (!Number.isInteger(newPkgForm.createGroupLimit) || newPkgForm.createGroupLimit < -1) {
-      setMessage("Giới hạn tạo nhóm phải từ -1 trở lên.")
+      setAddPkgError("Giới hạn tạo nhóm phải từ -1 trở lên.")
       return
     }
     if (!Number.isInteger(newPkgForm.joinGroupLimit) || newPkgForm.joinGroupLimit < 1) {
-      setMessage("Giới hạn tham gia nhóm phải từ 1 trở lên.")
+      setAddPkgError("Giới hạn tham gia nhóm phải từ 1 trở lên.")
       return
     }
     if (!Number.isInteger(newPkgForm.dailyAiChatLimit) || newPkgForm.dailyAiChatLimit < -1) {
-      setMessage("Giới hạn AI Chat phải từ -1 trở lên.")
+      setAddPkgError("Giới hạn AI Chat phải từ -1 trở lên.")
       return
     }
     if (!Number.isInteger(newPkgForm.maxFlashcards) || newPkgForm.maxFlashcards < -1) {
-      setMessage("Giới hạn flashcard phải từ -1 trở lên.")
+      setAddPkgError("Giới hạn flashcard phải từ -1 trở lên.")
       return
     }
 
@@ -630,6 +637,7 @@ export function AdminDashboard() {
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
         setShowAddPkgModal(false)
+        setAddPkgError("")
         setNewPkgForm({
           name: "",
           price: 0,
@@ -642,7 +650,7 @@ export function AdminDashboard() {
         })
         setMessage(`Đã thêm gói "${newPkg.name}".`)
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : text.actionFailed)
+        setAddPkgError(error instanceof Error ? error.message : text.actionFailed)
       }
     })
   }
@@ -712,7 +720,7 @@ export function AdminDashboard() {
         </div>
         <Button
           size="sm"
-          onClick={() => setShowAddPkgModal(true)}
+          onClick={() => { setAddPkgError(""); setShowAddPkgModal(true) }}
           className="gap-1.5"
         >
           <Plus className="h-4 w-4" />
@@ -761,15 +769,13 @@ export function AdminDashboard() {
                       maxLength={50}
                       value={draft.name ?? pkg.name}
                       onChange={e => setPkgDraft(d => ({ ...d, name: e.target.value }))}
-                      className="w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      disabled={pkg.planName === "free"}
+                      title={pkg.planName === "free" ? text.cannotEditFreeName : undefined}
+                      className="w-full rounded-lg border border-primary bg-background px-3 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
-                    <span className="mt-1 block text-xs text-muted-foreground">{pkg.planName}</span>
                   </label>
                 ) : (
-                  <>
-                    <h3 className="mb-1 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
-                    <p className="mb-3 text-xs text-muted-foreground">{pkg.planName}</p>
-                  </>
+                  <h3 className="mb-3 text-lg font-bold text-foreground">{getLocalizedPlanName(pkg, language)}</h3>
                 )}
 
                 {/* Price */}
@@ -783,7 +789,8 @@ export function AdminDashboard() {
                         value={draft.price}
                         onChange={e => setPkgDraft(d => ({ ...d, price: Number(e.target.value) }))}
                         disabled={pkg.planName === "free"}
-                        className="w-36 rounded-lg border border-primary bg-background px-3 py-1.5 text-xl font-extrabold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        title={pkg.planName === "free" ? text.cannotEditFreePrice : undefined}
+                        className="w-36 rounded-lg border border-primary bg-background px-3 py-1.5 text-xl font-extrabold text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                       />
                       <span className="text-sm text-muted-foreground">{text.vndPerMonth}</span>
                     </div>
@@ -818,7 +825,15 @@ export function AdminDashboard() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs w-24 shrink-0">{text.joinLimitLabel}</span>
-                          <span className="text-xs">{formatPlanLimit(pkg.joinGroupLimit, limit => `${limit} ${text.groupsUnit}`, text.unlimited, text.unlimited)}</span>
+                          <input
+                            type="number"
+                            min="-1"
+                            value={draft.joinGroupLimit ?? 0}
+                            onChange={e => setPkgDraft(d => ({ ...d, joinGroupLimit: Number(e.target.value) }))}
+                            title={text.unlimitedInputHint}
+                            className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <span className="text-xs">{text.groupsUnit}</span>
                         </div>
                       </div>
                     ) : (
@@ -836,7 +851,20 @@ export function AdminDashboard() {
                   {/* Storage */}
                   <li className="flex items-start gap-2 text-muted-foreground">
                     <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                    <span>{formatAdminText(text.storageFeature, { storage: pkg.storage })}</span>
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">{text.storageShortLabel}</span>
+                        <input
+                          type="text"
+                          value={draft.storage ?? pkg.storage}
+                          onChange={e => setPkgDraft(d => ({ ...d, storage: e.target.value }))}
+                          placeholder={text.storagePlaceholder}
+                          className="w-24 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    ) : (
+                      <span>{formatAdminText(text.storageFeature, { storage: pkg.storage })}</span>
+                    )}
                   </li>
 
                   {/* Daily AI chat and total flashcard limits are editable in PUT. */}
@@ -912,10 +940,9 @@ export function AdminDashboard() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={isBuiltInPlanName(pkg.planName, pkg.tier)}
                       onClick={() => deletePkg(pkg)}
                       className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                      title={isBuiltInPlanName(pkg.planName, pkg.tier) ? text.cannotDeleteBuiltIn : text.deletePackage}
+                      title={text.deletePackage}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -937,12 +964,18 @@ export function AdminDashboard() {
                 {text.addPackageTitle}
               </h3>
               <button
-                onClick={() => setShowAddPkgModal(false)}
+                onClick={() => { setShowAddPkgModal(false); setAddPkgError("") }}
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {addPkgError && (
+              <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {addPkgError}
+              </div>
+            )}
 
             <div className="space-y-4">
               <label className="block">
@@ -1043,7 +1076,7 @@ export function AdminDashboard() {
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowAddPkgModal(false)}>
+              <Button variant="outline" onClick={() => { setShowAddPkgModal(false); setAddPkgError("") }}>
                 {text.cancel}
               </Button>
               <Button onClick={addNewPkg} disabled={!newPkgForm.name.trim()} className="gap-1.5">
