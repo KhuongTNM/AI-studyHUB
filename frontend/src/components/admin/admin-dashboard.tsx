@@ -144,7 +144,7 @@ export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
-    packagePrices, grantSubscription, updateUserStorageLimit,
+    packagePrices, refetchPackagePrices, grantSubscription, updateUserStorageLimit,
     activityLogs, activityLogsLoading, activityLogsError, loadActivityLogs,
   } = useApp()
 
@@ -578,6 +578,9 @@ export function AdminDashboard() {
           ...pkgFromPlan(responsePlan),
         }
         setEditablePackages(prev => prev.map(p => p.id === pkg.id ? savedPlan : p))
+        // FIXED: đồng bộ luôn packagePrices dùng chung (trang User + form "Cấp gói"),
+        // trước đây chỉ có editablePackages cục bộ được cập nhật.
+        void refetchPackagePrices()
         setMessage(`Đã cập nhật gói "${savedPlan.name}".`)
       } catch (error) {
         setMessage(error instanceof Error ? error.message : text.actionFailed)
@@ -595,6 +598,8 @@ export function AdminDashboard() {
       try {
         await deleteSubscriptionPlanApi(pkg.planName, adminPassword)
         setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
+        // FIXED: đồng bộ luôn packagePrices dùng chung.
+        void refetchPackagePrices()
         setMessage(`Đã xóa gói "${pkg.name}".`)
       } catch (error) {
         setMessage(error instanceof Error ? error.message : text.actionFailed)
@@ -649,6 +654,10 @@ export function AdminDashboard() {
         }, adminPassword)
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
+        // FIXED: đây chính là bug gốc — trước đây gói mới chỉ vào editablePackages
+        // (list riêng của trang admin), packagePrices (dùng chung cho user +
+        // form "Cấp gói") không hề hay biết, phải F5/login lại mới thấy.
+        void refetchPackagePrices()
         setShowAddPkgModal(false)
         setAddPkgError("")
         setNewPkgForm({

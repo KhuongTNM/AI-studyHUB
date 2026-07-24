@@ -101,10 +101,23 @@ function mapRole(role: string): UserRole {
   return "user"
 }
 
+/**
+ * FIXED: hàm này trước đây hardcode "id=2 → 2-4", "id=3 → 5+", mọi id khác
+ * (kể cả gói custom admin tạo thêm, id >= 4) đều rơi vào "free" — dù user đã
+ * trả tiền cho gói đó. Vì auth.ts KHÔNG có danh sách gói (packagePrices) để
+ * tra tên/tier thật, hàm này không còn tự suy đoán tier nữa.
+ *
+ * subscriptionPlanId mới là nguồn sự thật duy nhất để xác định gói của user —
+ * mọi nơi cần biết giới hạn/tên gói phải tra cứu packagePrices theo id này
+ * (các chỗ dùng subscriptionTier như "2-4"/"5+" chỉ còn là fallback hiển thị
+ * cho user cũ chưa có subscriptionPlanId, không dùng để tính quota nữa).
+ */
 function mapSubscriptionTier(subscriptionPlanId?: number | null): User["subscriptionTier"] {
-  if (subscriptionPlanId === 2) return "2-4"
-  if (subscriptionPlanId === 3) return "5+"
-  return "free"
+  // Không có gói (chưa từng mua) → free thật sự, không phải suy đoán.
+  if (subscriptionPlanId === null || subscriptionPlanId === undefined) return "free"
+  // Có subscriptionPlanId → để nguyên undefined, các nơi tiêu thụ phải tra
+  // packagePrices theo subscriptionPlanId thay vì đoán qua field này.
+  return undefined
 }
 
 export function mapApiUserToStoreUser(apiUser: ApiUser): User {
