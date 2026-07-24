@@ -499,3 +499,57 @@ CREATE TABLE core.upload_settings (
 
 INSERT INTO core.upload_settings (id, max_file_size_bytes, max_files_per_upload)
 VALUES (1, 52428800, 5);
+
+-- ============================================================
+-- Migration: Chuẩn hoá tên gói dịch vụ & bảo vệ gói Miễn phí
+-- (BR-201, BR-202, BR-203). Chạy tay trên DB hiện có (ddl-auto=none,
+-- không dùng Flyway/Liquibase trong project này).
+-- ============================================================
+
+-- Gỡ constraint cũ giới hạn `name` chỉ được là 1 trong 3 giá trị cố định
+-- (free/plan_2_4/plan_5_plus) — tàn dư từ thời `name` còn là enum kỹ thuật,
+-- trước khi có quyết định BR-201 (bỏ display_name, để `name` tự do vừa làm
+-- khoá tra cứu vừa làm tên hiển thị). Không gỡ constraint này thì API
+-- "Tạo gói dịch vụ mới" (POST /api/admin/subscription-plans) không bao giờ
+-- tạo được gói với tên khác 3 gói built-in.
+ALTER TABLE payment.subscription_plans DROP CONSTRAINT subscription_plans_name_check;
+
+-- Trigger khoá cứng gói "free" ở tầng DB (lưới an toàn dự phòng cho BR-202/
+-- BR-203, phòng trường hợp có ai/hệ thống bypass hẳn tầng Java, thao tác
+-- thẳng vào DB). Chặn cả xoá thật (DELETE), xoá mềm (is_deleted), và sửa
+-- name/price của gói có name hiện tại là "free". Trong vận hành bình
+-- thường qua API, code Java (AdminSubscriptionPlanService) đã chặn các
+-- trường hợp này TRƯỚC khi câu SQL chạm tới DB, nên trigger này gần như
+-- không bao giờ thực sự bị kích hoạt qua đường API.
+CREATE OR REPLACE FUNCTION payment.protect_free_subscription_plan()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF lower(OLD.name) = 'free' THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  -- TG_OP = 'UPDATE'
+  IF lower(OLD.name) = 'free' THEN
+    IF NEW.is_deleted IS TRUE AND OLD.is_deleted IS NOT TRUE THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    IF lower(NEW.name) <> 'free' THEN
+      RAISE EXCEPTION 'Không thể đổi tên gói Miễn phí.';
+    END IF;
+    IF NEW.price <> 0 THEN
+      RAISE EXCEPTION 'Không thể thay đổi giá gói Miễn phí.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_free_subscription_plan ON payment.subscription_plans;
+CREATE TRIGGER trg_protect_free_subscription_plan
+BEFORE UPDATE OR DELETE ON payment.subscription_plans
+FOR EACH ROW
+EXECUTE FUNCTION payment.protect_free_subscription_plan();

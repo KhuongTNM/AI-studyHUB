@@ -7,7 +7,6 @@ public class SubscriptionPlanResponse {
 
     private Integer id;
     private String name;
-    private String displayName;
     private BigDecimal price;
     private short maxRoomMembers;
     private long defaultStorageBytes;
@@ -20,7 +19,6 @@ public class SubscriptionPlanResponse {
         SubscriptionPlanResponse response = new SubscriptionPlanResponse();
         response.id = plan.getId();
         response.name = plan.getName();
-        response.displayName = plan.getName();
         response.price = plan.getPrice();
         response.maxRoomMembers = plan.getMaxRoomMembers();
         response.defaultStorageBytes = plan.getDefaultStorageBytes();
@@ -37,10 +35,6 @@ public class SubscriptionPlanResponse {
 
     public String getName() {
         return name;
-    }
-
-    public String getDisplayName() {
-        return displayName;
     }
 
     public BigDecimal getPrice() {
