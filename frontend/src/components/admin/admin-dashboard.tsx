@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { useApp, type ActivityLog, type User } from "@/lib/store"
 import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
-import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
+import { getLocalizedPlanName, isPlanNameTaken } from "@/configs/subscription-plan-labels"
 import { StatsOverview } from "./stats-overview"
 import { AdminAnalytics } from "./admin-analytics"
 import { UserTable } from "./user-table"
@@ -562,6 +562,15 @@ export function AdminDashboard() {
       return
     }
 
+    const wantsNameChange = updated.name.trim().toLowerCase() !== pkg.name.trim().toLowerCase()
+    if (
+      wantsNameChange &&
+      isPlanNameTaken(updated.name, editablePackages, { excludeId: pkg.id })
+    ) {
+      setMessage("Tên gói này đã được sử dụng. Vui lòng chọn tên khác.")
+      return
+    }
+
     const runSave = async (adminPassword: string) => {
       try {
         const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword)
@@ -619,6 +628,10 @@ export function AdminDashboard() {
     }
     if (!Number.isInteger(newPkgForm.maxFlashcards) || newPkgForm.maxFlashcards < -1) {
       setAddPkgError("Giới hạn flashcard phải từ -1 trở lên.")
+      return
+    }
+    if (isPlanNameTaken(newPkgForm.name, editablePackages)) {
+      setAddPkgError("Tên gói này đã được sử dụng. Vui lòng chọn tên khác.")
       return
     }
 

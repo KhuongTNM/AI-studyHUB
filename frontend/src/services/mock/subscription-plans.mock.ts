@@ -53,7 +53,7 @@ const mockPlans: MockPlan[] = [
   },
   {
     id: 2,
-    name: "plan_2_4",
+    name: "Gói Pro",
     price: 49000,
     maxRoomMembers: 4,
     defaultStorageBytes: 2 * 1024 * 1024 * 1024,
@@ -65,7 +65,7 @@ const mockPlans: MockPlan[] = [
   },
   {
     id: 3,
-    name: "plan_5_plus",
+    name: "Gói VIP",
     price: 99000,
     maxRoomMembers: 10,
     defaultStorageBytes: 5 * 1024 * 1024 * 1024,
