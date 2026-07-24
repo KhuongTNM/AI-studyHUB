@@ -127,6 +127,41 @@ function seedDefaultAccount() {
 }
 seedDefaultAccount()
 
+// ─── Thêm tài khoản demo role "user" — dùng để test luồng gói custom ───────
+// (BR-063 sub-admin cấp gói / bug "gói mới admin tạo user chưa thấy") mà không
+// cần đăng ký thủ công. Gán sẵn subscriptionPlanId=4 — trùng với id của gói
+// custom đầu tiên admin tạo trong subscription-plans.mock.ts (mockSeq bắt đầu
+// từ 3, gói mới đầu tiên sẽ có id=4). Nếu bạn đã tạo/xoá vài gói custom trước
+// đó trong phiên hiện tại, id thật có thể lệch — mở tab "Quản lý tài khoản"
+// (admin) để xem đúng subscriptionPlanId của acc "user1@gmail.com" và/hoặc
+// dùng nút "Cấp gói" để gán lại cho khớp gói bạn vừa tạo.
+function seedUserAccount() {
+  const email = "user1@gmail.com"
+  if (mockAccounts.has(email)) return
+  mockAccounts.set(email, {
+    id: newId(),
+    email,
+    password: "User1234",
+    displayName: "Người dùng Test",
+    role: "user",
+    locked: false,
+    emailVerified: true,
+    storageUsedBytes: 10_485_760,
+    storageLimitBytes: 536_870_912,
+    // Cố tình gán 1 id KHÔNG PHẢI 2 hoặc 3 (id built-in Pro/VIP) — trước khi
+    // sửa mapSubscriptionTier() thì tài khoản này sẽ bị FE hiển thị/tính quota
+    // nhầm thành "free" dù có subscriptionPlanId hợp lệ. Sau khi sửa, hãy vào
+    // trang "Gói dịch vụ" của acc này và trang admin để xác nhận nó hiện đúng
+    // tên/giới hạn của gói custom, không còn bị gán nhầm "Free" nữa.
+    subscriptionPlanId: 4,
+    subscriptionExpiresAt: null,
+    languagePreference: "vi",
+    themePreference: "light",
+    createdAt: new Date().toISOString(),
+  })
+}
+seedUserAccount()
+
 // ─── POST /api/auth/login ────────────────────────────────────────────────
 
 export async function mockLoginRequest(email: string, password: string): Promise<Response> {

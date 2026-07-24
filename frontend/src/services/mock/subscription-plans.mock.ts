@@ -93,6 +93,24 @@ function findPlan(planName: string): MockPlan | undefined {
   return mockPlans.find(p => !p.isDeleted && p.name.toLowerCase() === target)
 }
 
+/**
+ * FIXED: dùng chung cho các mock khác (vd flashcards.mock.ts) cần tra giới hạn
+ * thật của một gói theo subscriptionPlanId — thay vì đoán qua tier hardcode
+ * ("2-4"/"5+"), vốn luôn sai với gói custom admin tạo thêm (id >= 4).
+ * Trả về undefined nếu không tìm thấy (id null/không tồn tại/đã xoá) — nơi gọi
+ * tự quyết định fallback (thường là gói free).
+ */
+export function mockFindPlanById(id?: number | null): ApiSubscriptionPlan | undefined {
+  if (id === null || id === undefined) return undefined
+  const plan = mockPlans.find(p => !p.isDeleted && p.id === Number(id))
+  return plan ? toApiShape(plan) : undefined
+}
+
+/** Gói free hiện tại — dùng làm fallback an toàn khi không tra được plan theo id. */
+export function mockGetFreePlan(): ApiSubscriptionPlan {
+  return toApiShape(mockPlans.find(p => p.name.toLowerCase() === FREE_PLAN_NAME) ?? mockPlans[0])
+}
+
 /** So sánh không phân biệt hoa/thường, giống findByNameIgnoreCase phía backend. */
 function isFreePlanName(name: string): boolean {
   return name.trim().toLowerCase() === FREE_PLAN_NAME

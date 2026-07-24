@@ -45,34 +45,45 @@ export function useSubscriptionState({
 }: SubscriptionStateDeps) {
   const [packagePrices, setPackagePrices] = useState<PackagePrice[]>(DEFAULT_PACKAGE_PRICES)
 
-  // Đồng bộ giá gói từ backend khi user thay đổi
+  // FIXED: tách phần fetch ra thành 1 hàm dùng lại được (refetchPackagePrices),
+  // thay vì chỉ nằm trong useEffect và chỉ chạy lại khi currentUser?.id đổi.
+  // Trước đây: admin tạo/sửa/xoá gói ở admin-dashboard.tsx chỉ cập nhật state
+  // cục bộ editablePackages, KHÔNG hề gọi lại hàm này → packagePrices (dùng
+  // chung cho PackagesTab, CheckoutModal, form "Cấp gói") bị stale cho tới khi
+  // user đăng nhập lại. Giờ admin-dashboard.tsx sẽ gọi refetchPackagePrices()
+  // ngay sau khi tạo/sửa/xoá gói thành công để đồng bộ ngay lập tức.
+  const loadPackagePrices = useCallback(async () => {
+    try {
+      const plans = await fetchSubscriptionPlansApi()
+      setPackagePrices(plans.map(plan => ({
+        id: String(plan.id),
+        planName: plan.name,
+        tier: tierFromPlanName(plan.name),
+        name: plan.name,
+        price: Number(plan.price),
+        maxUsers: plan.maxRoomMembers,
+        defaultStorageBytes: plan.defaultStorageBytes,
+        storageLabel: formatStorage(plan.defaultStorageBytes),
+        createGroupLimit: plan.createGroupLimit,
+        joinGroupLimit: plan.joinGroupLimit,
+        dailyAiChatLimit: plan.dailyAiChatLimit,
+        maxFlashcards: plan.maxFlashcards,
+      })))
+    } catch {
+      // Giữ giá cũ (mock hoặc lần fetch trước) nếu backend không khả dụng
+    }
+  }, [])
+
+  // Đồng bộ giá gói từ backend khi user thay đổi (login/logout/switch user)
   useEffect(() => {
     let cancelled = false
-    fetchSubscriptionPlansApi()
-      .then(plans => {
-        if (cancelled) return
-        setPackagePrices(plans.map(plan => ({
-          id: String(plan.id),
-          planName: plan.name,
-          tier: tierFromPlanName(plan.name),
-          name: plan.name,
-          price: Number(plan.price),
-          maxUsers: plan.maxRoomMembers,
-          defaultStorageBytes: plan.defaultStorageBytes,
-          storageLabel: formatStorage(plan.defaultStorageBytes),
-          createGroupLimit: plan.createGroupLimit,
-          joinGroupLimit: plan.joinGroupLimit,
-          dailyAiChatLimit: plan.dailyAiChatLimit,
-          maxFlashcards: plan.maxFlashcards,
-        })))
-      })
-      .catch(() => {
-        // Giữ giá mock nếu backend không khả dụng
-      })
+    loadPackagePrices().then(() => {
+      if (cancelled) return
+    })
     return () => {
       cancelled = true
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, loadPackagePrices])
 
   const updatePackagePrice = useCallback(
     async (tier: PackageTier | string, newPrice: number, adminPassword: string) => {
@@ -176,6 +187,7 @@ export function useSubscriptionState({
 
   return {
     packagePrices,
+    refetchPackagePrices: loadPackagePrices,
     updatePackagePrice,
     grantSubscription,
     buySubscription,
