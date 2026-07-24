@@ -11,8 +11,6 @@ public class CreateSubscriptionPlanRequest {
 
     private String name;
 
-    private String displayName;
-
     @NotNull(message = "Giá không được để trống.")
     @DecimalMin(value = "0.01", message = "Giá gói cước phải lớn hơn 0.")
     private BigDecimal price;
@@ -39,19 +37,11 @@ public class CreateSubscriptionPlanRequest {
     private String adminPassword;
 
     public String getName() {
-        return name != null && !name.isBlank() ? name : displayName;
+        return name;
     }
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
     }
 
     public BigDecimal getPrice() {
