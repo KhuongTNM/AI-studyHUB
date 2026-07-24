@@ -1,9 +1,9 @@
 package com.aistudyhub.backend.exception;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -70,12 +70,32 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException ex) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("message", ex.getErrorCode().getMessage());
-        if (ex.getExtensions() != null) {
-            body.putAll(ex.getExtensions());
-        }
+    public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex) {
+        ErrorResponse body = ErrorResponse.of(
+                ex.getErrorCode().name(), ex.getMessage(), ex.getDetails(), ex.getExtensions());
         return ResponseEntity.status(ex.getErrorCode().getStatus()).body(body);
+    }
+
+    // BR-112 / API Spec Mục 6 Quyết định #4: chốt chặn cuối cùng cho race condition khi 2
+    // request đồng thời cùng lọt qua bước check trùng tên ở tầng Service (xem
+    // DocumentService.upload()) và cùng đụng ràng buộc UNIQUE ux_docs_active_dup_name ở DB.
+    // DocumentService đã tự bắt DataIntegrityViolationException tại chỗ để trả đúng schema 409
+    // kèm tên file/folderId thật (xem duplicateFileNameException); handler này chỉ là lưới an
+    // toàn chung cho các Service khác lỡ để lọt loại lỗi này ra ngoài mà chưa tự xử lý.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        Throwable rootCause = ex.getMostSpecificCause();
+        String rootMessage = rootCause != null ? rootCause.getMessage() : null;
+        if (rootMessage != null && rootMessage.contains("ux_docs_active_dup_name")) {
+            // Không có originalName ở tầng handler chung này (DocumentService đã tự bắt case
+            // này với đầy đủ context ở trên) -> dùng message chung chung, KHÔNG gọi
+            // getMessage() trực tiếp vì đó là template thô còn nguyên "%s" chưa format.
+            ErrorResponse body = ErrorResponse.of(
+                    ErrorCode.DUPLICATE_FILE_NAME.name(), "Tài liệu đã tồn tại trong thư mục này.", null, null);
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+        LOGGER.error("Unhandled data integrity violation", ex);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("DATA_INTEGRITY_VIOLATION", "Dữ liệu vi phạm ràng buộc hệ thống."));
     }
 }

@@ -7,6 +7,8 @@ import com.aistudyhub.backend.dto.UpdateVisibilityRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.exception.BusinessException;
+import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import com.aistudyhub.backend.service.DocumentService;
 import com.aistudyhub.backend.service.PdfPreviewService;
@@ -59,7 +61,7 @@ public class DocumentController {
         try {
             visibility = Visibility.valueOf(visibilityStr.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public.");
+            throw new BusinessException(ErrorCode.INVALID_VISIBILITY);
         }
         Document doc = documentService.upload(principal.getId(), file, subject, title, visibility, tags, folderId);
         return ResponseEntity.status(201).body(DocumentResponse.from(doc));
