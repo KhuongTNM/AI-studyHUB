@@ -963,8 +963,9 @@ export function AdminDashboard() {
                       variant="outline"
                       size="sm"
                       onClick={() => deletePkg(pkg)}
-                      className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                      title={text.deletePackage}
+                      disabled={pkg.planName === "free"}
+                      className="border-destructive/40 px-3 text-destructive hover:bg-destructive/10 hover:border-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                      title={pkg.planName === "free" ? text.cannotDeleteFreePlan : text.deletePackage}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
