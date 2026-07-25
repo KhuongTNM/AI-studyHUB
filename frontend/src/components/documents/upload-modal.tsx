@@ -27,7 +27,14 @@ export function UploadModal({
    * cùng folder), modal PHẢI giữ nguyên — không clear file/form — để user
    * tự đổi tên/thư mục rồi bấm Upload lại ngay (mục 3, docx).
    */
-  onUpload: (files: File[], subject: string, tags?: string) => Promise<{ success: boolean; error?: string } | void>
+  onUpload: (
+    files: File[],
+    subject: string,
+    tags?: string,
+  ) => Promise<
+    | { success: boolean; error?: string; code?: string; details?: { fileName?: string; folderId?: string | null } }
+    | void
+  >
 }) {
   const [subject, setSubject] = useState(initialSubject)
   const [tags, setTags] = useState("")

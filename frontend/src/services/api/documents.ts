@@ -29,19 +29,39 @@ interface ApiDocument {
 }
 
 interface ErrorBody {
+  code?: string
   message?: string
+  timestamp?: string
+  details?: {
+    fileName?: string
+    folderId?: string | null
+  }
+}
+
+export class ApiError extends Error {
+  code?: string
+  details?: ErrorBody["details"]
+  status: number
+
+  constructor(message: string, status: number, code?: string, details?: ErrorBody["details"]) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+    this.code = code
+    this.details = details
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function parseError(response: Response): Promise<string> {
+async function parseError(response: Response): Promise<ApiError> {
   try {
     const body = (await response.json()) as ErrorBody
-    if (body.message) return body.message
+    if (body.message) return new ApiError(body.message, response.status, body.code, body.details)
   } catch {
     // ignore
   }
-  return "Đã xảy ra lỗi. Vui lòng thử lại."
+  return new ApiError("Đã xảy ra lỗi. Vui lòng thử lại.", response.status)
 }
 
 function authHeaders(): HeadersInit {
@@ -129,7 +149,7 @@ export async function fetchDocumentsApi(): Promise<Document[]> {
     : await fetch(`${API_BASE_URL}/api/documents`, {
         headers: authHeaders(),
       })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   const docs = (await response.json()) as ApiDocument[]
   return docs.map(mapApiDocumentToDocument)
 }
@@ -152,7 +172,7 @@ export async function searchDocumentsApi(params: {
   const response = await fetch(url.toString(), {
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   const docs = (await response.json()) as ApiDocument[]
   return docs.map(mapApiDocumentToDocument)
 }
@@ -162,7 +182,7 @@ export async function fetchPublicDocumentsApi(): Promise<Document[]> {
   const response = await fetch(`${API_BASE_URL}/api/documents/public`, {
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   const docs = (await response.json()) as ApiDocument[]
   return docs.map(mapApiDocumentToDocument)
 }
@@ -172,7 +192,7 @@ export async function fetchTrashDocumentsApi(): Promise<Document[]> {
   const response = await fetch(`${API_BASE_URL}/api/documents/trash`, {
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   const docs = (await response.json()) as ApiDocument[]
   return docs.map(mapApiDocumentToDocument)
 }
@@ -189,6 +209,7 @@ export async function uploadDocumentApi(
   onProgress?: (progress: number) => void,
   tags?: string,
   folderId?: string | null,
+  batchId?: string,
 ): Promise<Document> {
   const formData = new FormData()
   formData.append("file", file)
@@ -207,17 +228,20 @@ export async function uploadDocumentApi(
 
   try {
     const response = MOCK_API
-      ? await mockUploadRequest(formData)
+      ? await mockUploadRequest(formData, batchId)
       : await fetch(`${API_BASE_URL}/api/documents/upload`, {
           method: "POST",
-          headers: authHeaders(),
+          headers: {
+            ...authHeaders(),
+            ...(batchId ? { "X-Batch-Id": batchId } : {}),
+          },
           body: formData,
         })
     clearInterval(progressInterval)
     onProgress?.(100)
     // 409 Conflict = trùng tên trong cùng folder (BR mới) — KHÔNG auto-rename,
     // ném lỗi kèm message để FE giữ nguyên form cho user tự sửa tên & thử lại.
-    if (!response.ok) throw new Error(await parseError(response))
+    if (!response.ok) throw await parseError(response)
     return mapApiDocumentToDocument((await response.json()) as ApiDocument)
   } catch (e) {
     clearInterval(progressInterval)
@@ -231,7 +255,7 @@ export async function deleteDocumentApi(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
 }
 
 /**
@@ -255,7 +279,7 @@ export async function updateDocumentApi(
     },
     body: JSON.stringify(data),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
@@ -272,7 +296,7 @@ export async function updateDocumentVisibilityApi(
     },
     body: JSON.stringify({ visibility }),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
@@ -282,7 +306,7 @@ export async function restoreDocumentApi(id: string): Promise<Document> {
     method: "POST",
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
@@ -296,7 +320,7 @@ export async function downloadDocumentApi(id: string): Promise<void> {
         method: "POST",
         headers: authHeaders(),
       })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
 
   const blob = await response.blob()
   const filename = parseDownloadFilename(response.headers.get("Content-Disposition"))
@@ -319,7 +343,7 @@ export async function previewDocumentApi(id: string): Promise<{ url: string; con
         method: "GET",
         headers: authHeaders(),
       })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
 
   const blob = await response.blob()
   return {
@@ -345,7 +369,7 @@ export async function updateDocumentFolderApi(
     },
     body: JSON.stringify({ folderId }),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
@@ -358,7 +382,7 @@ export async function permanentDeleteDocumentApi(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
 }
 
 /** DELETE /api/documents/trash/empty — xóa vĩnh viễn toàn bộ file trong thùng rác (FR-24) */
@@ -367,5 +391,5 @@ export async function emptyTrashApi(): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   })
-  if (!response.ok) throw new Error(await parseError(response))
+  if (!response.ok) throw await parseError(response)
 }
