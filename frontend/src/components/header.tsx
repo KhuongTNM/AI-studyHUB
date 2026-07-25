@@ -250,19 +250,6 @@ export function Header({ onLogin, onRegister }: HeaderProps) {
                   </div>
                 )}
 
-                {pendingGroupInvitations.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 w-full"
-                    onClick={() => {
-                      setShowNotifications(false)
-                      setCurrentPage("groups")
-                    }}
-                  >
-                    {text.openGroupChat}
-                  </Button>
-                )}
               </div>
             )}
           </div>
