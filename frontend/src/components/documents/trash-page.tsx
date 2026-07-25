@@ -224,7 +224,7 @@ const trashText = {
     emptyTitle: "Thùng rác trống",
     emptyBody: "Không có tài liệu nào trong thùng rác",
     retentionWarning:
-      "Tài liệu trong thùng rác sẽ bị xóa vĩnh viễn sau 30 ngày (BR-36). Admin có thể khôi phục tài liệu (BR-37).",
+      "Tài liệu trong thùng rác sẽ bị xóa vĩnh viễn sau 30 ngày. Admin có thể khôi phục tài liệu.",
     deleted: "Đã xóa",
     restore: "Khôi phục",
     deleteForever: "Xóa vĩnh viễn",
@@ -247,7 +247,7 @@ const trashText = {
     emptyTitle: "Trash is empty",
     emptyBody: "There are no documents in trash",
     retentionWarning:
-      "Documents in trash are permanently deleted after 30 days (BR-36). Admins can restore documents (BR-37).",
+      "Documents in trash are permanently deleted after 30 days. Admins can restore documents.",
     deleted: "Deleted",
     restore: "Restore",
     deleteForever: "Delete forever",
