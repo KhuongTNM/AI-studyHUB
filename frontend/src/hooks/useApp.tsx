@@ -98,7 +98,13 @@ export interface AppState {
     visibility?: "private" | "public",
     folderId?: string | null,
     tags?: string,
-  ) => Promise<{ success: boolean; error?: string }>
+    batchId?: string,
+  ) => Promise<{
+    success: boolean
+    error?: string
+    code?: string
+    details?: { fileName?: string; folderId?: string | null }
+  }>
   /** Soft-delete tài liệu và gọi DELETE /api/documents/{id} (BR-022) */
   deleteDocument: (id: string) => void
   /** Khôi phục từ Trash và gọi POST /api/documents/{id}/restore (BR-023) */

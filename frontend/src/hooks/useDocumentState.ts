@@ -12,6 +12,7 @@ import {
   updateDocumentFolderApi,
   permanentDeleteDocumentApi,
   emptyTrashApi,
+  ApiError,
 } from "@/services/api/documents"
 import {
   fetchFolderTreeApi,
@@ -124,7 +125,8 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
       visibility: "private" | "public" = "private",
       folderId?: string | null,
       tags?: string,
-    ): Promise<{ success: boolean; error?: string }> => {
+      batchId?: string,
+    ): Promise<{ success: boolean; error?: string; code?: string; details?: { fileName?: string; folderId?: string | null } }> => {
       if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
 
       // BR mới (mục 3, docx): KHÔNG tự đổi tên khi trùng — BE/mock từ chối
@@ -158,7 +160,7 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
           setDocuments(prev =>
             prev.map(d => d.id === tempId ? { ...d, uploadProgress: progress } : d),
           )
-        }, tags, folderId)
+        }, tags, folderId, batchId)
 
         setDocuments(prev =>
           prev.map(d => d.id === tempId ? { ...realDoc, folderId, status: "scanning" } : d),
@@ -215,6 +217,9 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
         return { success: true }
       } catch (error) {
         setDocuments(prev => prev.filter(d => d.id !== tempId))
+        if (error instanceof ApiError) {
+          return { success: false, error: error.message, code: error.code, details: error.details }
+        }
         return {
           success: false,
           error: error instanceof Error ? error.message : "Không thể upload tài liệu.",
