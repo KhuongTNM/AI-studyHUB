@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Eye, EyeOff, Loader2, GraduationCap,
@@ -21,8 +21,20 @@ export default function RegisterPage() {
   const [showPwd, setShowPwd]                 = useState(false)
   const [loading, setLoading]                 = useState(false)
   const [error, setError]                     = useState("")
+  const [errorCode, setErrorCode]             = useState<string | undefined>(undefined)
   const [success, setSuccess]                 = useState(false)
   const [successMsg, setSuccessMsg]           = useState("")
+  // BR-101/API Contract Mục 1 — 429 OTP_DAILY_LIMIT_REACHED: disable nút submit
+  // trong retryAfterSeconds giây (đếm ngược), theo đúng disableSubmitFor() ở Sample Call.
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0)
+
+  useEffect(() => {
+    if (retryAfterSeconds <= 0) return
+    const timer = setInterval(() => {
+      setRetryAfterSeconds(prev => (prev <= 1 ? 0 : prev - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [retryAfterSeconds])
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const validate = (): string => {
@@ -40,6 +52,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setErrorCode(undefined)
     setSuccess(false)
 
     const validationError = validate()
@@ -54,6 +67,11 @@ export default function RegisterPage() {
       if (!result.success) {
         // ❌ Thất bại — ở lại trang, hiện lỗi
         setError(result.error || "Đăng ký thất bại. Vui lòng thử lại.")
+        setErrorCode(result.code)
+        // 429 OTP_DAILY_LIMIT_REACHED — disable nút submit đến khi hết cửa sổ 24h.
+        if (result.code === "OTP_DAILY_LIMIT_REACHED") {
+          setRetryAfterSeconds(result.retryAfterSeconds ?? 0)
+        }
       } else if (result.requiresVerification) {
         // ✅ BR-095 — chưa cấp accessToken, phải xác thực OTP trước.
         // Điều hướng sang màn hình nhập mã, kèm email + thời gian hết hạn.
@@ -141,7 +159,20 @@ export default function RegisterPage() {
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
+              <div>
+                <span>{error}</span>
+                {/* TH1 (API Contract Mục 1) — gợi ý hành động tiếp theo thay vì chỉ báo lỗi chung chung. */}
+                {errorCode === "EMAIL_ALREADY_REGISTERED" && (
+                  <div className="mt-1 flex gap-3 text-xs">
+                    <a href="/login" className="font-medium underline hover:no-underline">
+                      Đăng nhập
+                    </a>
+                    <a href="/reset-password" className="font-medium underline hover:no-underline">
+                      Quên mật khẩu?
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -250,9 +281,11 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || retryAfterSeconds > 0}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Tạo tài khoản
+                {retryAfterSeconds > 0
+                  ? `Thử lại sau ${retryAfterSeconds}s`
+                  : "Tạo tài khoản"}
               </Button>
             </form>
           )}

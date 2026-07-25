@@ -208,12 +208,25 @@ export interface RegisterSuccessResult {
   otpExpiresInSeconds?: number
 }
 
+/** Mã lỗi ổn định của POST /api/auth/register theo BR-101 (Register-Overwrite Strategy). */
+export type RegisterErrorCode = "EMAIL_ALREADY_REGISTERED" | "OTP_DAILY_LIMIT_REACHED"
+
+export interface RegisterErrorResult {
+  success: false
+  error: string
+  /** TH1 -> 409 EMAIL_ALREADY_REGISTERED; rate-limit ghi đè/OTP 24h -> 429 OTP_DAILY_LIMIT_REACHED. */
+  code?: RegisterErrorCode
+  /** Chỉ có khi code === "OTP_DAILY_LIMIT_REACHED" (Mục 1 API Contract — dùng để disable nút submit). */
+  retryAfterSeconds?: number
+  dailyLimit?: number
+}
+
 export async function registerApi(
   email: string,
   password: string,
   confirmPassword: string,
   displayName: string
-): Promise<RegisterSuccessResult | { success: false; error: string }> {
+): Promise<RegisterSuccessResult | RegisterErrorResult> {
   const response = MOCK_API
     ? await mockRegisterRequest(email, password, confirmPassword, displayName)
     : await fetch(`${API_BASE_URL}/api/auth/register`, {
@@ -223,7 +236,31 @@ export async function registerApi(
       })
 
   if (!response.ok) {
-    return { success: false, error: await parseError(response) }
+    let body: { message?: string; retryAfterSeconds?: number; dailyLimit?: number } = {}
+    try {
+      body = (await response.json()) as { message?: string; retryAfterSeconds?: number; dailyLimit?: number }
+    } catch {
+      // ignore parse errors
+    }
+    // BR-101 / API Contract Mục 1 — 429 khi vượt rate-limit 24h (TH2 ghi đè lẫn TH3 tạo mới).
+    if (response.status === 429) {
+      return {
+        success: false,
+        error: body.message || "Bạn đã thao tác quá nhiều lần trong 24 giờ qua. Vui lòng thử lại sau.",
+        code: "OTP_DAILY_LIMIT_REACHED",
+        retryAfterSeconds: body.retryAfterSeconds,
+        dailyLimit: body.dailyLimit,
+      }
+    }
+    // TH1 — email đã tồn tại và đã xác thực.
+    if (response.status === 409) {
+      return {
+        success: false,
+        error: body.message || "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng chức năng Quên mật khẩu.",
+        code: "EMAIL_ALREADY_REGISTERED",
+      }
+    }
+    return { success: false, error: body.message || "Đã xảy ra lỗi. Vui lòng thử lại." }
   }
 
   const data = (await response.json()) as RegisterApiResponse
