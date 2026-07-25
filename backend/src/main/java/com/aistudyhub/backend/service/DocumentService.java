@@ -8,6 +8,8 @@ import com.aistudyhub.backend.entity.Tag;
 import com.aistudyhub.backend.entity.User;
 import com.aistudyhub.backend.entity.Visibility;
 import com.aistudyhub.backend.exception.ApiException;
+import com.aistudyhub.backend.exception.BusinessException;
+import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.repository.DocumentRepository;
 import com.aistudyhub.backend.repository.FolderRepository;
 import com.aistudyhub.backend.repository.TagRepository;
@@ -20,7 +22,9 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -28,6 +32,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,10 +78,10 @@ public class DocumentService {
     public Document upload(UUID userId, MultipartFile file, String subject, String title,
                            Visibility visibility, String tags, UUID folderId) {
         if (subject == null || subject.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Môn học không được để trống.");
+            throw new BusinessException(ErrorCode.SUBJECT_REQUIRED);
         }
         if (file.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "File không được để trống.");
+            throw new BusinessException(ErrorCode.EMPTY_FILE);
         }
 
         String originalName = file.getOriginalFilename();
@@ -86,23 +91,26 @@ public class DocumentService {
 
         String ext = getExtension(originalName);
         if (!List.of("pdf", "docx", "pptx").contains(ext)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ hỗ trợ file PDF, DOCX, PPTX.");
+            throw new BusinessException(ErrorCode.INVALID_FILE_TYPE);
         }
 
         // Nếu có chỉ định folder, xác thực folder tồn tại và thuộc về chính user này (BR-080).
         if (folderId != null) {
             Folder folder = folderRepository.findById(folderId)
-                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.FOLDER_NOT_FOUND));
             if (!folder.getUser().getId().equals(userId)) {
-                throw new ApiException(HttpStatus.FORBIDDEN,
-                        "Bạn không có quyền upload vào thư mục này.");
+                throw new BusinessException(ErrorCode.FOLDER_ACCESS_DENIED);
             }
         }
 
-        // BR mới (mục 3, docx): chặn trùng originalName trong CÙNG 1 folder
-        // (kể cả cả 2 đều root/null) — KHÔNG auto-rename, trả 409 để FE giữ nguyên form.
+        // BR-112 (Duplicate File Name Upload Guard): chặn trùng originalName trong CÙNG 1
+        // folder (kể cả cả 2 đều root/null), không phân biệt hoa/thường, chỉ tính bản ghi
+        // Active — KHÔNG auto-rename, trả 409 kèm đúng tên file để FE giữ nguyên form.
+        // Đây là bước check SỚM ở tầng Service; chốt chặn cuối cùng chống race-condition
+        // (2 request cùng lúc lọt qua bước check này) là DataIntegrityViolationException
+        // bắt được bên dưới khi documentRepository.saveAndFlush(doc).
         if (documentRepository.countActiveDuplicateInFolder(userId, folderId, originalName) > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "File đã tồn tại trong thư mục này.");
+            throw duplicateFileNameException(originalName, folderId);
         }
 
         Set<Tag> resolvedTags = resolveTags(tags);
@@ -114,12 +122,12 @@ public class DocumentService {
         // KHÔNG gắn với SubscriptionPlan, áp dụng cho mọi user.
         long maxFileSizeBytes = uploadSettingsService.loadOrThrow().getMaxFileSizeBytes();
         if (file.getSize() > maxFileSizeBytes) {
-            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,
-                    "File vượt quá dung lượng tối đa cho phép (" + (maxFileSizeBytes / (1024 * 1024)) + "MB).");
+            throw new BusinessException(ErrorCode.FILE_TOO_LARGE,
+                    ErrorCode.FILE_TOO_LARGE.formatMessage(maxFileSizeBytes / (1024 * 1024)), null);
         }
 
         if (user.getStorageUsedBytes() + file.getSize() > user.getStorageLimitBytes()) {
-            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");
+            throw new BusinessException(ErrorCode.STORAGE_QUOTA_EXCEEDED);
         }
 
         String storedName = UUID.randomUUID() + "_" + sanitizeFileName(originalName);
@@ -150,7 +158,17 @@ public class DocumentService {
         user.setStorageUsedBytes(user.getStorageUsedBytes() + file.getSize());
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
-        final Document saved = documentRepository.save(doc);
+
+        // saveAndFlush (thay vì save) để buộc Hibernate thực thi INSERT ngay tại đây, cho phép
+        // bắt DataIntegrityViolationException đúng chỗ còn đủ context (originalName, folderId)
+        // để trả về đúng schema 409 — thay vì lỗi flush ra ở transaction commit, không còn
+        // context, chỉ được bắt bởi lưới an toàn chung ở GlobalExceptionHandler.
+        final Document saved;
+        try {
+            saved = documentRepository.saveAndFlush(doc);
+        } catch (DataIntegrityViolationException ex) {
+            throw duplicateFileNameException(originalName, folderId);
+        }
 
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
@@ -473,6 +491,19 @@ public class DocumentService {
                             return tagRepository.save(tag);
                         }))
                 .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    /**
+     * BR-112: build đúng schema lỗi trùng tên (message chèn tên file thực tế + details
+     * {fileName, folderId}) — dùng chung cho cả bước check sớm ở Service lẫn nhánh bắt
+     * DataIntegrityViolationException do race-condition ở DB (Mục 6 Quyết định #4).
+     */
+    private BusinessException duplicateFileNameException(String originalName, UUID folderId) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("fileName", originalName);
+        details.put("folderId", folderId);
+        return new BusinessException(ErrorCode.DUPLICATE_FILE_NAME,
+                ErrorCode.DUPLICATE_FILE_NAME.formatMessage(originalName), details);
     }
 
     private String getExtension(String filename) {

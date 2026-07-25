@@ -245,13 +245,14 @@ const handleSelectSubject = useCallback((subject: string) => {
     if (!currentUser) return { success: false, error: "Vui lòng đăng nhập." }
     setUploadError(null)
     const resolvedSubject = subject || currentFolderSubject || (selectedSubject !== "all" ? selectedSubject : "")
+    const batchId = crypto.randomUUID()
     for (const file of files) {
-      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId, tags)
+      const result = await uploadDocument(file, resolvedSubject, "private", currentFolderId, tags, batchId)
       if (!result.success && result.error) {
         setUploadError(result.error)
         // Trả về lỗi cho UploadModal để nó GIỮ NGUYÊN form (không đóng modal,
         // không xoá file đã chọn) — user đổi tên/thư mục rồi bấm Upload lại ngay.
-        return { success: false, error: result.error }
+        return { success: false, error: result.error, code: result.code, details: result.details }
       }
     }
     return { success: true }
