@@ -92,7 +92,7 @@ public class AdminSubscriptionPlanService {
             plan.setName(newName.trim());
         }
 
-        if (request.getPrice() != null) {
+        if (request.getPrice() != null && request.getPrice().compareTo(plan.getPrice()) != 0) {
             if (isFreePlan) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể thay đổi giá gói Miễn phí.");
             }
