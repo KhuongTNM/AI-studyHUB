@@ -168,7 +168,9 @@ export async function mockCreateSubscriptionPlanRequest(
   if (!name) return jsonResponse(400, { message: "Tên gói không được để trống." })
   if (!(input.price > 0)) return jsonResponse(400, { message: "Giá gói cước phải lớn hơn 0." })
   if (mockPlans.some(p => !p.isDeleted && p.name.toLowerCase() === name.toLowerCase())) {
-    return jsonResponse(409, { message: "Tên gói dịch vụ đã tồn tại." })
+    // BE thật (PlanAlreadyExistsException) trả 400, KHÔNG phải 409 như API spec gốc
+    // ghi (xem mục 3, subscription-plan-be-notes-for-fe.md) — mock khớp theo BE thật.
+    return jsonResponse(400, { message: "Tên gói dịch vụ đã tồn tại." })
   }
 
   mockSeq += 1
@@ -222,7 +224,7 @@ export async function mockUpdateSubscriptionPlanRequest(
     const duplicate = mockPlans.some(
       p => !p.isDeleted && p !== plan && p.name.toLowerCase() === newName.toLowerCase(),
     )
-    if (duplicate) return jsonResponse(409, { message: "Tên gói dịch vụ đã tồn tại." })
+    if (duplicate) return jsonResponse(400, { message: "Tên gói dịch vụ đã tồn tại." })
     plan.name = newName
   }
 
