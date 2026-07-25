@@ -499,3 +499,142 @@ CREATE TABLE core.upload_settings (
 
 INSERT INTO core.upload_settings (id, max_file_size_bytes, max_files_per_upload)
 VALUES (1, 52428800, 5);
+
+-- ============================================================
+-- Migration: Chuẩn hoá tên gói dịch vụ & bảo vệ gói Miễn phí
+-- (BR-201, BR-202, BR-203). Chạy tay trên DB hiện có (ddl-auto=none,
+-- không dùng Flyway/Liquibase trong project này).
+-- ============================================================
+
+-- Gỡ constraint cũ giới hạn `name` chỉ được là 1 trong 3 giá trị cố định
+-- (free/plan_2_4/plan_5_plus) — tàn dư từ thời `name` còn là enum kỹ thuật,
+-- trước khi có quyết định BR-201 (bỏ display_name, để `name` tự do vừa làm
+-- khoá tra cứu vừa làm tên hiển thị). Không gỡ constraint này thì API
+-- "Tạo gói dịch vụ mới" (POST /api/admin/subscription-plans) không bao giờ
+-- tạo được gói với tên khác 3 gói built-in.
+ALTER TABLE payment.subscription_plans DROP CONSTRAINT subscription_plans_name_check;
+
+-- Trigger khoá cứng gói "free" ở tầng DB (lưới an toàn dự phòng cho BR-202/
+-- BR-203, phòng trường hợp có ai/hệ thống bypass hẳn tầng Java, thao tác
+-- thẳng vào DB). Chặn cả xoá thật (DELETE), xoá mềm (is_deleted), và sửa
+-- name/price của gói có name hiện tại là "free". Trong vận hành bình
+-- thường qua API, code Java (AdminSubscriptionPlanService) đã chặn các
+-- trường hợp này TRƯỚC khi câu SQL chạm tới DB, nên trigger này gần như
+-- không bao giờ thực sự bị kích hoạt qua đường API.
+CREATE OR REPLACE FUNCTION payment.protect_free_subscription_plan()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF lower(OLD.name) = 'free' THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  -- TG_OP = 'UPDATE'
+  IF lower(OLD.name) = 'free' THEN
+    IF NEW.is_deleted IS TRUE AND OLD.is_deleted IS NOT TRUE THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    IF lower(NEW.name) <> 'free' THEN
+      RAISE EXCEPTION 'Không thể đổi tên gói Miễn phí.';
+    END IF;
+    IF NEW.price <> 0 THEN
+      RAISE EXCEPTION 'Không thể thay đổi giá gói Miễn phí.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_free_subscription_plan ON payment.subscription_plans;
+CREATE TRIGGER trg_protect_free_subscription_plan
+BEFORE UPDATE OR DELETE ON payment.subscription_plans
+FOR EACH ROW
+EXECUTE FUNCTION payment.protect_free_subscription_plan();
+
+-- ============================================================
+-- Migration: Chuẩn hoá tên gói dịch vụ & bảo vệ gói Miễn phí
+-- (BR-201, BR-202, BR-203) — file chạy tay 1 lần trên DB local
+-- của từng dev (project không dùng Flyway/Liquibase, ddl-auto=none).
+--
+-- Chạy toàn bộ file này (Query Tool trong pgAdmin4, hoặc psql -f)
+-- trên DB local của bạn để đồng bộ với code BE mới nhất của module
+-- Subscription Plan. An toàn để chạy nhiều lần (idempotent) — không
+-- lỗi nếu bước nào đó đã áp dụng từ trước.
+-- ============================================================
+
+-- 1) Đảm bảo cột `name` đủ dài để gánh vai trò tên hiển thị (tối đa 50 ký tự
+--    theo UI hiện tại). Vô hại nếu cột đã đúng kiểu này rồi.
+ALTER TABLE payment.subscription_plans ALTER COLUMN name TYPE VARCHAR(100);
+
+-- 2) Bỏ cột display_name — đã bị thay thế hoàn toàn bởi `name` (BR-201).
+--    IF EXISTS để an toàn nếu cột đã được xoá từ trước.
+ALTER TABLE payment.subscription_plans DROP COLUMN IF EXISTS display_name;
+
+-- 3) Gỡ constraint cũ giới hạn `name` chỉ được là 1 trong 3 giá trị cố định
+--    (free/plan_2_4/plan_5_plus) — tàn dư từ thời `name` còn là enum kỹ thuật.
+--    Không gỡ constraint này thì API "Tạo gói dịch vụ mới" không bao giờ tạo
+--    được gói với tên khác 3 gói built-in.
+ALTER TABLE payment.subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_name_check;
+
+-- 4) Trigger khoá cứng gói "free" ở tầng DB (lưới an toàn dự phòng, phòng
+--    trường hợp có ai/hệ thống nào bypass hẳn tầng Java, thao tác thẳng vào
+--    DB). Trong vận hành bình thường qua API, code Java (AdminSubscriptionPlanService)
+--    đã chặn các trường hợp này TRƯỚC khi câu SQL chạm tới DB — trigger này
+--    gần như không bao giờ thực sự bị kích hoạt qua đường API, chỉ có tác
+--    dụng khi ai đó thao tác trực tiếp trên DB.
+--
+--    Chặn cả 3 đường: xoá thật (DELETE), xoá mềm (is_deleted), và sửa
+--    name/price của gói có name hiện tại là "free" (không phân biệt hoa/thường).
+CREATE OR REPLACE FUNCTION payment.protect_free_subscription_plan()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF lower(OLD.name) = 'free' THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  -- TG_OP = 'UPDATE'
+  IF lower(OLD.name) = 'free' THEN
+    IF NEW.is_deleted IS TRUE AND OLD.is_deleted IS NOT TRUE THEN
+      RAISE EXCEPTION 'Không thể xoá gói Miễn phí.';
+    END IF;
+    IF lower(NEW.name) <> 'free' THEN
+      RAISE EXCEPTION 'Không thể đổi tên gói Miễn phí.';
+    END IF;
+    IF NEW.price <> 0 THEN
+      RAISE EXCEPTION 'Không thể thay đổi giá gói Miễn phí.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_free_subscription_plan ON payment.subscription_plans;
+CREATE TRIGGER trg_protect_free_subscription_plan
+BEFORE UPDATE OR DELETE ON payment.subscription_plans
+FOR EACH ROW
+EXECUTE FUNCTION payment.protect_free_subscription_plan();
+
+-- ============================================================
+-- Verify (chạy tay, không bắt buộc) — xác nhận migration đã áp dụng đúng:
+--
+-- SELECT column_name, data_type, character_maximum_length
+-- FROM information_schema.columns
+-- WHERE table_schema = 'payment' AND table_name = 'subscription_plans'
+--   AND column_name IN ('name', 'display_name');
+-- (Kỳ vọng: chỉ còn dòng `name`, character_maximum_length = 100; không còn dòng display_name)
+--
+-- SELECT conname FROM pg_constraint
+-- WHERE conrelid = 'payment.subscription_plans'::regclass AND contype = 'c';
+-- (Kỳ vọng: không còn constraint tên subscription_plans_name_check)
+--
+-- SELECT tgname FROM pg_trigger WHERE tgrelid = 'payment.subscription_plans'::regclass;
+-- (Kỳ vọng: có dòng trg_protect_free_subscription_plan)
+-- ============================================================
+

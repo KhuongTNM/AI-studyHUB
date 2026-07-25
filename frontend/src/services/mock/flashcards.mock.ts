@@ -10,6 +10,8 @@
  * flashcards.ts sẽ gọi thẳng backend thật như bình thường.
  */
 
+import { mockFindPlanById, mockGetFreePlan } from "@/services/mock/subscription-plans.mock"
+
 // ─── Kho dữ liệu giả lập trong phiên làm việc (mất khi reload trang) ────────
 
 interface MockFlashcard {
@@ -49,24 +51,36 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Cùng công thức maxFlashcards với dữ liệu seed mặc định ở backend
- * (SubscriptionPlan.java: free=5, có thể chỉnh qua admin). Chỉ dùng cho mock.
+ * FIXED: trước đây hardcode theo tier ("2-4"→20, "5+"→-1, else free=5) — gói
+ * custom admin tạo thêm (id >= 4) không rơi vào "2-4"/"5+" nên luôn bị tính
+ * như free dù user đã mua gói khác. Giờ tra thẳng maxFlashcards thật của gói
+ * theo subscriptionPlanId (mockFindPlanById, dùng chung mockPlans với
+ * subscription-plans.mock.ts) — đúng với BẤT KỲ gói nào, kể cả gói mới tạo.
+ * Chỉ fallback về tier hardcode cũ cho phiên/tài khoản cũ không có planId.
  */
-function planMaxFlashcards(tier: string): number {
-  if (tier === "2-4") return 20
-  if (tier === "5+") return -1 // không giới hạn
-  return 5 // free
+function planMaxFlashcards(planId: number | null | undefined, tierFallback: string): number {
+  const plan = mockFindPlanById(planId)
+  if (plan) return plan.maxFlashcards
+  if (tierFallback === "2-4") return 20
+  if (tierFallback === "5+") return -1 // không giới hạn
+  return mockGetFreePlan().maxFlashcards // free
 }
 
 /**
  * Trần số thẻ TỐI ĐA MỖI LƯỢT BẤM (BR-099) — độc lập với maxFlashcards ở trên.
- * Free CỐ ĐỊNH = 5 (đúng 1 batch, theo mô tả BR-099). Premium là tham số cấu hình
- * nghiệp vụ (không cố định theo tài liệu) — chọn số mô phỏng hợp lý để test được
- * cơ chế nhiều-batch (BR-100: N=18 → 4 batch 5+5+5+3).
+ * BE không có field perClickLimit riêng, nên mock suy ra một cách hợp lý từ
+ * maxFlashcards thật của gói (id-based), thay vì đoán theo tier hardcode:
+ * - Gói không giới hạn (maxFlashcards = -1) → trần 50/lượt (bảo vệ quota AI dùng chung).
+ * - Gói có giới hạn → trần = maxFlashcards, kẹp trong khoảng [5, 50].
  */
-function planPerClickLimit(tier: string): number {
-  if (tier === "2-4") return 20
-  if (tier === "5+") return 50
+function planPerClickLimit(planId: number | null | undefined, tierFallback: string): number {
+  const plan = mockFindPlanById(planId)
+  const maxFlashcards = plan ? plan.maxFlashcards : undefined
+  if (maxFlashcards === -1) return 50
+  if (typeof maxFlashcards === "number") return Math.max(5, Math.min(maxFlashcards, 50))
+  // Fallback cho phiên/tài khoản cũ không có planId.
+  if (tierFallback === "2-4") return 20
+  if (tierFallback === "5+") return 50
   return 5 // free — BR-099: cố định 5/lượt, không phụ thuộc quota tổng
 }
 let cachedPerClickLimit = 5
@@ -77,10 +91,13 @@ function toApiShape(card: MockFlashcard) {
 
 // ─── 1. Quota gói dịch vụ (GET /api/subscription-plans/{planName}) ──────────
 
-export async function mockFetchFlashcardQuotaRequest(tier: string): Promise<Response> {
+export async function mockFetchFlashcardQuotaRequest(
+  tier: string,
+  subscriptionPlanId?: number | null,
+): Promise<Response> {
   await delay(200)
-  cachedMaxFlashcards = planMaxFlashcards(tier)
-  cachedPerClickLimit = planPerClickLimit(tier)
+  cachedMaxFlashcards = planMaxFlashcards(subscriptionPlanId, tier)
+  cachedPerClickLimit = planPerClickLimit(subscriptionPlanId, tier)
   return jsonResponse(200, { maxFlashcards: cachedMaxFlashcards, perClickLimit: cachedPerClickLimit })
 }
 

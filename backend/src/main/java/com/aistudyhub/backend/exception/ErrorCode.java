@@ -59,7 +59,33 @@ public enum ErrorCode {
     OTP_EXPIRED(HttpStatus.BAD_REQUEST, "OTP_EXPIRED"),
     OTP_INVALID_CODE(HttpStatus.BAD_REQUEST, "OTP_INVALID_CODE"),
     OTP_MAX_ATTEMPTS_EXCEEDED(HttpStatus.BAD_REQUEST, "OTP_MAX_ATTEMPTS_EXCEEDED"),
-    OTP_RESEND_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "OTP_RESEND_COOLDOWN");
+    OTP_RESEND_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "OTP_RESEND_COOLDOWN"),
+
+    // ==== Bổ sung cho tính năng Register-Overwrite khi Email chưa xác thực (BR-101) ====
+    // TH1: email đã tồn tại và đã emailVerified = true -> từ chối đăng ký (không phải
+    // EMAIL_ALREADY_VERIFIED, vì code đó dùng cho verify-otp và trả 400, không phù hợp ngữ cảnh 409 ở đây).
+    EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT,
+            "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng chức năng Quên mật khẩu."),
+    // BR-100/BR-101: vượt quá 5 lần sinh OTP (đăng ký mới lẫn ghi đè) trong cửa sổ trượt 24 giờ.
+    OTP_DAILY_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS,
+            "Bạn đã thao tác quá nhiều lần trong 24 giờ qua. Vui lòng thử lại sau."),
+
+    // ==== BR-112: Chặn tải lên tài liệu trùng tên (Duplicate File Name Upload Guard) ====
+    // Message dùng %s làm placeholder cho tên file thực tế — build qua formatMessage(originalName).
+    // Trả về khi originalName (không phân biệt hoa/thường) trùng với 1 tài liệu Active khác
+    // trong CÙNG folderId của CÙNG user — bao gồm cả trùng với dữ liệu cũ lẫn trùng với file
+    // vừa upload thành công trước đó trong CHÍNH lượt batch hiện tại, và cả trường hợp
+    // race-condition bị DB unique constraint (ux_docs_active_dup_name) chặn lại.
+    DUPLICATE_FILE_NAME(HttpStatus.CONFLICT, "File '%s' đã tồn tại trong thư mục này."),
+    FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "Thư mục đích không tồn tại."),
+    FOLDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Bạn không có quyền upload vào thư mục này."),
+    INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "Chỉ hỗ trợ file PDF, DOCX, PPTX."),
+    EMPTY_FILE(HttpStatus.BAD_REQUEST, "File không được để trống."),
+    SUBJECT_REQUIRED(HttpStatus.BAD_REQUEST, "Môn học không được để trống."),
+    INVALID_VISIBILITY(HttpStatus.BAD_REQUEST, "Visibility chỉ hỗ trợ private hoặc public."),
+    // Message dùng %d làm placeholder cho hạn mức MB thực tế — build qua formatMessage(limitMB).
+    FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "File vượt quá dung lượng tối đa cho phép (%dMB)."),
+    STORAGE_QUOTA_EXCEEDED(HttpStatus.PAYLOAD_TOO_LARGE, "Dung lượng lưu trữ không đủ.");
 
     private final HttpStatus status;
     private final String message;
@@ -75,5 +101,14 @@ public enum ErrorCode {
 
     public String getMessage() {
         return message;
+    }
+
+    /**
+     * Build message thực tế từ template có placeholder kiểu String.format
+     * (vd DUPLICATE_FILE_NAME dùng %s cho tên file, FILE_TOO_LARGE dùng %d cho MB).
+     * Dùng khi cần chèn dữ liệu động vào message thay vì chỉ dùng {@link #getMessage()} tĩnh.
+     */
+    public String formatMessage(Object... args) {
+        return String.format(message, args);
     }
 }

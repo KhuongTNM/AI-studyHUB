@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { X, Eye, EyeOff, Loader2, GraduationCap, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,18 @@ export function AuthModal() {
   const [success, setSuccess] = useState("")
   // BR-097 — khi login trả ACCOUNT_NOT_VERIFIED, hiện CTA dẫn sang màn OTP
   const [unverifiedEmail, setUnverifiedEmail] = useState("")
+  // BR-101/API Contract Mục 1 — TH1 (409 EMAIL_ALREADY_REGISTERED) để hiện link gợi ý;
+  // 429 OTP_DAILY_LIMIT_REACHED để disable nút submit trong retryAfterSeconds giây.
+  const [errorCode, setErrorCode] = useState<string | undefined>(undefined)
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0)
+
+  useEffect(() => {
+    if (retryAfterSeconds <= 0) return
+    const timer = setInterval(() => {
+      setRetryAfterSeconds(prev => (prev <= 1 ? 0 : prev - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [retryAfterSeconds])
 
   // Form states
   const [email, setEmail] = useState("")
@@ -59,6 +71,7 @@ export function AuthModal() {
     orContinueWith: "Hoặc tiếp tục với",
     googleFailed: "Đăng nhập Google thất bại.",
     resendVerification: "Gửi lại mã xác thực",
+    retryAfter: (s: number) => `Thử lại sau ${s}s`,
   } : {
     login: "Log in",
     register: "Sign up",
@@ -90,11 +103,13 @@ export function AuthModal() {
     orContinueWith: "Or continue with",
     googleFailed: "Google sign-in failed.",
     resendVerification: "Resend verification code",
+    retryAfter: (s: number) => `Retry in ${s}s`,
   }
 
   const switchTab = (t: typeof tab) => {
     setTab(t)
     setError("")
+    setErrorCode(undefined)
     setSuccess("")
     setUnverifiedEmail("")
     setEmail("")
@@ -124,6 +139,7 @@ export function AuthModal() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setErrorCode(undefined)
     setUnverifiedEmail("")
     if (!email || !password || !displayName) { setError(text.required); return }
     if (password !== confirmPassword) { setError(text.mismatch); return }
@@ -136,6 +152,11 @@ export function AuthModal() {
     setLoading(false)
     if (!result.success) {
       setError(result.error || text.failedRegister)
+      setErrorCode(result.code)
+      // 429 OTP_DAILY_LIMIT_REACHED — disable nút submit đến khi hết cửa sổ 24h.
+      if (result.code === "OTP_DAILY_LIMIT_REACHED") {
+        setRetryAfterSeconds(result.retryAfterSeconds ?? 0)
+      }
       return
     }
     // BR-095 — đăng ký không còn cấp accessToken ngay, phải xác thực OTP trước.
@@ -262,6 +283,17 @@ export function AuthModal() {
                   {text.resendVerification}
                 </Button>
               )}
+              {/* TH1 (API Contract Mục 1) — gợi ý hành động tiếp theo thay vì chỉ báo lỗi chung chung. */}
+              {errorCode === "EMAIL_ALREADY_REGISTERED" && (
+                <div className="flex gap-3 text-xs">
+                  <button type="button" onClick={() => switchTab("login")} className="font-medium underline hover:no-underline">
+                    {text.login}
+                  </button>
+                  <button type="button" onClick={() => switchTab("forgot")} className="font-medium underline hover:no-underline">
+                    {text.forgot}
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {success && (
@@ -387,9 +419,9 @@ export function AuthModal() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || retryAfterSeconds > 0}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {text.submitRegister}
+                {retryAfterSeconds > 0 ? text.retryAfter(retryAfterSeconds) : text.submitRegister}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 {text.haveAccount}{" "}

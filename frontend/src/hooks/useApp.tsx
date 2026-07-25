@@ -98,7 +98,13 @@ export interface AppState {
     visibility?: "private" | "public",
     folderId?: string | null,
     tags?: string,
-  ) => Promise<{ success: boolean; error?: string }>
+    batchId?: string,
+  ) => Promise<{
+    success: boolean
+    error?: string
+    code?: string
+    details?: { fileName?: string; folderId?: string | null }
+  }>
   /** Soft-delete tài liệu và gọi DELETE /api/documents/{id} (BR-022) */
   deleteDocument: (id: string) => void
   /** Khôi phục từ Trash và gọi POST /api/documents/{id}/restore (BR-023) */
@@ -239,6 +245,9 @@ export interface AppState {
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
+  /** FIXED: gọi lại sau khi admin tạo/sửa/xoá gói để packagePrices (dùng chung
+   * cho trang User + form "Cấp gói") đồng bộ ngay, không cần F5/login lại. */
+  refetchPackagePrices: () => Promise<void>
   updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
   grantSubscription: (userId: string, tier: string, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
@@ -474,6 +483,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         // Subscription
         packagePrices: subscription.packagePrices,
+        refetchPackagePrices: subscription.refetchPackagePrices,
         updatePackagePrice: subscription.updatePackagePrice,
         grantSubscription: subscription.grantSubscription,
         buySubscription: subscription.buySubscription,

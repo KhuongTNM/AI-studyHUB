@@ -101,10 +101,23 @@ function mapRole(role: string): UserRole {
   return "user"
 }
 
+/**
+ * FIXED: hàm này trước đây hardcode "id=2 → 2-4", "id=3 → 5+", mọi id khác
+ * (kể cả gói custom admin tạo thêm, id >= 4) đều rơi vào "free" — dù user đã
+ * trả tiền cho gói đó. Vì auth.ts KHÔNG có danh sách gói (packagePrices) để
+ * tra tên/tier thật, hàm này không còn tự suy đoán tier nữa.
+ *
+ * subscriptionPlanId mới là nguồn sự thật duy nhất để xác định gói của user —
+ * mọi nơi cần biết giới hạn/tên gói phải tra cứu packagePrices theo id này
+ * (các chỗ dùng subscriptionTier như "2-4"/"5+" chỉ còn là fallback hiển thị
+ * cho user cũ chưa có subscriptionPlanId, không dùng để tính quota nữa).
+ */
 function mapSubscriptionTier(subscriptionPlanId?: number | null): User["subscriptionTier"] {
-  if (subscriptionPlanId === 2) return "2-4"
-  if (subscriptionPlanId === 3) return "5+"
-  return "free"
+  // Không có gói (chưa từng mua) → free thật sự, không phải suy đoán.
+  if (subscriptionPlanId === null || subscriptionPlanId === undefined) return "free"
+  // Có subscriptionPlanId → để nguyên undefined, các nơi tiêu thụ phải tra
+  // packagePrices theo subscriptionPlanId thay vì đoán qua field này.
+  return undefined
 }
 
 export function mapApiUserToStoreUser(apiUser: ApiUser): User {
@@ -195,12 +208,25 @@ export interface RegisterSuccessResult {
   otpExpiresInSeconds?: number
 }
 
+/** Mã lỗi ổn định của POST /api/auth/register theo BR-101 (Register-Overwrite Strategy). */
+export type RegisterErrorCode = "EMAIL_ALREADY_REGISTERED" | "OTP_DAILY_LIMIT_REACHED"
+
+export interface RegisterErrorResult {
+  success: false
+  error: string
+  /** TH1 -> 409 EMAIL_ALREADY_REGISTERED; rate-limit ghi đè/OTP 24h -> 429 OTP_DAILY_LIMIT_REACHED. */
+  code?: RegisterErrorCode
+  /** Chỉ có khi code === "OTP_DAILY_LIMIT_REACHED" (Mục 1 API Contract — dùng để disable nút submit). */
+  retryAfterSeconds?: number
+  dailyLimit?: number
+}
+
 export async function registerApi(
   email: string,
   password: string,
   confirmPassword: string,
   displayName: string
-): Promise<RegisterSuccessResult | { success: false; error: string }> {
+): Promise<RegisterSuccessResult | RegisterErrorResult> {
   const response = MOCK_API
     ? await mockRegisterRequest(email, password, confirmPassword, displayName)
     : await fetch(`${API_BASE_URL}/api/auth/register`, {
@@ -210,7 +236,31 @@ export async function registerApi(
       })
 
   if (!response.ok) {
-    return { success: false, error: await parseError(response) }
+    let body: { message?: string; retryAfterSeconds?: number; dailyLimit?: number } = {}
+    try {
+      body = (await response.json()) as { message?: string; retryAfterSeconds?: number; dailyLimit?: number }
+    } catch {
+      // ignore parse errors
+    }
+    // BR-101 / API Contract Mục 1 — 429 khi vượt rate-limit 24h (TH2 ghi đè lẫn TH3 tạo mới).
+    if (response.status === 429) {
+      return {
+        success: false,
+        error: body.message || "Bạn đã thao tác quá nhiều lần trong 24 giờ qua. Vui lòng thử lại sau.",
+        code: "OTP_DAILY_LIMIT_REACHED",
+        retryAfterSeconds: body.retryAfterSeconds,
+        dailyLimit: body.dailyLimit,
+      }
+    }
+    // TH1 — email đã tồn tại và đã xác thực.
+    if (response.status === 409) {
+      return {
+        success: false,
+        error: body.message || "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng chức năng Quên mật khẩu.",
+        code: "EMAIL_ALREADY_REGISTERED",
+      }
+    }
+    return { success: false, error: body.message || "Đã xảy ra lỗi. Vui lòng thử lại." }
   }
 
   const data = (await response.json()) as RegisterApiResponse

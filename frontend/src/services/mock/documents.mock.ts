@@ -128,7 +128,7 @@ export async function mockDownloadRequest(id: string): Promise<Response> {
 
 // ─── 3. Upload (POST /api/documents/upload, multipart/form-data) ───────────
 
-export async function mockUploadRequest(formData: FormData): Promise<Response> {
+export async function mockUploadRequest(formData: FormData, _batchId?: string): Promise<Response> {
   await delay(600)
 
   const file = formData.get("file")
@@ -155,7 +155,12 @@ export async function mockUploadRequest(formData: FormData): Promise<Response> {
     d => d.folderId === folderId && d.originalName.toLowerCase() === file.name.toLowerCase(),
   )
   if (duplicate) {
-    return jsonResponse(409, { message: "File đã tồn tại trong thư mục này." })
+    return jsonResponse(409, {
+      code: "DUPLICATE_FILE_NAME",
+      message: `File '${file.name}' đã tồn tại trong thư mục này.`,
+      timestamp: new Date().toISOString(),
+      details: { fileName: file.name, folderId },
+    })
   }
 
   const id = newId()

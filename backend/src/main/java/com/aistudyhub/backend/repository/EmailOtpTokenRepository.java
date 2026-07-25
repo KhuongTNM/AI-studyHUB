@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.repository;
 
 import com.aistudyhub.backend.entity.EmailOtpToken;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,19 @@ public interface EmailOtpTokenRepository extends JpaRepository<EmailOtpToken, UU
 
     /** BR-098: bản ghi OTP gần nhất (kể cả đã dùng) của user, dùng để tính cooldown resend. */
     Optional<EmailOtpToken> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    /**
+     * BR-100/BR-101: đếm số OTP đã sinh (đăng ký mới lẫn ghi đè) trong cửa sổ trượt 24 giờ
+     * gần nhất của user - dùng chung cho cả luồng tạo mới (TH3) và ghi đè (TH2), không có
+     * bộ đếm riêng cho từng luồng.
+     */
+    long countByUserIdAndCreatedAtAfter(UUID userId, LocalDateTime since);
+
+    /**
+     * BR-100/BR-101: bản ghi OTP cũ nhất còn nằm trong cửa sổ 24 giờ - dùng để tính
+     * retryAfterSeconds (thời gian tới khi bản ghi này trượt ra khỏi cửa sổ) khi vượt giới hạn.
+     */
+    Optional<EmailOtpToken> findFirstByUserIdAndCreatedAtAfterOrderByCreatedAtAsc(UUID userId, LocalDateTime since);
 
     /**
      * BR-095: vô hiệu hoá mọi OTP còn hiệu lực của user trước khi sinh mã mới.

@@ -19,7 +19,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { getLocalizedPlanName, normalizePlanName } from "@/configs/subscription-plan-labels"
+import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
 import type { Language, PackagePrice, User } from "@/states/types"
 
 type AnalyticsText = {
@@ -51,14 +51,15 @@ function shorten(value: string, maxLength = 18) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
 }
 
+/**
+ * Chỉ match theo `subscriptionPlanId` — đây là field DUY NHẤT BE thật sự
+ * trả về để liên kết user với gói (entity User.java không có `tier`).
+ * Không còn fallback so theo `tier`/`subscriptionTier` vì đó là field tự
+ * chế ở FE, không tồn tại trong DB/API thật.
+ */
 function resolvePlan(user: User, packages: PackagePrice[]) {
-  if (user.subscriptionPlanId != null) {
-    const matchedById = packages.find(plan => String(plan.id) === String(user.subscriptionPlanId))
-    if (matchedById) return matchedById
-  }
-
-  const normalizedTier = normalizePlanName(user.subscriptionTier, user.subscriptionTier)
-  return packages.find(plan => normalizePlanName(plan.planName, plan.tier) === normalizedTier)
+  if (user.subscriptionPlanId == null) return undefined
+  return packages.find(plan => String(plan.id) === String(user.subscriptionPlanId))
 }
 
 function Panel({
