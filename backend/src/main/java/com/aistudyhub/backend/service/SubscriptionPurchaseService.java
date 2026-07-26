@@ -9,10 +9,16 @@ import com.aistudyhub.backend.repository.UserRepository;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.dto.CreateSubscriptionPurchaseRequest;
 import com.aistudyhub.backend.dto.SubscriptionPurchaseResponse;
+import com.aistudyhub.backend.dto.TransactionDetailResponse;
+import com.aistudyhub.backend.dto.TransactionHistoryItemResponse;
 import com.aistudyhub.backend.dto.UserResponse;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -158,7 +165,6 @@ public class SubscriptionPurchaseService {
 
             purchase.setStatus(SubscriptionPurchase.Status.PAID);
             purchase.setPaidAt(LocalDateTime.now());
-            purchaseRepository.save(purchase);
 
             User user = userRepository.findById(purchase.getUserId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
@@ -172,6 +178,12 @@ public class SubscriptionPurchaseService {
             } else {
                 endDate = now.plusDays(SUBSCRIPTION_DAYS);
             }
+
+            // TXN-101..203: snapshot mốc hiệu lực của gói ngay tại giao dịch này
+            // (GAP-1, Option 1 — kích hoạt ngay lập tức, startDate luôn = thời điểm thanh toán).
+            purchase.setStartDate(startDate);
+            purchase.setEndDate(endDate);
+            purchaseRepository.save(purchase);
 
             user.setSubscriptionPlanId(purchase.getPlanId());
             user.setSubscriptionExpiresAt(endDate);
@@ -199,7 +211,6 @@ public class SubscriptionPurchaseService {
 
         purchase.setStatus(SubscriptionPurchase.Status.PAID);
         purchase.setPaidAt(LocalDateTime.now());
-        purchaseRepository.save(purchase);
 
         User user = userRepository.findById(purchase.getUserId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
@@ -214,6 +225,12 @@ public class SubscriptionPurchaseService {
             endDate = now.plusDays(SUBSCRIPTION_DAYS);
         }
 
+        // TXN-101..203: snapshot mốc hiệu lực của gói ngay tại giao dịch này
+        // (GAP-1, Option 1 — kích hoạt ngay lập tức, startDate luôn = thời điểm thanh toán).
+        purchase.setStartDate(startDate);
+        purchase.setEndDate(endDate);
+        purchaseRepository.save(purchase);
+
         user.setSubscriptionPlanId(purchase.getPlanId());
         user.setSubscriptionExpiresAt(endDate);
         user.setStorageLimitBytes(purchase.getStorageLimitBytes());
@@ -225,6 +242,37 @@ public class SubscriptionPurchaseService {
         subscriptionService.activateNewSubscription(user.getId(), plan, startDate, endDate);
 
         return toResponseWithUser(purchase, UserResponse.from(savedUser));
+    }
+
+    // ───────────────────────────────────────────────
+    // TXN-101/102 — GET /api/subscription-purchases/history
+    // ───────────────────────────────────────────────
+    @Transactional(readOnly = true)
+    public Page<TransactionHistoryItemResponse> getHistory(UUID userId, int page, int size, Integer month, Integer year) {
+        TransactionQueryValidation.validatePage(page);
+        int clampedSize = TransactionQueryValidation.clampSize(size);
+        LocalDateTime[] range = TransactionQueryValidation.resolveDateRange(month, year);
+
+        Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "paidAt"));
+        return purchaseRepository.findHistoryForUser(userId, SubscriptionPurchase.Status.PAID, range[0], range[1], pageable);
+    }
+
+    // ───────────────────────────────────────────────
+    // TXN-103 — GET /api/subscription-purchases/history/{orderId}
+    // GAP-2 (đã chốt): orderId không tồn tại HOẶC không thuộc userId đang đăng nhập -> CÙNG 1 lỗi
+    // 404, không phân biệt 2 tình huống.
+    // ───────────────────────────────────────────────
+    @Transactional(readOnly = true)
+    public TransactionDetailResponse getHistoryDetail(UUID userId, String orderId) {
+        SubscriptionPurchase purchase = purchaseRepository.findByOrderId(orderId)
+                .filter(p -> p.getStatus() == SubscriptionPurchase.Status.PAID)
+                .filter(p -> p.getUserId().equals(userId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy giao dịch."));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy giao dịch."));
+
+        return TransactionDetailResponse.from(purchase, user.getDisplayName());
     }
 
     private SubscriptionPurchaseResponse toResponse(SubscriptionPurchase p) {

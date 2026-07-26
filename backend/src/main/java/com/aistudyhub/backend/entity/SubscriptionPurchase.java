@@ -81,4 +81,14 @@ public class SubscriptionPurchase {
 
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
+
+    // TXN-101..203 (Transaction History): mốc bắt đầu/kết thúc hiệu lực của gói
+    // TẠI CHÍNH giao dịch này (snapshot) — dùng để tính activationStatus real-time,
+    // KHÔNG lưu trạng thái tính sẵn. Có thể NULL với các giao dịch PAID từ trước
+    // migration_transaction_history_start_end_date.sql.
+    @Column(name = "start_date")
+    private LocalDateTime startDate;
+
+    @Column(name = "end_date")
+    private LocalDateTime endDate;
 }
