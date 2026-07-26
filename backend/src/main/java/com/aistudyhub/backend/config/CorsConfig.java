@@ -23,7 +23,6 @@ public class CorsConfig {
         config.addAllowedMethod("*");
         config.addExposedHeader("Content-Disposition");
         config.setAllowCredentials(true);
-        config.addExposedHeader("X-Admin-Password");
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
