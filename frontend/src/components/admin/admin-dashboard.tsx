@@ -129,7 +129,7 @@ function pkgFromPrice(pkg: PackagePrice): EditablePkg {
 }
 
 type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs" | "upload-settings"
-type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
+type PendingAction = { label: string; run: () => void | Promise<void> } | null
 const ADMIN_SECTION_EVENT = "admin-section-change"
 
 function getStoredAdminSection(): AdminSection {
@@ -152,7 +152,6 @@ export function AdminDashboard() {
   const [userSearch, setUserSearch] = useState("")
   const [message, setMessage] = useState("")
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
-  const [adminPassword, setAdminPassword] = useState("")
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const [newPassword, setNewPassword] = useState("Reset1234")
   const [resetLoading, setResetLoading] = useState(false)
@@ -236,12 +235,11 @@ export function AdminDashboard() {
       setMessage("Số lượng file tối đa phải từ 1 trở lên.")
       return
     }
-    requirePassword("Cập nhật cấu hình upload", async (adminPassword) => {
+    requireConfirm("Cập nhật cấu hình upload", async () => {
       try {
         const updated = await updateUploadSettingsApi(
           uploadSettings.maxFileSizeMb,
           uploadSettings.maxFilesPerUpload,
-          adminPassword,
         )
         setUploadSettings({ maxFileSizeMb: updated.maxFileSizeMb, maxFilesPerUpload: updated.maxFilesPerUpload })
         setMessage("Đã cập nhật cấu hình upload.")
@@ -281,20 +279,14 @@ export function AdminDashboard() {
     setMessage(result.success ? successText : result.error ?? text.actionFailed)
   }
 
-  const requirePassword = (label: string, run: (password: string) => void | Promise<void>) => {
+  const requireConfirm = (label: string, run: () => void | Promise<void>) => {
     setPendingAction({ label, run })
-    setAdminPassword("")
     setMessage("")
   }
 
   const confirmAction = async () => {
-    if (!adminPassword.trim()) {
-      setMessage(text.adminPasswordRequired)
-      return
-    }
-    await pendingAction?.run(adminPassword)
+    await pendingAction?.run()
     setPendingAction(null)
-    setAdminPassword("")
   }
 
   const updateStorageLimit = (user: User, value: string) => {
@@ -305,22 +297,21 @@ export function AdminDashboard() {
     }
     const currentGb = user.storageLimit / (1024 * 1024 * 1024)
     if (Math.abs(gb - currentGb) < 0.001) return
-    requirePassword(
+    requireConfirm(
       formatAdminText(text.storageUpdated, { email: user.email }),
-      async (adminPassword) => {
-        const result = await updateUserStorageLimit(user.id, gb, adminPassword)
+      async () => {
+        const result = await updateUserStorageLimit(user.id, gb)
         runAccountAction(result, formatAdminText(text.storageUpdated, { email: user.email }))
       },
     )
   }
 
   const createSubAdmin = () => {
-    requirePassword(text.createSubAdmin, async (adminPassword) => {
+    requireConfirm(text.createSubAdmin, async () => {
       const result = await createSubAdminAccount(
         subAdminForm.email,
         subAdminForm.password,
         subAdminForm.displayName,
-        adminPassword,
       )
       runAccountAction(result, text.createSubAdminSuccess)
       if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
@@ -457,22 +448,22 @@ export function AdminDashboard() {
       isSubAdmin={isSubAdmin}
       onUserSearchChange={setUserSearch}
       onLock={(user) =>
-        requirePassword(
+        requireConfirm(
           user.isLocked ? text.unlock : text.lock,
-          async (adminPassword) =>
+          async () =>
             runAccountAction(
-              await toggleUserLock(user.id, adminPassword),
+              await toggleUserLock(user.id),
               user.isLocked ? text.accountUnlocked : text.accountLocked
             )
         )
       }
       onReset={(user) => setResetTarget(user)}
       onDelete={(user) =>
-        requirePassword(
+        requireConfirm(
           `${text.delete}: ${user.email}`,
-          async (adminPassword) =>
+          async () =>
             runAccountAction(
-              await deleteUserAccount(user.id, adminPassword),
+              await deleteUserAccount(user.id),
               text.accountDeleted,
             ),
         )
@@ -571,9 +562,9 @@ export function AdminDashboard() {
       return
     }
 
-    const runSave = async (adminPassword: string) => {
+    const runSave = async () => {
       try {
-        const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword)
+        const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload)
         const savedPlan = {
           ...pkgFromPlan(responsePlan),
         }
@@ -590,13 +581,13 @@ export function AdminDashboard() {
       }
     }
 
-    requirePassword(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
+    requireConfirm(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
   }
 
   const deletePkg = (pkg: EditablePkg) => {
-    requirePassword(formatAdminText(text.deletePackage, { name: pkg.name }), async (adminPassword) => {
+    requireConfirm(formatAdminText(text.deletePackage, { name: pkg.name }), async () => {
       try {
-        await deleteSubscriptionPlanApi(pkg.planName, adminPassword)
+        await deleteSubscriptionPlanApi(pkg.planName)
         setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
         // FIXED: đồng bộ luôn packagePrices dùng chung.
         void refetchPackagePrices()
@@ -640,7 +631,7 @@ export function AdminDashboard() {
       return
     }
 
-    requirePassword(text.addPackage, async (adminPassword) => {
+    requireConfirm(text.addPackage, async () => {
       try {
         const created = await createSubscriptionPlanApi({
           name: newPkgForm.name.trim(),
@@ -651,7 +642,7 @@ export function AdminDashboard() {
           joinGroupLimit: newPkgForm.joinGroupLimit,
           dailyAiChatLimit: newPkgForm.dailyAiChatLimit,
           maxFlashcards: newPkgForm.maxFlashcards,
-        }, adminPassword)
+        })
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
         // FIXED: đây chính là bug gốc — trước đây gói mới chỉ vào editablePackages
@@ -1151,9 +1142,6 @@ export function AdminDashboard() {
       {pendingAction && (
         <ConfirmModal
           title={pendingAction.label}
-          password={adminPassword}
-          setPassword={setAdminPassword}
-          passwordLabel={text.confirmPassword}
           confirmLabel={text.confirm}
           cancelLabel={text.cancel}
           onCancel={() => setPendingAction(null)}
@@ -1170,9 +1158,9 @@ export function AdminDashboard() {
           text={text}
           onCancel={() => { setResetTarget(null); setNewPassword("Reset1234") }}
           onSave={async () => {
-            requirePassword(text.reset, async (adminPassword) => {
+            requireConfirm(text.reset, async () => {
               setResetLoading(true)
-              const result = await resetUserPassword(resetTarget.id, newPassword, adminPassword)
+              const result = await resetUserPassword(resetTarget.id, newPassword)
               setResetLoading(false)
               if (result.success) {
                 setMessage(text.resetSuccess)
@@ -1203,8 +1191,8 @@ export function AdminDashboard() {
             const planLabel = selectedPlan
               ? getLocalizedPlanName(selectedPlan, language)
               : grantTier
-            requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async (adminPassword) => {
-              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration, adminPassword)
+            requireConfirm(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async () => {
+              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration)
               runAccountAction(res, text.grantSuccess)
               if (res.success) {
                 if (selectedPlan?.defaultStorageBytes) {

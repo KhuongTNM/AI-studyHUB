@@ -15,7 +15,7 @@ async function parseError(response: Response): Promise<string> {
   } catch {
     // ignore parse errors
   }
-  return "KhÃ´ng thá»ƒ cáº­p nháº­t dung lÆ°á»£ng. Vui lÃ²ng thá»­ láº¡i."
+  return "Không thể cập nhật dung lượng. Vui lòng thử lại."
 }
 
 function authHeaders(): HeadersInit {
@@ -35,7 +35,6 @@ export async function fetchAdminUsersApi(): Promise<User[]> {
 export async function updateUserStorageLimitApi(
   userId: string,
   storageLimitGb: number,
-  adminPassword: string,
 ): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/storage-limit`, {
     method: "PATCH",
@@ -43,7 +42,7 @@ export async function updateUserStorageLimitApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ storageLimitGb, adminPassword }),
+    body: JSON.stringify({ storageLimitGb }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
@@ -54,7 +53,6 @@ export async function createSubAdminApi(
   email: string,
   password: string,
   displayName: string,
-  adminPassword: string,
 ): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/sub-admins`, {
     method: "POST",
@@ -62,7 +60,7 @@ export async function createSubAdminApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ email, password, displayName, adminPassword }),
+    body: JSON.stringify({ email, password, displayName }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
@@ -72,7 +70,6 @@ export async function createSubAdminApi(
 export async function toggleUserLockApi(
   userId: string,
   locked: boolean,
-  adminPassword: string,
 ): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/lock`, {
     method: "PATCH",
@@ -80,7 +77,7 @@ export async function toggleUserLockApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ locked, adminPassword }),
+    body: JSON.stringify({ locked }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
@@ -91,7 +88,6 @@ export async function toggleUserLockApi(
 export async function resetUserPasswordApi(
   userId: string,
   newPassword: string,
-  adminPassword: string,
 ): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/password`, {
     method: "PATCH",
@@ -99,20 +95,17 @@ export async function resetUserPasswordApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ newPassword, adminPassword }),
+    body: JSON.stringify({ newPassword }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
 }
 
 /** FR-19 / BR-061: Admin/Sub-admin deletes a user and backend soft-deletes their documents. */
-export async function deleteAdminUserApi(userId: string, adminPassword: string): Promise<void> {
+export async function deleteAdminUserApi(userId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
     method: "DELETE",
-    headers: {
-      ...authHeaders(),
-      "X-Admin-Password": adminPassword,
-    },
+    headers: authHeaders(),
   })
   if (!response.ok) throw new Error(await parseError(response))
 }
@@ -127,7 +120,6 @@ export async function grantSubscriptionApi(
   userId: string,
   plan: string,
   durationMonths: number,
-  adminPassword: string,
 ): Promise<User> {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/subscription`, {
     method: "POST",
@@ -135,7 +127,7 @@ export async function grantSubscriptionApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ plan, durationMonths, adminPassword }),
+    body: JSON.stringify({ plan, durationMonths }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return mapApiUserToStoreUser((await response.json()) as ApiUser)
