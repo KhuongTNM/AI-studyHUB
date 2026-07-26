@@ -157,6 +157,9 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
   const [groupInvitationsLoading, setGroupInvitationsLoading] = useState(false)
   const [groupInvitationsError, setGroupInvitationsError] = useState<string | null>(null)
   const pendingInvitationRequestRef = useRef(false)
+  const hasLoadedInvitationsRef = useRef(false)
+  const groupsRef = useRef<GroupChat[]>([])
+  groupsRef.current = groups
 
   const groupLimits = useMemo(
     () => resolveGroupLimits(currentUser, packagePrices),
@@ -277,6 +280,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     if (!currentUser?.id) {
       setPendingGroupInvitations([])
       setGroupInvitationsError(null)
+      hasLoadedInvitationsRef.current = false
       return { success: true }
     }
 
@@ -286,7 +290,12 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
 
     pendingInvitationRequestRef.current = true
 
-    setGroupInvitationsLoading(true)
+    // Only show the loading state on the very first fetch. Background polls
+    // refresh the list silently so the notification bell doesn't flicker
+    // between a spinner and its content every polling interval.
+    if (!hasLoadedInvitationsRef.current) {
+      setGroupInvitationsLoading(true)
+    }
     setGroupInvitationsError(null)
 
     try {
@@ -294,6 +303,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
       if (currentUser?.id) {
         setPendingGroupInvitations(invitations)
       }
+      hasLoadedInvitationsRef.current = true
       return { success: true }
     } catch (error) {
       const message = getErrorMessage(error, "Could not load group invitations.")
@@ -549,7 +559,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
   ): Promise<{ success: boolean; user?: GroupInvitationCandidate; error?: string }> => {
     if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
 
-    const group = groups.find(item => item.id === groupId)
+    const group = groupsRef.current.find(item => item.id === groupId)
     if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
     if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
 
@@ -562,12 +572,12 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "USER_NOT_FOUND") }
     }
-  }, [currentUser, groups])
+  }, [currentUser])
 
   const inviteGroupMemberByEmail = useCallback(async (groupId: string, email: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "UNAUTHENTICATED" }
 
-    const group = groups.find(item => item.id === groupId)
+    const group = groupsRef.current.find(item => item.id === groupId)
     if (!group) return { success: false, error: "GROUP_NOT_FOUND" }
     if (group.ownerId !== currentUser.id) return { success: false, error: "GROUP_OWNER_REQUIRED" }
     if (email.trim().toLowerCase() === currentUser.email.toLowerCase()) {
@@ -580,7 +590,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     } catch (error) {
       return { success: false, error: getErrorMessage(error, "Could not invite group member.") }
     }
-  }, [currentUser, groups])
+  }, [currentUser])
 
   const leaveGroup = useCallback(async (groupId: string): Promise<ActionResult> => {
     if (!currentUser) return { success: false, error: "Please log in." }

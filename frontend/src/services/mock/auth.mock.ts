@@ -145,7 +145,7 @@ function seedDefaultAccount() {
     email,
     password: "Admin123",
     displayName: "Student",
-    role: "admin",
+    role: "user",
     locked: false,
     emailVerified: true,
     storageUsedBytes: 52_428_800,
@@ -168,14 +168,14 @@ seedDefaultAccount()
 // (admin) để xem đúng subscriptionPlanId của acc "user1@gmail.com" và/hoặc
 // dùng nút "Cấp gói" để gán lại cho khớp gói bạn vừa tạo.
 function seedUserAccount() {
-  const email = "user1@gmail.com"
+  const email = "admin@gmail.com"
   if (mockAccounts.has(email)) return
   mockAccounts.set(email, {
     id: newId(),
     email,
-    password: "User1234",
-    displayName: "Người dùng Test",
-    role: "user",
+    password: "Admin123",
+    displayName: "Admin",
+    role: "sub-admin",
     locked: false,
     emailVerified: true,
     storageUsedBytes: 10_485_760,

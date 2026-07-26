@@ -131,13 +131,6 @@ function toApiShape(plan: MockPlan): ApiSubscriptionPlan {
   }
 }
 
-function requirePassword(adminPassword: string): Response | null {
-  if (!adminPassword?.trim()) {
-    return jsonResponse(400, { message: "Mật khẩu Admin không được để trống." })
-  }
-  return null
-}
-
 // ─── 1. GET /api/subscription-plans (public, list) ──────────────────────────
 
 export async function mockFetchSubscriptionPlansRequest(): Promise<Response> {
@@ -158,11 +151,8 @@ export async function mockFetchSubscriptionPlanRequest(planName: string): Promis
 
 export async function mockCreateSubscriptionPlanRequest(
   input: CreateSubscriptionPlanInput,
-  adminPassword: string,
 ): Promise<Response> {
   await delay(300)
-  const authError = requirePassword(adminPassword)
-  if (authError) return authError
 
   const name = input.name?.trim() ?? ""
   if (!name) return jsonResponse(400, { message: "Tên gói không được để trống." })
@@ -195,11 +185,8 @@ export async function mockCreateSubscriptionPlanRequest(
 export async function mockUpdateSubscriptionPlanRequest(
   planName: string,
   input: UpdateSubscriptionPlanInput,
-  adminPassword: string,
 ): Promise<Response> {
   await delay(300)
-  const authError = requirePassword(adminPassword)
-  if (authError) return authError
 
   const plan = findPlan(planName)
   if (!plan) return jsonResponse(404, { message: "Không tìm thấy gói dịch vụ." })
@@ -249,11 +236,8 @@ export async function mockUpdateSubscriptionPlanRequest(
 export async function mockUpdatePackagePriceRequest(
   planName: string,
   price: number,
-  adminPassword: string,
 ): Promise<Response> {
   await delay(250)
-  const authError = requirePassword(adminPassword)
-  if (authError) return authError
 
   const plan = findPlan(planName)
   if (!plan) return jsonResponse(404, { message: "Không tìm thấy gói dịch vụ." })
@@ -272,11 +256,8 @@ export async function mockUpdatePackagePriceRequest(
 
 export async function mockDeleteSubscriptionPlanRequest(
   planName: string,
-  adminPassword: string,
 ): Promise<Response> {
   await delay(250)
-  const authError = requirePassword(adminPassword)
-  if (authError) return authError
 
   const plan = findPlan(planName)
   if (!plan) return jsonResponse(404, { message: "Không tìm thấy gói dịch vụ." })

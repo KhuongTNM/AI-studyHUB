@@ -237,20 +237,20 @@ export interface AppState {
   activityLogsError: string | null
   loadActivityLogs: () => Promise<{ success: boolean; error?: string }>
   updateUser: (id: string, updates: Partial<User>) => void
-  updateUserStorageLimit: (id: string, storageLimitGb: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  toggleUserLock: (id: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  resetUserPassword: (id: string, password: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  deleteUserAccount: (id: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
-  createSubAdminAccount: (email: string, password: string, displayName: string, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  updateUserStorageLimit: (id: string, storageLimitGb: number) => Promise<{ success: boolean; error?: string }>
+  toggleUserLock: (id: string) => Promise<{ success: boolean; error?: string }>
+  resetUserPassword: (id: string, password: string) => Promise<{ success: boolean; error?: string }>
+  deleteUserAccount: (id: string) => Promise<{ success: boolean; error?: string }>
+  createSubAdminAccount: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>
 
   // ── Subscription ──────────────────────────────────────────────────────────
   packagePrices: PackagePrice[]
   /** FIXED: gọi lại sau khi admin tạo/sửa/xoá gói để packagePrices (dùng chung
    * cho trang User + form "Cấp gói") đồng bộ ngay, không cần F5/login lại. */
   refetchPackagePrices: () => Promise<void>
-  updatePackagePrice: (tier: PackageTier | string, newPrice: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  updatePackagePrice: (tier: PackageTier | string, newPrice: number) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
-  grantSubscription: (userId: string, tier: string, durationMonths: number, adminPassword: string) => Promise<{ success: boolean; error?: string }>
+  grantSubscription: (userId: string, tier: string, durationMonths: number) => Promise<{ success: boolean; error?: string }>
   buySubscription: (tier: string) => { success: boolean; error?: string }
 }
 
