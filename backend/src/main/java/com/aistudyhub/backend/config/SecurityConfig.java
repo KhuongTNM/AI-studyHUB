@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,6 +19,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+// GAP-1: bắt buộc phải có annotation này để @PreAuthorize trên các Controller
+// (AdminUserController, AdminSubscriptionPlanController, AdminUploadSettingsController,
+// VectorSearchController) thực sự được Spring Security enforce — trước đây chưa được khai báo
+// nên các @PreAuthorize đã viết sẵn trong code chỉ mang tính khai báo, không có tác dụng chặn.
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;

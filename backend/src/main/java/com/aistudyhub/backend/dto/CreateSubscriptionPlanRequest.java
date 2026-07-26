@@ -2,7 +2,6 @@ package com.aistudyhub.backend.dto;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -32,9 +31,6 @@ public class CreateSubscriptionPlanRequest {
 
     @Min(value = -1, message = "Giới hạn flashcards không hợp lệ.")
     private int maxFlashcards = 5;
-
-    @NotBlank(message = "Mật khẩu Admin không được để trống.")
-    private String adminPassword;
 
     public String getName() {
         return name;
@@ -98,13 +94,5 @@ public class CreateSubscriptionPlanRequest {
 
     public void setMaxFlashcards(int maxFlashcards) {
         this.maxFlashcards = maxFlashcards;
-    }
-
-    public String getAdminPassword() {
-        return adminPassword;
-    }
-
-    public void setAdminPassword(String adminPassword) {
-        this.adminPassword = adminPassword;
     }
 }

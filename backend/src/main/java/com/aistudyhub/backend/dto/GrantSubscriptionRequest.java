@@ -9,13 +9,8 @@ public class GrantSubscriptionRequest {
 
     private Integer durationMonths;
 
-    @NotBlank(message = "Mật khẩu Admin không được để trống.")
-    private String adminPassword;
-
     public String getPlan() { return plan; }
     public void setPlan(String plan) { this.plan = plan; }
     public Integer getDurationMonths() { return durationMonths; }
     public void setDurationMonths(Integer durationMonths) { this.durationMonths = durationMonths; }
-    public String getAdminPassword() { return adminPassword; }
-    public void setAdminPassword(String adminPassword) { this.adminPassword = adminPassword; }
 }

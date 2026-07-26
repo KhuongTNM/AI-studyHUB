@@ -1,6 +1,5 @@
 package com.aistudyhub.backend.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -10,7 +9,7 @@ public class UpdatePlanRequest {
     private String name;
 
     private BigDecimal price;
-    
+
     private Short maxRoomMembers;
 
     private Long defaultStorageBytes;
@@ -22,8 +21,5 @@ public class UpdatePlanRequest {
     private Integer dailyAiChatLimit;
 
     private Integer maxFlashcards;
-    
-    @NotBlank(message = "Mật khẩu Admin không được để trống.")
-    private String adminPassword;
 }
 

@@ -20,14 +20,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 
 /**
  * Controller cho các thao tác quản trị User.
- * LƯU Ý (BREAKING CHANGE): Tất cả các endpoint thay đổi dữ liệu (POST, PUT, PATCH, DELETE)
- * hiện yêu cầu phải có xác thực mật khẩu admin.
- * - POST/PUT/PATCH: Truyền `adminPassword` trong Request Body.
- * - DELETE: Truyền qua custom header `X-Admin-Password`.
+ * RBAC: quyền truy cập được kiểm soát bằng Role chuẩn của Spring Security
+ * (filter-level ở SecurityConfig + @PreAuthorize), không còn xác thực lại mật khẩu Admin
+ * ở tầng API. Ràng buộc nghiệp vụ chi tiết hơn (Sub-Admin không thể tác động Admin/Sub-Admin
+ * khác,...) vẫn được AdminUserService kiểm tra ở tầng Service.
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -64,7 +63,7 @@ public class AdminUserController {
     public ResponseEntity<UserResponse> setLockStatus(
             @PathVariable UUID userId,
             @Valid @RequestBody LockUserRequest request) {
-        return ResponseEntity.ok(adminUserService.setLockStatus(userId, request.getLocked(), request.getAdminPassword()));
+        return ResponseEntity.ok(adminUserService.setLockStatus(userId, request.getLocked()));
     }
 
     /**
@@ -88,10 +87,8 @@ public class AdminUserController {
 
     @DeleteMapping("/{userId}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUB_ADMIN')")
-    public ResponseEntity<Void> deleteUser(
-            @PathVariable UUID userId,
-            @RequestHeader("X-Admin-Password") String adminPassword) {
-        adminUserService.deleteUser(userId, adminPassword);
+    public ResponseEntity<Void> deleteUser(@PathVariable UUID userId) {
+        adminUserService.deleteUser(userId);
         return ResponseEntity.noContent().build();
     }
 }
