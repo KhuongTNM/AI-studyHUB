@@ -9,6 +9,7 @@ import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.exception.SystemConfigurationException;
 import com.aistudyhub.backend.repository.ActivityLogRepository;
 import com.aistudyhub.backend.repository.UploadSettingsRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
@@ -35,14 +36,17 @@ public class UploadSettingsService {
     private final UploadSettingsRepository uploadSettingsRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
 
     public UploadSettingsService(
             UploadSettingsRepository uploadSettingsRepository,
             ActivityLogRepository activityLogRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            UserRepository userRepository) {
         this.uploadSettingsRepository = uploadSettingsRepository;
         this.activityLogRepository = activityLogRepository;
         this.objectMapper = objectMapper;
+        this.userRepository = userRepository;
     }
 
     @Transactional(readOnly = true)
@@ -69,7 +73,10 @@ public class UploadSettingsService {
     }
 
     @Transactional
-    public UploadSettingsResponse updateSettings(User actor, UpdateUploadSettingsRequest request) {
+    public UploadSettingsResponse updateSettings(UUID actorId, UpdateUploadSettingsRequest request) {
+        User actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+
         long newMaxBytes = Math.round(request.getMaxFileSizeMb() * BYTES_PER_MB);
         if (newMaxBytes > HARD_CEILING_BYTES) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
