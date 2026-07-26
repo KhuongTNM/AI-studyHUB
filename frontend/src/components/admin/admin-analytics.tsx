@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { BarChart3, HardDrive, Package, Users } from "lucide-react"
+import { BarChart3, Package, Users } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -28,24 +28,17 @@ type AnalyticsText = {
   analyticsSnapshot: string
   usersByRole: string
   usersByPlan: string
-  storageByAccount: string
+  monthlyUsersDesc: string
   chartNoData: string
   chartUsers: string
-  chartUsed: string
-  chartLimit: string
-  storageUnit: string
   chartUnknownPlan: string
   adminRole: string
   normalUsers: string
   subAdmins: string
 }
 
-const BYTES_PER_GB = 1024 ** 3
 const CHART_COLORS = ["#635bff", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9", "#8b5cf6"]
-
-function toGb(bytes: number) {
-  return Number((Math.max(0, bytes) / BYTES_PER_GB).toFixed(2))
-}
+const MONTHS_TO_SHOW = 6
 
 function shorten(value: string, maxLength = 18) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
@@ -138,33 +131,55 @@ export function AdminAnalytics({
     ? roleData
     : [{ key: "empty", name: text.chartNoData, value: 1, fill: "#d1d5db" }]
 
-  const planData = useMemo(() => {
-    const counts = new Map<string, { key: string; name: string; users: number }>()
+  const planBuckets = useMemo(() => {
+    const counts = new Map<string, { key: string; name: string; total: number }>()
 
     users.forEach(user => {
       const plan = resolvePlan(user, packages)
       const key = plan ? `plan-${plan.id}` : "plan-unknown"
       const name = plan ? getLocalizedPlanName(plan, language) : text.chartUnknownPlan
       const current = counts.get(key)
-      counts.set(key, current ? { ...current, users: current.users + 1 } : { key, name: shorten(name, 20), users: 1 })
+      counts.set(key, current ? { ...current, total: current.total + 1 } : { key, name: shorten(name, 20), total: 1 })
     })
 
     return Array.from(counts.values())
-      .sort((left, right) => right.users - left.users)
+      .sort((left, right) => right.total - left.total)
       .map((item, index) => ({ ...item, fill: CHART_COLORS[index % CHART_COLORS.length] }))
   }, [language, packages, text.chartUnknownPlan, users])
 
-  const storageData = useMemo(
-    () => users
-      .map(user => ({
-        key: user.id,
-        name: shorten(user.displayName || user.email.split("@")[0], 16),
-        used: toGb(user.storageUsed),
-        limit: toGb(user.storageLimit),
-      }))
-      .sort((left, right) => right.used - left.used)
-      .slice(0, 6),
-    [users],
+  const monthlyPlanData = useMemo(() => {
+    const monthLabel = (date: Date) =>
+      date.toLocaleDateString(language === "vi" ? "vi-VN" : "en-US", { month: "short", year: "2-digit" })
+
+    const now = new Date()
+    const months = Array.from({ length: MONTHS_TO_SHOW }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (MONTHS_TO_SHOW - 1 - index), 1)
+      return { year: date.getFullYear(), month: date.getMonth(), label: monthLabel(date) }
+    })
+
+    return months.map(({ year, month, label }) => {
+      const row: Record<string, string | number> = { label }
+      planBuckets.forEach(bucket => { row[bucket.key] = 0 })
+
+      users.forEach(user => {
+        const createdAt = new Date(user.createdAt)
+        if (createdAt.getFullYear() !== year || createdAt.getMonth() !== month) return
+        const plan = resolvePlan(user, packages)
+        const key = plan ? `plan-${plan.id}` : "plan-unknown"
+        row[key] = (Number(row[key]) || 0) + 1
+      })
+
+      return row
+    })
+  }, [language, packages, planBuckets, users])
+
+  const monthlyPlanConfig = useMemo(
+    () => Object.fromEntries(planBuckets.map(bucket => [bucket.key, { label: bucket.name, color: bucket.fill }])),
+    [planBuckets],
+  )
+
+  const hasMonthlyData = planBuckets.length > 0 && monthlyPlanData.some(row =>
+    planBuckets.some(bucket => Number(row[bucket.key]) > 0),
   )
 
   return (
@@ -213,44 +228,24 @@ export function AdminAnalytics({
           </div>
         </Panel>
 
-        <Panel icon={Package} title={text.usersByPlan} className="xl:col-span-3">
-          {planData.length === 0 ? (
+        <Panel icon={Package} title={text.usersByPlan} description={text.monthlyUsersDesc} className="xl:col-span-3">
+          {!hasMonthlyData ? (
             <EmptyChart label={text.chartNoData} />
           ) : (
-            <ChartContainer config={{ users: { label: text.chartUsers, color: CHART_COLORS[0] } }} className="h-[282px] w-full aspect-auto">
-              <BarChart data={planData} layout="vertical" margin={{ left: 6, right: 14, top: 8, bottom: 8 }}>
-                <CartesianGrid horizontal={false} />
-                <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} />
-                <YAxis dataKey="name" type="category" width={92} axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent nameKey="dataKey" />} />
-                <Bar dataKey="users" radius={[0, 4, 4, 0]}>
-                  {planData.map(item => <Cell key={item.key} fill={item.fill} />)}
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          )}
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-5">
-        <Panel icon={HardDrive} title={text.storageByAccount} description={text.storageUnit} className="xl:col-span-5">
-          {storageData.length === 0 ? (
-            <EmptyChart label={text.chartNoData} />
-          ) : (
-            <ChartContainer config={{ used: { label: text.chartUsed, color: CHART_COLORS[0] }, limit: { label: text.chartLimit, color: "#dbeafe" } }} className="h-[282px] w-full aspect-auto">
-              <BarChart data={storageData} layout="vertical" margin={{ left: 6, right: 14, top: 8, bottom: 8 }}>
-                <CartesianGrid horizontal={false} />
-                <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} unit=" GB" />
-                <YAxis dataKey="name" type="category" width={86} axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent nameKey="dataKey" />} />
+            <ChartContainer config={monthlyPlanConfig} className="h-[282px] w-full aspect-auto">
+              <BarChart data={monthlyPlanData} margin={{ left: 6, right: 14, top: 8, bottom: 8 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} width={28} />
+                <ChartTooltip content={<ChartTooltipContent />} />
                 <ChartLegend content={<ChartLegendContent />} />
-                <Bar dataKey="used" fill="var(--color-used)" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="limit" fill="var(--color-limit)" radius={[0, 4, 4, 0]} />
+                {planBuckets.map(bucket => (
+                  <Bar key={bucket.key} dataKey={bucket.key} name={bucket.name} stackId="plan" fill={bucket.fill} radius={[4, 4, 0, 0]} />
+                ))}
               </BarChart>
             </ChartContainer>
           )}
         </Panel>
-
       </div>
     </section>
   )

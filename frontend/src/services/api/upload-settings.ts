@@ -34,11 +34,10 @@ export async function fetchUploadSettingsApi(): Promise<UploadSettings> {
   return response.json()
 }
 
-/** Admin/Sub-admin — cần mật khẩu admin. */
+/** Admin only — RBAC theo role, không còn cơ chế mật khẩu Admin. */
 export async function updateUploadSettingsApi(
   maxFileSizeMb: number,
   maxFilesPerUpload: number,
-  adminPassword: string,
 ): Promise<UploadSettings> {
   const response = await fetch(`${API_BASE_URL}/api/admin/upload-settings`, {
     method: "PUT",
@@ -46,7 +45,7 @@ export async function updateUploadSettingsApi(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ maxFileSizeMb, maxFilesPerUpload, adminPassword }),
+    body: JSON.stringify({ maxFileSizeMb, maxFilesPerUpload }),
   })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
