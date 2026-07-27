@@ -91,6 +91,7 @@ public class SubscriptionService {
                         virtualSub.setStartDate(user.getCreatedAt() != null ? user.getCreatedAt() : now);
                         virtualSub.setEndDate(user.getSubscriptionExpiresAt());
                         virtualSub.setPricePaid(plan.getPrice());
+                        applyPlanSnapshot(virtualSub, plan);
                         return virtualSub;
                     }
                 } else {
@@ -125,15 +126,33 @@ public class SubscriptionService {
         virtualSub.setStartDate(LocalDateTime.now());
         virtualSub.setEndDate(LocalDateTime.now().plusYears(100)); // Hạn vĩnh viễn
         virtualSub.setPricePaid(freePlan.getPrice());
+        applyPlanSnapshot(virtualSub, freePlan);
         return virtualSub;
     }
 
     /**
-     * Kích hoạt một subscription mới và đánh dấu các subscription ACTIVE cũ thành SUPERSEDED.
+     * SUB-301: chốt (snapshot) toàn bộ hạn mức của plan vào đúng thời điểm gói được kích hoạt/
+     * dựng lên cho User, để về sau Admin sửa gói không hồi tố lại các Subscription đã tồn tại.
+     */
+    private void applyPlanSnapshot(Subscription sub, SubscriptionPlan plan) {
+        sub.setPlanNameSnapshot(plan.getName());
+        sub.setDailyAiChatLimitSnapshot(plan.getDailyAiChatLimit());
+        sub.setMaxFlashcardsSnapshot(plan.getMaxFlashcards());
+        sub.setCreateGroupLimitSnapshot(plan.getCreateGroupLimit());
+        sub.setJoinGroupLimitSnapshot(plan.getJoinGroupLimit());
+        sub.setMaxRoomMembersSnapshot(plan.getMaxRoomMembers());
+        sub.setStorageBytesSnapshot(plan.getDefaultStorageBytes());
+    }
+
+    /**
+     * Đánh dấu mọi Subscription đang ACTIVE của User thành SUPERSEDED, không tạo bản ghi mới.
+     * Dùng khi Admin hạ cấp User về Free (grantSubscription) — Free không có bản ghi giao dịch
+     * riêng (GAP-T1), nhưng vẫn PHẢI kết thúc bản ghi trả phí cũ, nếu không
+     * getActiveSubscriptionOrDefault() sẽ tiếp tục thấy bản ghi cũ còn ACTIVE + chưa hết hạn và
+     * trả về gói đó thay vì Free, bỏ qua quyết định hạ cấp của Admin.
      */
     @Transactional
-    public void activateNewSubscription(UUID userId, SubscriptionPlan plan, LocalDateTime startDate, LocalDateTime endDate) {
-        // Cập nhật các gói cũ thành SUPERSEDED
+    public void supersedeActiveSubscriptions(UUID userId) {
         List<Subscription> activeSubs = subscriptionRepository.findAllByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE);
         for (Subscription sub : activeSubs) {
             sub.setStatus(SubscriptionStatus.SUPERSEDED);
@@ -142,6 +161,14 @@ public class SubscriptionService {
         if (!activeSubs.isEmpty()) {
             subscriptionRepository.saveAll(activeSubs);
         }
+    }
+
+    /**
+     * Kích hoạt một subscription mới và đánh dấu các subscription ACTIVE cũ thành SUPERSEDED.
+     */
+    @Transactional
+    public void activateNewSubscription(UUID userId, SubscriptionPlan plan, LocalDateTime startDate, LocalDateTime endDate) {
+        supersedeActiveSubscriptions(userId);
 
         // Tạo gói mới
         Subscription newSub = new Subscription();
@@ -153,6 +180,7 @@ public class SubscriptionService {
         newSub.setPricePaid(plan.getPrice()); // Snapshot giá tại thời điểm kích hoạt
         newSub.setCreatedAt(LocalDateTime.now());
         newSub.setUpdatedAt(LocalDateTime.now());
+        applyPlanSnapshot(newSub, plan);
 
         subscriptionRepository.save(newSub);
     }

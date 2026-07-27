@@ -45,6 +45,28 @@ public class Subscription {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    /** SUB-301: snapshot tên gói tại thời điểm kích hoạt — không đổi dù gói bị đổi tên/xoá sau đó. */
+    @Column(name = "plan_name_snapshot")
+    private String planNameSnapshot;
+
+    @Column(name = "daily_ai_chat_limit_snapshot")
+    private int dailyAiChatLimitSnapshot;
+
+    @Column(name = "max_flashcards_snapshot")
+    private int maxFlashcardsSnapshot;
+
+    @Column(name = "create_group_limit_snapshot")
+    private int createGroupLimitSnapshot;
+
+    @Column(name = "join_group_limit_snapshot")
+    private int joinGroupLimitSnapshot;
+
+    @Column(name = "max_room_members_snapshot")
+    private short maxRoomMembersSnapshot;
+
+    @Column(name = "storage_bytes_snapshot")
+    private long storageBytesSnapshot;
+
     public UUID getId() {
         return id;
     }
@@ -115,5 +137,61 @@ public class Subscription {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getPlanNameSnapshot() {
+        return planNameSnapshot;
+    }
+
+    public void setPlanNameSnapshot(String planNameSnapshot) {
+        this.planNameSnapshot = planNameSnapshot;
+    }
+
+    public int getDailyAiChatLimitSnapshot() {
+        return dailyAiChatLimitSnapshot;
+    }
+
+    public void setDailyAiChatLimitSnapshot(int dailyAiChatLimitSnapshot) {
+        this.dailyAiChatLimitSnapshot = dailyAiChatLimitSnapshot;
+    }
+
+    public int getMaxFlashcardsSnapshot() {
+        return maxFlashcardsSnapshot;
+    }
+
+    public void setMaxFlashcardsSnapshot(int maxFlashcardsSnapshot) {
+        this.maxFlashcardsSnapshot = maxFlashcardsSnapshot;
+    }
+
+    public int getCreateGroupLimitSnapshot() {
+        return createGroupLimitSnapshot;
+    }
+
+    public void setCreateGroupLimitSnapshot(int createGroupLimitSnapshot) {
+        this.createGroupLimitSnapshot = createGroupLimitSnapshot;
+    }
+
+    public int getJoinGroupLimitSnapshot() {
+        return joinGroupLimitSnapshot;
+    }
+
+    public void setJoinGroupLimitSnapshot(int joinGroupLimitSnapshot) {
+        this.joinGroupLimitSnapshot = joinGroupLimitSnapshot;
+    }
+
+    public short getMaxRoomMembersSnapshot() {
+        return maxRoomMembersSnapshot;
+    }
+
+    public void setMaxRoomMembersSnapshot(short maxRoomMembersSnapshot) {
+        this.maxRoomMembersSnapshot = maxRoomMembersSnapshot;
+    }
+
+    public long getStorageBytesSnapshot() {
+        return storageBytesSnapshot;
+    }
+
+    public void setStorageBytesSnapshot(long storageBytesSnapshot) {
+        this.storageBytesSnapshot = storageBytesSnapshot;
     }
 }

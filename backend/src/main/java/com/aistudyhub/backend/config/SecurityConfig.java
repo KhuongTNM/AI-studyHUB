@@ -83,6 +83,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/groups/**").authenticated()
                         .requestMatchers("/api/study-rooms/**").authenticated()
                         .requestMatchers("/api/subscription-purchases/**").authenticated()
+                        // SUB-202: GET /api/subscriptions/me — mọi role đã đăng nhập đều gọi được
+                        .requestMatchers("/api/subscriptions/**").authenticated()
                         .requestMatchers("/api/v1/chat/**").authenticated()
                         // Vector search has @PreAuthorize but also needs filter-level guard
                         .requestMatchers("/api/v1/vector/**").authenticated()
