@@ -102,18 +102,17 @@ export async function fetchSubscriptionPlanApi(planName: string): Promise<ApiSub
 export async function updatePackagePriceApi(
   plan: PackageTier | string,
   price: number,
-  adminPassword: string
 ): Promise<ApiSubscriptionPlan> {
   const planName = getPlanName(plan)
   const response = MOCK_API
-    ? await mockUpdatePackagePriceRequest(planName, price, adminPassword)
+    ? await mockUpdatePackagePriceRequest(planName, price)
     : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${planName}/price`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           ...authHeaders(),
         },
-        body: JSON.stringify({ price, adminPassword }),
+        body: JSON.stringify({ price }),
       })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
@@ -121,17 +120,16 @@ export async function updatePackagePriceApi(
 
 export async function createSubscriptionPlanApi(
   input: CreateSubscriptionPlanInput,
-  adminPassword: string,
 ): Promise<ApiSubscriptionPlan> {
   const response = MOCK_API
-    ? await mockCreateSubscriptionPlanRequest(input, adminPassword)
+    ? await mockCreateSubscriptionPlanRequest(input)
     : await fetch(`${API_BASE_URL}/api/admin/subscription-plans`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...authHeaders(),
         },
-        body: JSON.stringify({ ...input, adminPassword }),
+        body: JSON.stringify(input),
       })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
@@ -146,32 +144,28 @@ export async function createSubscriptionPlanApi(
 export async function updateSubscriptionPlanApi(
   planName: string,
   input: UpdateSubscriptionPlanInput,
-  adminPassword: string,
 ): Promise<ApiSubscriptionPlan> {
   const response = MOCK_API
-    ? await mockUpdateSubscriptionPlanRequest(planName, input, adminPassword)
+    ? await mockUpdateSubscriptionPlanRequest(planName, input)
     : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...authHeaders(),
         },
-        body: JSON.stringify({ ...input, adminPassword }),
+        body: JSON.stringify(input),
       })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
 /** DELETE .../{planName} — BR-202: gói "free" luôn bị từ chối xoá, không phụ thuộc subscription ACTIVE. */
-export async function deleteSubscriptionPlanApi(planName: string, adminPassword: string): Promise<void> {
+export async function deleteSubscriptionPlanApi(planName: string): Promise<void> {
   const response = MOCK_API
-    ? await mockDeleteSubscriptionPlanRequest(planName, adminPassword)
+    ? await mockDeleteSubscriptionPlanRequest(planName)
     : await fetch(`${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}`, {
         method: "DELETE",
-        headers: {
-          ...authHeaders(),
-          "X-Admin-Password": adminPassword,
-        },
+        headers: authHeaders(),
       })
   if (!response.ok) throw new Error(await parseError(response))
 }

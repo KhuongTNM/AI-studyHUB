@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react"
 import {
-  CheckCircle2, Clock, HardDrive, KeyRound, LayoutDashboard, Package,
-  Pencil, Plus, RefreshCw, Sparkles, Trash2, UserCog, Users, X,
+  CheckCircle2, ChevronLeft, ChevronRight, HardDrive, KeyRound, LayoutDashboard, Package,
+  Pencil, Plus, Receipt, RefreshCw, Search, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useApp, type ActivityLog, type User } from "@/lib/store"
+import { useApp, type User } from "@/lib/store"
 import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
 import { getLocalizedPlanName, isPlanNameTaken } from "@/configs/subscription-plan-labels"
@@ -24,6 +24,17 @@ import {
   type UpdateSubscriptionPlanInput,
 } from "@/services/api/subscription-plans"
 import { fetchUploadSettingsApi, updateUploadSettingsApi } from "@/services/api/upload-settings"
+import {
+  getAdminTransactionsApi,
+  getAdminTransactionDetailApi,
+  type AdminTransactionItem,
+} from "@/services/api/admin-transactions"
+import type { TransactionDetail } from "@/services/api/subscription-purchases"
+import { TransactionDetailModal } from "@/components/transactions/transaction-detail-modal"
+
+const TRANSACTIONS_PAGE_SIZE = 10
+const TRANSACTIONS_MIN_YEAR = 2020
+const TRANSACTIONS_KEYWORD_DEBOUNCE_MS = 400
 
 // ─── Editable package type used only in admin UI ───────────────────────────
 interface EditablePkg {
@@ -53,6 +64,17 @@ function tierFromPlanName(name: string): string {
   if (name === "plan_2_4") return "2-4"
   if (name === "plan_5_plus") return "5+"
   return name
+}
+
+function formatTxnAmount(amount: number, language: "vi" | "en") {
+  const formatted = amount.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
+  return language === "vi" ? `${formatted}đ` : `${formatted} VND`
+}
+
+function formatTxnPaidAt(paidAt: string, language: "vi" | "en") {
+  const date = new Date(paidAt)
+  if (Number.isNaN(date.getTime())) return paidAt
+  return date.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
 }
 
 function formatStorage(bytes: number) {
@@ -129,7 +151,7 @@ function pkgFromPrice(pkg: PackagePrice): EditablePkg {
 }
 
 type AdminSection = "overview" | "accounts" | "sub-admins" | "packages" | "activity-logs" | "upload-settings"
-type PendingAction = { label: string; run: (password: string) => void | Promise<void> } | null
+type PendingAction = { label: string; run: () => void | Promise<void> } | null
 const ADMIN_SECTION_EVENT = "admin-section-change"
 
 function getStoredAdminSection(): AdminSection {
@@ -145,14 +167,12 @@ export function AdminDashboard() {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
     packagePrices, refetchPackagePrices, grantSubscription, updateUserStorageLimit,
-    activityLogs, activityLogsLoading, activityLogsError, loadActivityLogs,
   } = useApp()
 
   const [section, setSection] = useState<AdminSection>(getStoredAdminSection)
   const [userSearch, setUserSearch] = useState("")
   const [message, setMessage] = useState("")
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
-  const [adminPassword, setAdminPassword] = useState("")
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const [newPassword, setNewPassword] = useState("Reset1234")
   const [resetLoading, setResetLoading] = useState(false)
@@ -182,6 +202,24 @@ export function AdminDashboard() {
     dailyAiChatLimit: 5,
     maxFlashcards: 5,
   })
+
+  // ── Lịch sử Giao dịch — Admin & Sub-Admin (TXN-201 → TXN-203) ─────────────
+  const [txnItems, setTxnItems] = useState<AdminTransactionItem[]>([])
+  const [txnPage, setTxnPage] = useState(0)
+  const [txnTotalPages, setTxnTotalPages] = useState(0)
+  const [txnLoading, setTxnLoading] = useState(false)
+  const [txnError, setTxnError] = useState("")
+  const [txnKeywordInput, setTxnKeywordInput] = useState("")
+  const [txnMonthDraft, setTxnMonthDraft] = useState<number | "">("")
+  const [txnYearDraft, setTxnYearDraft] = useState<number | "">("")
+  const [txnAppliedMonth, setTxnAppliedMonth] = useState<number | undefined>(undefined)
+  const [txnAppliedYear, setTxnAppliedYear] = useState<number | undefined>(undefined)
+  const [txnAppliedKeyword, setTxnAppliedKeyword] = useState<string | undefined>(undefined)
+  const [txnHasFilter, setTxnHasFilter] = useState(false)
+  const [txnSelectedOrderId, setTxnSelectedOrderId] = useState<string | null>(null)
+  const [txnDetail, setTxnDetail] = useState<TransactionDetail | null>(null)
+  const [txnDetailLoading, setTxnDetailLoading] = useState(false)
+  const [txnDetailError, setTxnDetailError] = useState("")
 
   const isAdmin = currentUser?.role === "admin"
   const isSubAdmin = currentUser?.role === "sub-admin"
@@ -236,12 +274,11 @@ export function AdminDashboard() {
       setMessage("Số lượng file tối đa phải từ 1 trở lên.")
       return
     }
-    requirePassword("Cập nhật cấu hình upload", async (adminPassword) => {
+    requireConfirm("Cập nhật cấu hình upload", async () => {
       try {
         const updated = await updateUploadSettingsApi(
           uploadSettings.maxFileSizeMb,
           uploadSettings.maxFilesPerUpload,
-          adminPassword,
         )
         setUploadSettings({ maxFileSizeMb: updated.maxFileSizeMb, maxFilesPerUpload: updated.maxFilesPerUpload })
         setMessage("Đã cập nhật cấu hình upload.")
@@ -249,6 +286,93 @@ export function AdminDashboard() {
         setMessage(error instanceof Error ? error.message : text.actionFailed)
       }
     })
+  }
+
+  const loadTransactions = useCallback(async (targetPage: number, month?: number, year?: number, keyword?: string) => {
+    setTxnLoading(true)
+    setTxnError("")
+    try {
+      const result = await getAdminTransactionsApi({ page: targetPage, size: TRANSACTIONS_PAGE_SIZE, month, year, keyword })
+      setTxnItems(result.content)
+      setTxnTotalPages(result.totalPages)
+      setTxnPage(result.number)
+    } catch (error) {
+      setTxnItems([])
+      setTxnError(error instanceof Error ? error.message : text.transactionsErrorLoad)
+    } finally {
+      setTxnLoading(false)
+    }
+  }, [text.transactionsErrorLoad])
+
+  useEffect(() => {
+    if (section === "activity-logs") void loadTransactions(0, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section])
+
+  // GAP-5 (đã chốt tại contract): debounce 300-500ms, chỉ gửi keyword khi >= 2 ký tự sau trim.
+  useEffect(() => {
+    if (section !== "activity-logs") return
+    const trimmed = txnKeywordInput.trim()
+    const timer = setTimeout(() => {
+      const nextKeyword = trimmed.length >= 2 ? trimmed : undefined
+      setTxnAppliedKeyword(nextKeyword)
+      setTxnHasFilter(nextKeyword != null || txnAppliedMonth != null || txnAppliedYear != null)
+      void loadTransactions(0, txnAppliedMonth, txnAppliedYear, nextKeyword)
+    }, TRANSACTIONS_KEYWORD_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txnKeywordInput])
+
+  const currentYear = new Date().getFullYear()
+  const txnYearOptions = Array.from(
+    { length: currentYear + 1 - TRANSACTIONS_MIN_YEAR + 1 },
+    (_, i) => TRANSACTIONS_MIN_YEAR + i,
+  ).reverse()
+
+  const applyTransactionFilters = () => {
+    const month = txnMonthDraft === "" ? undefined : Number(txnMonthDraft)
+    const year = txnYearDraft === "" ? (month != null ? currentYear : undefined) : Number(txnYearDraft)
+    setTxnAppliedMonth(month)
+    setTxnAppliedYear(year)
+    setTxnHasFilter(month != null || year != null || txnAppliedKeyword != null)
+    void loadTransactions(0, month, year, txnAppliedKeyword)
+  }
+
+  const clearTransactionFilters = () => {
+    setTxnMonthDraft("")
+    setTxnYearDraft("")
+    setTxnKeywordInput("")
+    setTxnAppliedMonth(undefined)
+    setTxnAppliedYear(undefined)
+    setTxnAppliedKeyword(undefined)
+    setTxnHasFilter(false)
+    void loadTransactions(0, undefined, undefined, undefined)
+  }
+
+  const goToTransactionPage = (nextPage: number) => {
+    if (nextPage < 0 || nextPage >= txnTotalPages) return
+    void loadTransactions(nextPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)
+  }
+
+  const openTransactionDetail = async (orderId: string) => {
+    setTxnSelectedOrderId(orderId)
+    setTxnDetail(null)
+    setTxnDetailError("")
+    setTxnDetailLoading(true)
+    try {
+      const result = await getAdminTransactionDetailApi(orderId)
+      setTxnDetail(result)
+    } catch (error) {
+      setTxnDetailError(error instanceof Error ? error.message : text.transactionsErrorLoad)
+    } finally {
+      setTxnDetailLoading(false)
+    }
+  }
+
+  const closeTransactionDetail = () => {
+    setTxnSelectedOrderId(null)
+    setTxnDetail(null)
+    setTxnDetailError("")
   }
 
   const selectSection = (nextSection: AdminSection) => {
@@ -281,20 +405,14 @@ export function AdminDashboard() {
     setMessage(result.success ? successText : result.error ?? text.actionFailed)
   }
 
-  const requirePassword = (label: string, run: (password: string) => void | Promise<void>) => {
+  const requireConfirm = (label: string, run: () => void | Promise<void>) => {
     setPendingAction({ label, run })
-    setAdminPassword("")
     setMessage("")
   }
 
   const confirmAction = async () => {
-    if (!adminPassword.trim()) {
-      setMessage(text.adminPasswordRequired)
-      return
-    }
-    await pendingAction?.run(adminPassword)
+    await pendingAction?.run()
     setPendingAction(null)
-    setAdminPassword("")
   }
 
   const updateStorageLimit = (user: User, value: string) => {
@@ -305,22 +423,21 @@ export function AdminDashboard() {
     }
     const currentGb = user.storageLimit / (1024 * 1024 * 1024)
     if (Math.abs(gb - currentGb) < 0.001) return
-    requirePassword(
+    requireConfirm(
       formatAdminText(text.storageUpdated, { email: user.email }),
-      async (adminPassword) => {
-        const result = await updateUserStorageLimit(user.id, gb, adminPassword)
+      async () => {
+        const result = await updateUserStorageLimit(user.id, gb)
         runAccountAction(result, formatAdminText(text.storageUpdated, { email: user.email }))
       },
     )
   }
 
   const createSubAdmin = () => {
-    requirePassword(text.createSubAdmin, async (adminPassword) => {
+    requireConfirm(text.createSubAdmin, async () => {
       const result = await createSubAdminAccount(
         subAdminForm.email,
         subAdminForm.password,
         subAdminForm.displayName,
-        adminPassword,
       )
       runAccountAction(result, text.createSubAdminSuccess)
       if (result.success) setSubAdminForm({ displayName: "", email: "", password: "" })
@@ -369,42 +486,93 @@ export function AdminDashboard() {
               onClick={() => selectSection("upload-settings")}
             />
           )}
-          <AdminTaskButton label={text.activityLogsPage} body={text.activityLogsPageHint} onClick={() => selectSection("activity-logs")} />
+          <AdminTaskButton label={text.transactionsPage} body={text.transactionsPageHint} onClick={() => selectSection("activity-logs")} />
         </div>
       </section>
     </div>
   )
 
-  const actorLabel = (log: ActivityLog) => {
-    const actor = users.find(user => user.id === log.userId)
-    return actor ? `${actor.displayName} (${actor.email})` : log.userId
-  }
-
-  const renderActivityLogs = () => (
+  const renderTransactions = () => (
     <section className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <Clock className="h-5 w-5 text-primary" />
-            {text.activityLogsTitle}
+            <Receipt className="h-5 w-5 text-primary" />
+            {text.transactionsTitle}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">{text.activityLogsSubtitle}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{text.transactionsSubtitle}</p>
         </div>
         <Button
           variant="outline"
           size="sm"
           className="gap-2"
-          disabled={activityLogsLoading}
-          onClick={() => void loadActivityLogs()}
+          disabled={txnLoading}
+          onClick={() => void loadTransactions(txnPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)}
         >
-          <RefreshCw className={`h-4 w-4 ${activityLogsLoading ? "animate-spin" : ""}`} />
-          {text.activityRefresh}
+          <RefreshCw className={`h-4 w-4 ${txnLoading ? "animate-spin" : ""}`} />
+          {text.transactionsRefresh}
         </Button>
       </div>
 
-      {activityLogsError && (
-        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {activityLogsError}
+      {/* Bộ lọc Tháng/Năm + Tên/Email — TXN-202 */}
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="relative flex items-center">
+            <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={txnKeywordInput}
+              onChange={e => setTxnKeywordInput(e.target.value)}
+              placeholder={text.transactionsSearchPlaceholder}
+              className="w-56 rounded-lg border border-border bg-background px-3 py-2 pl-8 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </span>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.transactionsMonth}</span>
+          <select
+            value={txnMonthDraft}
+            onChange={e => setTxnMonthDraft(e.target.value === "" ? "" : Number(e.target.value))}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">{text.transactionsAllMonths}</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.transactionsYear}</span>
+          <select
+            value={txnYearDraft}
+            onChange={e => setTxnYearDraft(e.target.value === "" ? "" : Number(e.target.value))}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">—</option>
+            {txnYearOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </label>
+        <Button size="sm" onClick={applyTransactionFilters} disabled={txnLoading}>{text.transactionsSearch}</Button>
+        {txnHasFilter && (
+          <Button size="sm" variant="ghost" className="gap-1" onClick={clearTransactionFilters} disabled={txnLoading}>
+            <X className="h-3.5 w-3.5" />
+            {text.transactionsClearFilters}
+          </Button>
+        )}
+      </div>
+
+      {txnError && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span>{txnError}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void loadTransactions(txnPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)}
+          >
+            {text.transactionsRetry}
+          </Button>
         </div>
       )}
 
@@ -412,40 +580,78 @@ export function AdminDashboard() {
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-muted text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 font-semibold">{text.activityAction}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityTarget}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityUser}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityTime}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColUser}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColPlan}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColPaidAt}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColAmount}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {activityLogsLoading && activityLogs.length === 0 ? (
+            {txnLoading && txnItems.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  {text.activityLoading}
+                  {text.transactionsLoading}
                 </td>
               </tr>
-            ) : activityLogs.length === 0 ? (
+            ) : txnItems.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  {text.activityEmpty}
+                  {txnHasFilter ? text.transactionsEmptyFiltered : text.transactionsEmpty}
                 </td>
               </tr>
             ) : (
-              activityLogs.map(log => (
-                <tr key={log.id} className="bg-background/50">
-                  <td className="px-4 py-3 font-medium text-foreground">{log.action}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{log.target}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{actorLabel(log)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {log.timestamp.toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
-                  </td>
+              txnItems.map(item => (
+                <tr
+                  key={item.orderId}
+                  className="cursor-pointer bg-background/50 hover:bg-muted/60"
+                  onClick={() => void openTransactionDetail(item.orderId)}
+                >
+                  <td className="px-4 py-3 font-medium text-foreground">{item.userDisplayName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{item.planName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatTxnPaidAt(item.paidAt, language)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatTxnAmount(item.amount, language)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {txnTotalPages > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={txnPage <= 0 || txnLoading}
+            onClick={() => goToTransactionPage(txnPage - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {text.transactionsPrev}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {text.transactionsPage_} {txnPage + 1} {text.transactionsOf} {txnTotalPages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={txnPage >= txnTotalPages - 1 || txnLoading}
+            onClick={() => goToTransactionPage(txnPage + 1)}
+          >
+            {text.transactionsNext}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {txnSelectedOrderId && (
+        <TransactionDetailModal
+          loading={txnDetailLoading}
+          error={txnDetailError}
+          detail={txnDetail}
+          language={language === "vi" ? "vi" : "en"}
+          onClose={closeTransactionDetail}
+        />
+      )}
     </section>
   )
 
@@ -457,22 +663,22 @@ export function AdminDashboard() {
       isSubAdmin={isSubAdmin}
       onUserSearchChange={setUserSearch}
       onLock={(user) =>
-        requirePassword(
+        requireConfirm(
           user.isLocked ? text.unlock : text.lock,
-          async (adminPassword) =>
+          async () =>
             runAccountAction(
-              await toggleUserLock(user.id, adminPassword),
+              await toggleUserLock(user.id),
               user.isLocked ? text.accountUnlocked : text.accountLocked
             )
         )
       }
       onReset={(user) => setResetTarget(user)}
       onDelete={(user) =>
-        requirePassword(
+        requireConfirm(
           `${text.delete}: ${user.email}`,
-          async (adminPassword) =>
+          async () =>
             runAccountAction(
-              await deleteUserAccount(user.id, adminPassword),
+              await deleteUserAccount(user.id),
               text.accountDeleted,
             ),
         )
@@ -571,9 +777,9 @@ export function AdminDashboard() {
       return
     }
 
-    const runSave = async (adminPassword: string) => {
+    const runSave = async () => {
       try {
-        const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload, adminPassword)
+        const responsePlan = await updateSubscriptionPlanApi(pkg.planName, payloadResult.payload)
         const savedPlan = {
           ...pkgFromPlan(responsePlan),
         }
@@ -590,13 +796,13 @@ export function AdminDashboard() {
       }
     }
 
-    requirePassword(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
+    requireConfirm(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
   }
 
   const deletePkg = (pkg: EditablePkg) => {
-    requirePassword(formatAdminText(text.deletePackage, { name: pkg.name }), async (adminPassword) => {
+    requireConfirm(formatAdminText(text.deletePackage, { name: pkg.name }), async () => {
       try {
-        await deleteSubscriptionPlanApi(pkg.planName, adminPassword)
+        await deleteSubscriptionPlanApi(pkg.planName)
         setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
         // FIXED: đồng bộ luôn packagePrices dùng chung.
         void refetchPackagePrices()
@@ -640,7 +846,7 @@ export function AdminDashboard() {
       return
     }
 
-    requirePassword(text.addPackage, async (adminPassword) => {
+    requireConfirm(text.addPackage, async () => {
       try {
         const created = await createSubscriptionPlanApi({
           name: newPkgForm.name.trim(),
@@ -651,7 +857,7 @@ export function AdminDashboard() {
           joinGroupLimit: newPkgForm.joinGroupLimit,
           dailyAiChatLimit: newPkgForm.dailyAiChatLimit,
           maxFlashcards: newPkgForm.maxFlashcards,
-        }, adminPassword)
+        })
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
         // FIXED: đây chính là bug gốc — trước đây gói mới chỉ vào editablePackages
@@ -1144,16 +1350,13 @@ export function AdminDashboard() {
           {section === "sub-admins" && isAdmin && renderSubAdmins()}
           {section === "packages" && isAdmin && renderPackages()}
           {section === "upload-settings" && isAdmin && renderUploadSettings()}
-          {section === "activity-logs" && renderActivityLogs()}
+          {section === "activity-logs" && renderTransactions()}
         </main>
       </div>
 
       {pendingAction && (
         <ConfirmModal
           title={pendingAction.label}
-          password={adminPassword}
-          setPassword={setAdminPassword}
-          passwordLabel={text.confirmPassword}
           confirmLabel={text.confirm}
           cancelLabel={text.cancel}
           onCancel={() => setPendingAction(null)}
@@ -1170,9 +1373,9 @@ export function AdminDashboard() {
           text={text}
           onCancel={() => { setResetTarget(null); setNewPassword("Reset1234") }}
           onSave={async () => {
-            requirePassword(text.reset, async (adminPassword) => {
+            requireConfirm(text.reset, async () => {
               setResetLoading(true)
-              const result = await resetUserPassword(resetTarget.id, newPassword, adminPassword)
+              const result = await resetUserPassword(resetTarget.id, newPassword)
               setResetLoading(false)
               if (result.success) {
                 setMessage(text.resetSuccess)
@@ -1203,8 +1406,8 @@ export function AdminDashboard() {
             const planLabel = selectedPlan
               ? getLocalizedPlanName(selectedPlan, language)
               : grantTier
-            requirePassword(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async (adminPassword) => {
-              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration, adminPassword)
+            requireConfirm(formatAdminText(text.grantConfirmTitle, { plan: planLabel, email: grantTarget.email }), async () => {
+              const res = await grantSubscription(grantTarget.id, grantTier, grantDuration)
               runAccountAction(res, text.grantSuccess)
               if (res.success) {
                 if (selectedPlan?.defaultStorageBytes) {

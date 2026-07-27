@@ -47,7 +47,6 @@ export function AuthModal() {
     forgot: "Quên mật khẩu?",
     submitLogin: "Đăng nhập",
     submitRegister: "Tạo tài khoản",
-    demo: "Demo: admin@gmail.com / student@gmail.com / subAdmin@gmail.com. Mật Khẩu: Admin123",
     name: "Tên hiển thị",
     confirmPassword: "Xác nhận mật khẩu",
     haveAccount: "Đã có tài khoản?",
@@ -79,7 +78,6 @@ export function AuthModal() {
     forgot: "Forgot password?",
     submitLogin: "Log in",
     submitRegister: "Create account",
-    demo: "Demo: admin@gmail.com / student@gmail.com / subadmin@gmail.com. Password: Admin123",
     name: "Display name",
     confirmPassword: "Confirm password",
     haveAccount: "Already have an account?",
@@ -342,9 +340,6 @@ export function AuthModal() {
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {text.submitLogin}
               </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                <strong>{text.demo}</strong>
-              </p>
             </form>
           )}
 

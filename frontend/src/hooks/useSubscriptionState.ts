@@ -86,12 +86,12 @@ export function useSubscriptionState({
   }, [currentUser?.id, loadPackagePrices])
 
   const updatePackagePrice = useCallback(
-    async (tier: PackageTier | string, newPrice: number, adminPassword: string) => {
+    async (tier: PackageTier | string, newPrice: number) => {
       if (currentUser?.role !== "admin") {
         return { success: false, error: "Chỉ Admin mới được chỉnh sửa giá gói." }
       }
       try {
-        const updatedPlan = await updatePackagePriceApi(tierToPlanName(tier), newPrice, adminPassword)
+        const updatedPlan = await updatePackagePriceApi(tierToPlanName(tier), newPrice)
         const updatedPrice = Number(updatedPlan.price)
         setPackagePrices(prev => prev.map(p => (tierToPlanName(p.planName ?? p.tier) === updatedPlan.name ? { ...p, price: updatedPrice } : p)))
         const updatedPlanLabel = packagePrices.find(plan => (plan.planName ?? plan.tier) === updatedPlan.name)?.name
@@ -123,7 +123,6 @@ export function useSubscriptionState({
       userId: string,
       tier: string,
       durationMonths: number,
-      adminPassword: string,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) {
         return { success: false, error: "Không có quyền thực hiện." }
@@ -133,10 +132,9 @@ export function useSubscriptionState({
       if (currentUser.role === "sub-admin" && targetUser.role === "admin") {
         return { success: false, error: "Sub-admin không thể cấp gói cho Admin." }
       }
-      if (!adminPassword.trim()) return { success: false, error: "Mật khẩu Admin không được để trống." }
 
       try {
-        const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths, adminPassword)
+        const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths)
 
         setUsers(prev => prev.map(u => (u.id === userId ? updatedUser : u)))
         if (currentUser.id === userId) setCurrentUser(updatedUser)

@@ -70,7 +70,6 @@ public class AdminUserService {
     @Transactional
     public UserResponse createSubAdmin(CreateSubAdminRequest request) {
         User admin = requireAdmin();
-        verifyPassword(admin, request.getAdminPassword());
 
         String email = request.getEmail().trim().toLowerCase();
         if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -119,7 +118,6 @@ public class AdminUserService {
     @Transactional
     public UserResponse grantSubscription(UUID userId, GrantSubscriptionRequest request) {
         User actor = requireAdminOrSubAdmin();
-        verifyPassword(actor, request.getAdminPassword());
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
@@ -159,7 +157,6 @@ public class AdminUserService {
     @Transactional
     public UserResponse updateStorageLimit(UUID userId, UpdateUserStorageLimitRequest request) {
         User actor = requireAdminOrSubAdmin();
-        verifyPassword(actor, request.getAdminPassword());
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
@@ -186,9 +183,8 @@ public class AdminUserService {
     }
 
     @Transactional
-    public UserResponse setLockStatus(UUID userId, boolean locked, String adminPassword) {
+    public UserResponse setLockStatus(UUID userId, boolean locked) {
         User actor = requireAdminOrSubAdmin();
-        verifyPassword(actor, adminPassword);
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
@@ -217,7 +213,6 @@ public class AdminUserService {
     @Transactional
     public UserResponse resetPassword(UUID userId, ResetUserPasswordRequest request) {
         User actor = requireAdminOrSubAdmin();
-        verifyPassword(actor, request.getAdminPassword());
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
@@ -246,9 +241,8 @@ public class AdminUserService {
     }
 
     @Transactional
-    public void deleteUser(UUID userId, String adminPassword) {
+    public void deleteUser(UUID userId) {
         User actor = requireAdminOrSubAdmin();
-        verifyPassword(actor, adminPassword);
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
 
@@ -290,12 +284,6 @@ public class AdminUserService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ Admin mới được tạo tài khoản sub-admin.");
         }
         return user;
-    }
-
-    private void verifyPassword(User actor, String password) {
-        if (!passwordEncoder.matches(password, actor.getPasswordHash())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Mật khẩu Admin không chính xác.");
-        }
     }
 
     private void writeCreateSubAdminLog(User admin, User subAdmin, LocalDateTime createdAt) {

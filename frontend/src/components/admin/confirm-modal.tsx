@@ -5,18 +5,12 @@ import { Button } from "@/components/ui/button"
 
 export function ConfirmModal({
   title,
-  password,
-  setPassword,
-  passwordLabel,
   confirmLabel,
   cancelLabel,
   onConfirm,
   onCancel,
 }: {
   title: string
-  password: string
-  setPassword: (value: string) => void
-  passwordLabel: string
   confirmLabel: string
   cancelLabel: string
   onConfirm: () => void
@@ -31,13 +25,6 @@ export function ConfirmModal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder={passwordLabel}
-          className="mt-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-        />
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel}>
             {cancelLabel}

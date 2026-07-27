@@ -42,9 +42,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<Map<String, String>> handleMissingHeader(MissingRequestHeaderException ex) {
-        if ("X-Admin-Password".equals(ex.getHeaderName())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Thiếu Header xác thực X-Admin-Password."));
-        }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Thiếu Header yêu cầu: " + ex.getHeaderName()));
     }
 

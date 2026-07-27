@@ -33,7 +33,7 @@ const adminNavItems: { section: AdminSection; icon: React.ElementType; label: { 
   { section: "accounts", icon: Users, label: { vi: "Tài khoản", en: "Accounts" } },
   { section: "sub-admins", icon: ShieldCheck, label: { vi: "Sub-admin", en: "Sub-admins" }, adminOnly: true },
   { section: "packages", icon: Sparkles, label: { vi: "Gói dịch vụ", en: "Packages" }, adminOnly: true },
-  { section: "activity-logs", icon: Clock, label: { vi: "Nhật ký hoạt động", en: "Activity logs" } },
+  { section: "activity-logs", icon: Clock, label: { vi: "Lịch sử giao dịch", en: "Transaction history" } },
 ]
 
 const getInitialAdminSection = (): AdminSection => {

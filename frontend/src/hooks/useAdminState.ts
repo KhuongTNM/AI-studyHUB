@@ -57,7 +57,7 @@ export function useAdminState({
   )
 
   const updateUserStorageLimit = useCallback(
-    async (id: string, storageLimitGb: number, adminPassword: string) => {
+    async (id: string, storageLimitGb: number) => {
       if (!currentUser || !["admin", "sub-admin"].includes(currentUser.role)) {
         return { success: false, error: "Không có quyền cập nhật dung lượng." }
       }
@@ -66,7 +66,7 @@ export function useAdminState({
       if (target.role !== "user") return { success: false, error: "Chỉ được chỉnh dung lượng của tài khoản user." }
 
       try {
-        const updatedUser = await updateUserStorageLimitApi(id, storageLimitGb, adminPassword)
+        const updatedUser = await updateUserStorageLimitApi(id, storageLimitGb)
         setUsers(prev => prev.map(u => (u.id === id ? updatedUser : u)))
         setCurrentUser(prev => (prev?.id === id ? updatedUser : prev))
         addLog(
@@ -86,7 +86,7 @@ export function useAdminState({
   )
 
   const toggleUserLock = useCallback(
-    async (id: string, adminPassword: string) => {
+    async (id: string) => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
       if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
@@ -97,7 +97,7 @@ export function useAdminState({
 
       const newLocked = !target.isLocked
       try {
-        const updatedUser = await toggleUserLockApi(id, newLocked, adminPassword)
+        const updatedUser = await toggleUserLockApi(id, newLocked)
         setUsers(prev => prev.map(u => (u.id === id ? updatedUser : u)))
         addLog(
           newLocked ? "Locked account" : "Unlocked account",
@@ -120,7 +120,6 @@ export function useAdminState({
     async (
       id: string,
       password: string,
-      adminPassword: string,
     ): Promise<{ success: boolean; error?: string }> => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
@@ -144,7 +143,7 @@ export function useAdminState({
       }
 
       try {
-        const updatedUser = await resetUserPasswordApi(id, password, adminPassword)
+        const updatedUser = await resetUserPasswordApi(id, password)
         setUsers(prev => prev.map(u => (u.id === id ? updatedUser : u)))
         addLog("Reset mật khẩu", target.email, currentUser.id)
         return { success: true }
@@ -159,7 +158,7 @@ export function useAdminState({
   )
 
   const deleteUserAccount = useCallback(
-    async (id: string, adminPassword: string): Promise<{ success: boolean; error?: string }> => {
+    async (id: string): Promise<{ success: boolean; error?: string }> => {
       const target = users.find(u => u.id === id)
       if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
       if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
@@ -172,7 +171,7 @@ export function useAdminState({
       if (target.id === currentUser.id) return { success: false, error: "Không thể tự xóa tài khoản hiện tại." }
 
       try {
-        await deleteAdminUserApi(id, adminPassword)
+        await deleteAdminUserApi(id)
         setUsers(prev => prev.filter(u => u.id !== id))
         setDocuments(prev =>
           prev.map(d => (d.uploadedBy === id ? { ...d, status: "deleted" } : d)),
@@ -190,7 +189,7 @@ export function useAdminState({
   )
 
   const createSubAdminAccount = useCallback(
-    async (email: string, password: string, displayName: string, adminPassword: string) => {
+    async (email: string, password: string, displayName: string) => {
       if (currentUser?.role !== "admin")
         return { success: false, error: "Chỉ Admin mới có thể tạo tài khoản sub-admin." }
       if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
@@ -202,7 +201,7 @@ export function useAdminState({
       }
 
       try {
-        const subAdmin = await createSubAdminApi(email, password, displayName, adminPassword)
+        const subAdmin = await createSubAdminApi(email, password, displayName)
         setUsers(prev => [subAdmin, ...prev])
         addLog("Admin tạo tài khoản sub-admin", email, currentUser.id)
         return { success: true }
