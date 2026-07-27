@@ -1,5 +1,7 @@
 import { getAccessToken } from "@/lib/auth-storage"
 import type { ChatSource, ChatMessage, ChatSession } from "@/states/types"
+import { MOCK_API } from "@/services/mock/mock-config"
+import { mockGetChatQuotaRequest, mockAskRagSearchRequest } from "@/services/mock/chat-quota.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -124,9 +126,29 @@ export async function deleteChatSessionApi(sessionId: string): Promise<void> {
   if (!response.ok) throw new Error(await parseError(response))
 }
 
+/** GET /api/v1/chat/quota — CHAT-102: số lượt Chat AI còn lại trong ngày theo gói hiện tại */
+export interface ChatQuotaResponse {
+  limit: number
+  used: number
+  remaining: number | null
+  unlimited: boolean
+}
+
+export async function fetchChatQuotaApi(): Promise<ChatQuotaResponse> {
+  const response = MOCK_API
+    ? await mockGetChatQuotaRequest()
+    : await fetch(`${API_BASE_URL}/api/v1/chat/quota`, {
+        headers: authHeaders(),
+      })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
 interface AskParams {
   query: string
-  userId: string
+  // userId KHÔNG còn cần truyền nữa — Backend tự xác định qua JWT (CHAT-SEC-01,
+  // xem Chat_AI_Quota_API_Contract.docx v2.0, Mục 0.3/CHAT-SEC-01). Gửi field
+  // này lên (dù Backend sẽ bỏ qua) chỉ gây nhiễu, nên loại bỏ hẳn khỏi request.
   documentId?: string | null
   topK?: number
 }
@@ -150,33 +172,36 @@ const SOURCES_MARKER = "[SOURCES]"
  *   \n\n[SOURCES]\n{"sources":[...]}\n\n
  */
 export async function askRagStream(
-  { query, userId, documentId, topK = 5 }: AskParams,
+  { query, documentId, topK = 5 }: AskParams,
   { onToken, onSources, onDone, onError }: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
   try {
     const token = getAccessToken()
 
-    const response = await fetch(`${API_BASE_URL}/api/v1/vector/search`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        query,
-        user_id: userId,
-        document_id: documentId ?? null,
-        top_k: topK,
-      }),
-      signal,
-    })
+    const response = MOCK_API
+      ? await mockAskRagSearchRequest({ query, documentId, topK })
+      : await fetch(`${API_BASE_URL}/api/v1/vector/search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            query,
+            documentId: documentId ?? null,
+            topK,
+          }),
+          signal,
+        })
 
     if (!response.ok || !response.body) {
       let message = `Yêu cầu thất bại (HTTP ${response.status})`
       try {
         const errBody = await response.json()
-        if (errBody?.message) message = errBody.message
+        // GAP-3: Java trả lỗi ở field "message", Python (AI Service) proxy nguyên văn
+        // ở field "detail" — đọc theo fallback để luôn bắt được nội dung lỗi thật.
+        message = errBody?.message || errBody?.detail || message
       } catch {
         // ignore, giữ message mặc định
       }
