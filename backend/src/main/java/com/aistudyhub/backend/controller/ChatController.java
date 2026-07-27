@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.ChatMessageResponse;
+import com.aistudyhub.backend.dto.ChatQuotaResponse;
 import com.aistudyhub.backend.dto.ChatSessionResponse;
 import com.aistudyhub.backend.dto.CreateChatMessageRequest;
 import com.aistudyhub.backend.dto.CreateChatSessionRequest;
@@ -27,6 +28,13 @@ public class ChatController {
     public ResponseEntity<List<ChatSessionResponse>> listSessions(
             @AuthenticationPrincipal AuthUserPrincipal principal) {
         return ResponseEntity.ok(chatService.listSessions(principal.getId()));
+    }
+
+    /** GET /api/v1/chat/quota — CHAT-102: số lượt Chat AI còn lại trong ngày theo gói hiện tại */
+    @GetMapping("/quota")
+    public ResponseEntity<ChatQuotaResponse> getQuota(
+            @AuthenticationPrincipal AuthUserPrincipal principal) {
+        return ResponseEntity.ok(chatService.getChatQuota(principal.getId()));
     }
 
     /** GET /api/v1/chat/sessions/{sessionId}/messages — lấy toàn bộ tin nhắn của 1 session */

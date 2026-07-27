@@ -2,7 +2,7 @@
 
 StudyHub is an AI-supported study document management system. The project is split into two main sides:
 
-- **Backend:** Java Spring Boot API, PostgreSQL database, authentication, business logic.
+- **Backend:** Java Spring Boot API, Python AI, PostgreSQL database, authentication, business logic.
 - **Frontend:** Next.js + TypeScript user interface, API client, pages, components, and state hooks.
 
 Repository: [https://github.com/KhuongTNM/AI-studyHUB](https://github.com/KhuongTNM/AI-studyHUB)
