@@ -252,10 +252,6 @@ export default function LoginPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Đăng nhập
             </Button>
-
-            <p className="text-center text-xs text-muted-foreground">
-              Demo: <strong>admin@gmail.com</strong> / <strong>student@gmail.com</strong> — Mật khẩu: <strong>Admin123</strong>
-            </p>
           </form>
 
           <div className="mt-4 flex items-center justify-center gap-1 text-sm text-muted-foreground">
