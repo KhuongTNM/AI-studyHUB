@@ -149,7 +149,7 @@ export function AdminAnalytics({
 
   const monthlyPlanData = useMemo(() => {
     const monthLabel = (date: Date) =>
-      date.toLocaleDateString(language === "vi" ? "vi-VN" : "en-US", { month: "short", year: "2-digit" })
+      language === "vi" ? `thg ${date.getMonth() + 1}` : date.toLocaleDateString("en-US", { month: "short" })
 
     const now = new Date()
     const months = Array.from({ length: MONTHS_TO_SHOW }, (_, index) => {
@@ -240,7 +240,7 @@ export function AdminAnalytics({
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <ChartLegend content={<ChartLegendContent />} />
                 {planBuckets.map(bucket => (
-                  <Bar key={bucket.key} dataKey={bucket.key} name={bucket.name} stackId="plan" fill={bucket.fill} radius={[4, 4, 0, 0]} />
+                  <Bar key={bucket.key} dataKey={bucket.key} name={bucket.name} fill={bucket.fill} radius={[4, 4, 0, 0]} />
                 ))}
               </BarChart>
             </ChartContainer>
