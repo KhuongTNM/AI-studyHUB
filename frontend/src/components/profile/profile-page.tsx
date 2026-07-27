@@ -216,7 +216,7 @@ export function ProfilePage() {
             />
           )}
 
-          {tab === "history" && <HistoryTab logs={userLogs} />}
+          {tab === "history" && <HistoryTab language={language} />}
 
           {tab === "security" && (
             <SecurityTab
@@ -272,7 +272,7 @@ const profileText = {
     passwordChangeFailed: "Không thể đổi mật khẩu.",
     info: "Thông tin",
     packages: "Gói dịch vụ",
-    history: "Lịch sử",
+    history: "Lịch sử giao dịch",
     security: "Bảo mật",
     title: "Hồ sơ cá nhân",
     student: "Sinh viên",
@@ -297,7 +297,7 @@ const profileText = {
     passwordChangeFailed: "Could not change password.",
     info: "Info",
     packages: "Packages",
-    history: "History",
+    history: "Transaction history",
     security: "Security",
     title: "Profile",
     student: "Student",
