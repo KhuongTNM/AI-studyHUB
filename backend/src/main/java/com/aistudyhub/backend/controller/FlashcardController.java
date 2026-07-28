@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.controller;
 
 import com.aistudyhub.backend.dto.CreateFlashcardRequest;
+import com.aistudyhub.backend.dto.FlashcardQuotaResponse;
 import com.aistudyhub.backend.dto.FlashcardResponse;
 import com.aistudyhub.backend.dto.GenerateFlashcardsRequest;
 import com.aistudyhub.backend.dto.GenerateFlashcardsResponse;
@@ -60,6 +61,12 @@ public class FlashcardController {
     public ResponseEntity<GenerateFlashcardsResponse> generate(
             @Valid @RequestBody GenerateFlashcardsRequest request) {
         return ResponseEntity.ok(flashcardService.generateFlashcards(request));
+    }
+
+    /** GET /api/flashcards/quota — BR-112: số lượt tạo Flashcard bằng AI còn lại trong ngày. */
+    @GetMapping("/quota")
+    public ResponseEntity<FlashcardQuotaResponse> getQuota() {
+        return ResponseEntity.ok(flashcardService.getFlashcardQuota());
     }
 
     @GetMapping
