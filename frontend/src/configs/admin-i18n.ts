@@ -82,6 +82,16 @@ export const adminText = {
     cannotEditFreePrice: "Không thể đổi giá gói Miễn phí",
     cannotDeleteFreePlan: "Không thể xoá gói Miễn phí",
     deletePackage: "Xóa gói",
+    // SUB-201 (Business Logic doc, Mục 2) — cảnh báo phạm vi ảnh hưởng ngay
+    // trên Pop-up xác nhận Xoá, dùng số liệu từ GET .../active-user-count.
+    deleteActiveUserCountWarning: (count: number) =>
+      count > 0
+        ? ` Gói này đang được ${count} người dùng sử dụng (còn hiệu lực). Việc xoá KHÔNG làm gián đoạn tài khoản của họ — họ tiếp tục được dùng đúng gói này tới hết hạn; gói chỉ biến mất khỏi màn hình chọn mua của User mới.`
+        : " Hiện không có ai đang sử dụng gói này.",
+    // SUB-302 (Business Logic doc, Mục 3) — dòng làm rõ phạm vi ảnh hưởng khi
+    // Admin sửa gói, tránh hiểu nhầm là ảnh hưởng ngay tới người đang dùng.
+    updateActiveUserCountWarning: (count: number) =>
+      ` Thay đổi này chỉ áp dụng cho lượt đăng ký/gia hạn MỚI kể từ bây giờ. ${count} người đang dùng gói này với hạn mức hiện tại sẽ KHÔNG bị ảnh hưởng cho tới khi hết hạn hoặc gia hạn lại.`,
     addPackageTitle: "Thêm gói dịch vụ mới",
     packageNameRequired: "Tên gói *",
     packageNamePlaceholder: "vd: Gói Enterprise",
@@ -257,6 +267,16 @@ export const adminText = {
     cannotEditFreePrice: "The Free plan's price cannot be changed",
     cannotDeleteFreePlan: "The Free plan cannot be deleted",
     deletePackage: "Delete plan",
+    // SUB-201 — impact warning shown right on the delete confirmation Pop-up,
+    // using the count from GET .../active-user-count.
+    deleteActiveUserCountWarning: (count: number) =>
+      count > 0
+        ? ` ${count} user(s) are currently using this plan (still active). Deleting it will NOT disrupt their accounts — they keep using this exact plan until it expires; it only disappears from new users' purchase screen.`
+        : " No one is currently using this plan.",
+    // SUB-302 — clarifying line shown when Admin edits a plan, to avoid the
+    // impression that the change affects current subscribers immediately.
+    updateActiveUserCountWarning: (count: number) =>
+      ` This change only applies to NEW registrations/renewals from now on. ${count} user(s) currently on this plan's existing limits will NOT be affected until they expire or renew.`,
     addPackageTitle: "Add new subscription plan",
     packageNameRequired: "Plan name *",
     packageNamePlaceholder: "e.g. Enterprise plan",
