@@ -131,15 +131,7 @@ public class AdminUserService {
         // BR-063 fix: tra gói theo tên thật trong DB thay vì switch cứng chỉ nhận free/plan_2_4/
         // plan_5_plus — nhờ vậy các gói do Admin tự thêm (SUB-2xx) cũng cấp được qua "Cấp gói",
         // đồng bộ với luồng mua qua PayOS (xem SubscriptionPurchaseService.storageLimitBytesFor).
-        // Giữ alias "2-4"/"5+" để tương thích ngược với caller cũ còn gửi tier viết tắt.
-        String requestedPlan = request.getPlan().trim();
-        String planLookupName = switch (requestedPlan.toLowerCase()) {
-            case "2-4" -> "plan_2_4";
-            case "5+" -> "plan_5_plus";
-            default -> requestedPlan;
-        };
-
-        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planLookupName)
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(request.getPlan().trim())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ."));
         boolean isFreePlan = SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(plan.getName());
 
