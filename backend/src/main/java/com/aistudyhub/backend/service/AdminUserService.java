@@ -40,6 +40,7 @@ public class AdminUserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionService subscriptionService;
     private final ActivityLogRepository activityLogRepository;
     private final ObjectMapper objectMapper;
     private final DocumentRepository documentRepository;
@@ -48,12 +49,14 @@ public class AdminUserService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             SubscriptionPlanRepository subscriptionPlanRepository,
+            SubscriptionService subscriptionService,
             ActivityLogRepository activityLogRepository,
             ObjectMapper objectMapper,
             DocumentRepository documentRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.subscriptionService = subscriptionService;
         this.activityLogRepository = activityLogRepository;
         this.objectMapper = objectMapper;
         this.documentRepository = documentRepository;
@@ -140,6 +143,7 @@ public class AdminUserService {
         target.setSubscriptionPlanId(plan.getId());
         target.setStorageLimitBytes(storageLimitBytesFor(dbPlanName, plan));
 
+        LocalDateTime grantedAt = LocalDateTime.now();
         if ("free".equals(dbPlanName)) {
             target.setSubscriptionExpiresAt(null);
         } else {
@@ -147,11 +151,26 @@ public class AdminUserService {
             if (months < 1) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Thời hạn phải lớn hơn 0 tháng.");
             }
-            target.setSubscriptionExpiresAt(LocalDateTime.now().plusMonths(months));
+            target.setSubscriptionExpiresAt(grantedAt.plusMonths(months));
         }
 
-        target.setUpdatedAt(LocalDateTime.now());
-        return UserResponse.from(userRepository.save(target));
+        target.setUpdatedAt(grantedAt);
+        User saved = userRepository.save(target);
+
+        // SUB-101: ghi nhận vào nguồn giao dịch chính (payment.subscriptions) cho mọi gói trả phí,
+        // để đồng bộ với luồng mua qua PayOS — trừ gói Free (GAP-T1, không có "thời điểm kích hoạt"
+        // mang tính giao dịch nên không tạo Subscription record).
+        if (!"free".equals(dbPlanName)) {
+            subscriptionService.activateNewSubscription(
+                    saved.getId(), plan, grantedAt, saved.getSubscriptionExpiresAt());
+        } else {
+            // Hạ cấp về Free: không tạo bản ghi mới, nhưng PHẢI kết thúc mọi bản ghi trả phí
+            // đang ACTIVE — nếu không, getActiveSubscriptionOrDefault() vẫn thấy bản ghi cũ còn
+            // hiệu lực (chưa hết hạn) và trả về gói đó thay vì Free, bỏ qua quyết định của Admin.
+            subscriptionService.supersedeActiveSubscriptions(saved.getId());
+        }
+
+        return UserResponse.from(saved);
     }
 
     @Transactional

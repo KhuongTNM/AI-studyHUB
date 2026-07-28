@@ -8,6 +8,7 @@ import {
   mockUpdateSubscriptionPlanRequest,
   mockUpdatePackagePriceRequest,
   mockDeleteSubscriptionPlanRequest,
+  mockFetchActiveUserCountRequest,
 } from "@/services/mock/subscription-plans.mock"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
@@ -54,6 +55,16 @@ export interface UpdateSubscriptionPlanInput {
 
 interface ErrorBody {
   message?: string
+}
+
+/**
+ * ActiveUserCountResponse — theo
+ * Subscription_SoftDelete_Grandfathering_API_Contract.docx, mục 5.2
+ * (SUB-201a, GET .../active-user-count). Dùng chung cho cả 2 Pop-up xác nhận:
+ * Xoá gói (SUB-201) và Sửa gói (SUB-302).
+ */
+export interface ActiveUserCountResponse {
+  activeUserCount: number
 }
 
 function getPlanName(plan: PackageTier | string): string {
@@ -157,6 +168,29 @@ export async function updateSubscriptionPlanApi(
       })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
+}
+
+/**
+ * GET .../{planName}/active-user-count — SUB-201a. Trả số User đang có
+ * Subscription ACTIVE gắn với gói này, tính tại đúng thời điểm gọi (Backend
+ * KHÔNG cache) — vì vậy nơi gọi PHẢI fetch lại mỗi lần mở Pop-up, không tái
+ * sử dụng giá trị đã fetch trước đó.
+ *
+ * Dùng chung cho 2 Pop-up: xác nhận Xoá gói (SUB-201) và xác nhận Sửa gói
+ * (SUB-302). KHÔNG chặn theo isDeleted phía Backend — nhưng FE luôn gọi với
+ * planName GỐC (trước khi bị đổi thành `<name>_DELETED_<uuid8>` lúc xoá), vì
+ * gọi ngay tại thời điểm Admin bấm "Xoá"/"Sửa", trước khi DELETE/PUT diễn ra.
+ */
+export async function fetchActiveUserCountApi(planName: string): Promise<number> {
+  const response = MOCK_API
+    ? await mockFetchActiveUserCountRequest(planName)
+    : await fetch(
+        `${API_BASE_URL}/api/admin/subscription-plans/${encodeURIComponent(planName)}/active-user-count`,
+        { headers: authHeaders() },
+      )
+  if (!response.ok) throw new Error(await parseError(response))
+  const body = (await response.json()) as ActiveUserCountResponse
+  return body.activeUserCount
 }
 
 /** DELETE .../{planName} — BR-202: gói "free" luôn bị từ chối xoá, không phụ thuộc subscription ACTIVE. */

@@ -18,7 +18,7 @@ type ProfileTab = "info" | "history" | "security" | "packages"
 export function ProfilePage() {
   const {
     currentUser, updateUser, updateOwnProfile, changeOwnPassword,
-    activityLogs, openAuthModal, packagePrices, language,
+    activityLogs, openAuthModal, packagePrices, mySubscription, language,
   } = useApp()
   const [tab, setTab] = useState<ProfileTab>("info")
   const [displayName, setDisplayName] = useState(currentUser?.displayName ?? "")
@@ -232,6 +232,7 @@ export function ProfilePage() {
             <PackagesTab
               currentUser={currentUser}
               packagePrices={packagePrices}
+              mySubscription={mySubscription}
               onBuy={openCheckout}
               language={language}
             />

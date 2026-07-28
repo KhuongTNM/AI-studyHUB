@@ -3,15 +3,25 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Language, PackagePrice } from "@/states/types"
 import { getLocalizedPlanName } from "@/configs/subscription-plan-labels"
+import type { MySubscription } from "@/services/api/subscriptions"
 
 interface PackagesTabProps {
   currentUser: any
   packagePrices: PackagePrice[]
+  /**
+   * SUB-202 — gói/hạn mức User thực sự đang dùng, đọc theo SNAPSHOT tại thời
+   * điểm kích hoạt (GET /api/subscriptions/me), độc lập với việc gói đó còn
+   * nằm trong `packagePrices` (danh sách công khai, chỉ chứa gói CHƯA xoá)
+   * hay đã bị Admin xoá mềm. null = chưa tải xong/lỗi mạng — khi đó component
+   * fallback về cách đối chiếu packagePrices cũ (kém chính xác hơn cho
+   * trường hợp gói đã xoá, nhưng vẫn hiển thị được thay vì trắng màn hình).
+   */
+  mySubscription: MySubscription | null
   onBuy: (plan: PackagePrice) => void
   language: Language
 }
 
-export function PackagesTab({ currentUser, packagePrices, onBuy, language }: PackagesTabProps) {
+export function PackagesTab({ currentUser, packagePrices, mySubscription, onBuy, language }: PackagesTabProps) {
   const text = packagesText[language]
 
   const planFromId = packagePrices.find(pkg => Number(pkg.id) === Number(currentUser.subscriptionPlanId))
@@ -26,14 +36,29 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
   )
   const freePlan = packagePrices.find(pkg => (pkg.planName ?? pkg.tier) === "free")
   const effectiveCurrentPlan = currentPlanExpired ? freePlan ?? currentPlan : currentPlan
-  const effectivePlanId = effectiveCurrentPlan?.id ?? currentUser.subscriptionPlanId
-  const currentPlanLabel =
-    effectiveCurrentPlan ? getLocalizedPlanName(effectiveCurrentPlan, language) :
+
+  // SUB-202: khi đã có snapshot thật từ GET /api/subscriptions/me, dùng nó làm
+  // nguồn xác thực duy nhất cho khối "Gói dịch vụ hiện tại" và cho việc đánh
+  // dấu thẻ "Đang sử dụng" bên dưới — KHÔNG còn đối chiếu subscriptionPlanId
+  // của User với packagePrices nữa, vì packagePrices có thể đã thiếu đúng gói
+  // (đã bị Admin xoá mềm) mà User vẫn đang được bảo lưu quyền lợi.
+  const snapshotExpired = mySubscription
+    ? new Date(mySubscription.endDate).getTime() <= Date.now()
+    : false
+  const effectivePlanId = mySubscription
+    ? mySubscription.planId
+    : (effectiveCurrentPlan?.id ?? currentUser.subscriptionPlanId)
+  const currentPlanLabel = mySubscription
+    ? mySubscription.planName
+    : (effectiveCurrentPlan ? getLocalizedPlanName(effectiveCurrentPlan, language) :
         (currentUser.subscriptionTier === "2-4"
           ? text.plan2To4
           : currentUser.subscriptionTier === "5+"
           ? text.plan5Plus
-          : text.freePlan)
+          : text.freePlan))
+  const currentPlanPricePaid = mySubscription ? mySubscription.pricePaid : effectiveCurrentPlan?.price
+  const currentPlanExpiryDate = mySubscription ? mySubscription.endDate : currentUser.subscriptionExpiresAt
+  const currentPlanIsExpired = mySubscription ? snapshotExpired : currentPlanExpired
 
   return (
     <div className="space-y-6">
@@ -47,13 +72,13 @@ export function PackagesTab({ currentUser, packagePrices, onBuy, language }: Pac
             <p className="text-sm text-muted-foreground">{text.planName}</p>
             <p className="text-lg font-bold text-foreground">{currentPlanLabel}</p>
           </div>
-          {effectiveCurrentPlan?.price && effectiveCurrentPlan.price > 0 && currentUser.subscriptionExpiresAt && (
+          {Boolean(currentPlanPricePaid && currentPlanPricePaid > 0 && currentPlanExpiryDate) && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">{text.expiry}</p>
               <p className="flex items-center gap-1.5 text-lg font-bold text-foreground">
                 <Clock className="h-4 w-4 text-primary" />
-                {new Date(currentUser.subscriptionExpiresAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
-                {new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now() ? (
+                {new Date(currentPlanExpiryDate).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
+                {currentPlanIsExpired ? (
                   <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">{text.expired}</span>
                 ) : (
                   <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600">{text.active}</span>

@@ -252,6 +252,23 @@ export async function mockUpdatePackagePriceRequest(
   return jsonResponse(200, toApiShape(plan))
 }
 
+// ─── 5b. GET .../{planName}/active-user-count — SUB-201a ────────────────────
+//
+// Mock đơn giản: kho dữ liệu giả lập trong file này không lưu vết User↔Gói
+// theo phiên (không có "payment.subscriptions" giả lập), nên không thể đếm
+// số người đang dùng thật. Luôn trả về 0 ("Hiện không có ai đang sử dụng gói
+// này") — đủ để FE test được luồng hiển thị Pop-up mà không cần chờ Backend,
+// KHÔNG dùng để kiểm thử số liệu cảnh báo chính xác (việc đó cần backend thật).
+
+export async function mockFetchActiveUserCountRequest(planName: string): Promise<Response> {
+  await delay(150)
+  // Không lọc isDeleted (GAP-T4) — cho phép tra cứu cả với gói đã xoá mềm.
+  const target = planName.trim().toLowerCase()
+  const plan = mockPlans.find(p => p.name.toLowerCase() === target)
+  if (!plan) return jsonResponse(404, { message: "Không tìm thấy gói dịch vụ." })
+  return jsonResponse(200, { activeUserCount: 0 })
+}
+
 // ─── 6. DELETE /api/admin/subscription-plans/{planName} — BR-202 ────────────
 
 export async function mockDeleteSubscriptionPlanRequest(
