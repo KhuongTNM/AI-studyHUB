@@ -143,14 +143,26 @@ public class AdminSubscriptionPlanService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Gói này đã bị xóa rồi.");
         }
 
-        if (subscriptionRepository.existsByPlanIdAndStatus(plan.getId(), SubscriptionStatus.ACTIVE)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể xóa gói dịch vụ đang có người sử dụng ACTIVE.");
-        }
-
+        // SUB-201: không còn chặn xoá theo số người đang dùng — xoá mềm luôn thành công, đúng
+        // nguyên tắc Bảo lưu quyền lợi (Grandfathering). Admin xem cảnh báo số người bị ảnh
+        // hưởng qua getActiveUserCount() TRƯỚC khi gọi hàm này (Mục 2, API Contract).
         plan.setDeleted(true);
         plan.setName(plan.getName() + "_DELETED_" + UUID.randomUUID().toString().substring(0, 8));
         plan.setUpdatedAt(LocalDateTime.now());
         subscriptionPlanRepository.save(plan);
+    }
+
+    /**
+     * SUB-201/SUB-302: số User đang thực sự dùng gói này (còn hiệu lực), dùng cho cảnh báo
+     * trước khi Admin xoá hoặc sửa gói. Không chặn theo plan.isDeleted() — vẫn cho xem số liệu
+     * của gói đã xoá, để Admin biết còn bao nhiêu người đang được bảo lưu quyền lợi.
+     */
+    @Transactional(readOnly = true)
+    public long getActiveUserCount(String planName) {
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+        return subscriptionRepository.countByPlanIdAndStatusAndEndDateAfter(
+                plan.getId(), SubscriptionStatus.ACTIVE, LocalDateTime.now());
     }
 
     @Transactional

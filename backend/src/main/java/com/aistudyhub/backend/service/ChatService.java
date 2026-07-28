@@ -26,7 +26,6 @@ public class ChatService {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final SubscriptionService subscriptionService;
-    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
     private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     /** GET /api/v1/chat/sessions */
@@ -101,11 +100,10 @@ public class ChatService {
             return;
         }
 
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
         com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-        com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
-
-        int chatLimit = plan.getDailyAiChatLimit();
+        int chatLimit = activeSub.getDailyAiChatLimitSnapshot();
         if (chatLimit == -1) {
             return;
         }
@@ -135,11 +133,10 @@ public class ChatService {
                     .limit(-1).used(used).remaining(null).unlimited(true).build();
         }
 
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
         com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-        com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
-
-        int limit = plan.getDailyAiChatLimit();
+        int limit = activeSub.getDailyAiChatLimitSnapshot();
         boolean unlimited = limit == -1;
         Long remaining = unlimited ? null : Math.max(0, limit - used);
         return com.aistudyhub.backend.dto.ChatQuotaResponse.builder()

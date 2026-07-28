@@ -29,7 +29,6 @@ public class GroupService {
     private final GroupMemberRepository groupMemberRepository;
     private final GroupMessageRepository groupMessageRepository;
     private final UserRepository userRepository;
-    private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final SubscriptionService subscriptionService;
 
     // ==========================================
@@ -84,14 +83,14 @@ public class GroupService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 2. Lấy thông tin subscription active hiện tại (hoặc Virtual Free Fallback)
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
         Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                .orElseThrow(() -> new com.aistudyhub.backend.exception.SystemConfigurationException("Cấu hình gói không hợp lệ."));
 
         // Nếu admin thì override limit
         boolean isAdmin = user.getRole() == User.Role.admin || user.getRole() == User.Role.sub_admin;
 
-        int createLimit = plan.getCreateGroupLimit();
+        int createLimit = activeSub.getCreateGroupLimitSnapshot();
 
         if (!isAdmin) {
             if (createLimit == 0) {
@@ -506,15 +505,15 @@ public class GroupService {
             return new Limits(true, -1, -1, 9999);
         }
 
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
         Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(u.getId());
-        SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                .orElseThrow(() -> new com.aistudyhub.backend.exception.SystemConfigurationException("Cấu hình gói không hợp lệ."));
 
         return new Limits(
-                plan.getCreateGroupLimit() != 0,
-                plan.getCreateGroupLimit(),
-                plan.getJoinGroupLimit(),
-                plan.getMaxRoomMembers()
+                activeSub.getCreateGroupLimitSnapshot() != 0,
+                activeSub.getCreateGroupLimitSnapshot(),
+                activeSub.getJoinGroupLimitSnapshot(),
+                activeSub.getMaxRoomMembersSnapshot()
         );
     }
 }

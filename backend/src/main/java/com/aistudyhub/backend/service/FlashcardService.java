@@ -9,7 +9,6 @@ import com.aistudyhub.backend.dto.UpdateFlashcardStatusRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.Flashcard;
 import com.aistudyhub.backend.entity.FlashcardStatus;
-import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
@@ -57,7 +56,6 @@ public class FlashcardService {
     private final RestTemplate aiServiceRestTemplate;
     private final String aiServiceUrl;
     private final SubscriptionService subscriptionService;
-    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
     private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     public FlashcardService(FlashcardRepository flashcardRepository,
@@ -65,14 +63,12 @@ public class FlashcardService {
                             @Qualifier("aiServiceRestTemplate") RestTemplate aiServiceRestTemplate,
                             @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl,
                             SubscriptionService subscriptionService,
-                            com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository,
                             com.aistudyhub.backend.repository.UserRepository userRepository) {
         this.flashcardRepository = flashcardRepository;
         this.documentRepository = documentRepository;
         this.aiServiceRestTemplate = aiServiceRestTemplate;
         this.aiServiceUrl = aiServiceUrl;
         this.subscriptionService = subscriptionService;
-        this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.userRepository = userRepository;
     }
 
@@ -197,13 +193,11 @@ public class FlashcardService {
 
         if (!isAdmin) {
             com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-            SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
 
-            // BR-099: trần per-click, đọc động từ SubscriptionPlan. Luôn kiểm tra TRƯỚC quota
+            // BR-099: trần per-click. Luôn kiểm tra TRƯỚC quota
             // tổng (per-click cap luôn chặt hơn hoặc bằng quota tổng — BR-101, trường hợp ngoại lệ).
             int requestedCountForCheck = requestedCount;
-            resolvePerClickLimit(plan).ifPresent(limit -> {
+            resolvePerClickLimit().ifPresent(limit -> {
                 if (requestedCountForCheck > limit) {
                     throw new BusinessException(ErrorCode.FLASHCARD_PER_CLICK_LIMIT_EXCEEDED, Map.of(
                             "perClickLimit", limit,
@@ -211,8 +205,9 @@ public class FlashcardService {
                 }
             });
 
-            // BR-101/BR-103: quota tổng — giữ nguyên hành vi & pattern lỗi (ApiException) đã có.
-            int maxCards = plan.getMaxFlashcards();
+            // BR-101/BR-103: quota tổng — SUB-301: đọc từ snapshot đã chốt tại thời điểm kích hoạt
+            // Subscription, không tra cứu sống theo SubscriptionPlan nữa.
+            int maxCards = activeSub.getMaxFlashcardsSnapshot();
             if (maxCards != -1) {
                 long currentCards = flashcardRepository.countByUserIdAndIsAiGeneratedTrue(userId);
                 if (currentCards + requestedCount > maxCards) {
@@ -236,14 +231,14 @@ public class FlashcardService {
     }
 
     /**
-     * Đọc trần per-click (BR-099) từ SubscriptionPlan. Trường cấu hình này thuộc phạm vi module
+     * Đọc trần per-click (BR-099). Trường cấu hình này thuộc phạm vi module
      * Quản lý gói dịch vụ (mục 0.1 - Scope Boundaries) và CHƯA tồn tại trên entity
      * SubscriptionPlan tại thời điểm viết code này. Áp dụng fallback an toàn: trả về rỗng
      * (không áp trần riêng, chỉ dùng quota tổng hiện có) cho tới khi trường đó được bổ sung —
-     * khi đó chỉ cần sửa lại đúng phương thức này (ví dụ đọc plan.getPerClickFlashcardLimit()),
+     * khi đó chỉ cần sửa lại đúng phương thức này (ví dụ đọc từ snapshot per-click tương ứng),
      * phần logic validate còn lại không cần thay đổi.
      */
-    private Optional<Integer> resolvePerClickLimit(SubscriptionPlan plan) {
+    private Optional<Integer> resolvePerClickLimit() {
         return Optional.empty();
     }
 

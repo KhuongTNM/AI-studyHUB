@@ -40,6 +40,13 @@ public class AdminSubscriptionPlanController {
         return ResponseEntity.ok(adminSubscriptionPlanService.getPlans());
     }
 
+    // SUB-201/SUB-302: dùng chung cho Pop-up xác nhận Xoá và Pop-up xác nhận Sửa gói dịch vụ.
+    @GetMapping("/{planName}/active-user-count")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ActiveUserCountResponse> getActiveUserCount(@PathVariable String planName) {
+        return ResponseEntity.ok(new ActiveUserCountResponse(adminSubscriptionPlanService.getActiveUserCount(planName)));
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<SubscriptionPlanResponse> createPlan(
