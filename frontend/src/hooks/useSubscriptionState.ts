@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/services/api/subscription-plans"
+import { fetchMySubscriptionApi, type MySubscription } from "@/services/api/subscriptions"
 import { grantSubscriptionApi } from "@/services/api/admin-users"
 import { DEFAULT_PACKAGE_PRICES } from "@/states/mock-data"
 import type { PackagePrice, PackageTier, User } from "@/states/types"
@@ -44,6 +45,11 @@ export function useSubscriptionState({
   addLog,
 }: SubscriptionStateDeps) {
   const [packagePrices, setPackagePrices] = useState<PackagePrice[]>(DEFAULT_PACKAGE_PRICES)
+  // SUB-202: gói/hạn mức User THỰC SỰ đang dùng, đọc theo snapshot (SUB-301) từ
+  // GET /api/subscriptions/me — độc lập với việc gói đó còn nằm trong danh
+  // sách công khai (packagePrices) hay đã bị Admin xoá mềm. null = chưa
+  // đăng nhập hoặc đang tải.
+  const [mySubscription, setMySubscription] = useState<MySubscription | null>(null)
 
   // FIXED: tách phần fetch ra thành 1 hàm dùng lại được (refetchPackagePrices),
   // thay vì chỉ nằm trong useEffect và chỉ chạy lại khi currentUser?.id đổi.
@@ -84,6 +90,33 @@ export function useSubscriptionState({
       cancelled = true
     }
   }, [currentUser?.id, loadPackagePrices])
+
+  // SUB-202: nạp gói hiện tại (snapshot) của User đang đăng nhập, dùng cho
+  // màn "Gói của tôi" (packages-tab.tsx). Bỏ qua nếu chưa đăng nhập —
+  // endpoint yêu cầu accessToken.
+  const loadMySubscription = useCallback(async () => {
+    if (!currentUser) {
+      setMySubscription(null)
+      return
+    }
+    try {
+      const snapshot = await fetchMySubscriptionApi()
+      setMySubscription(snapshot)
+    } catch {
+      // Giữ giá trị cũ nếu backend tạm thời không khả dụng — màn hình sẽ
+      // fallback về cách đối chiếu packagePrices cũ (xem packages-tab.tsx).
+    }
+  }, [currentUser])
+
+  useEffect(() => {
+    let cancelled = false
+    loadMySubscription().then(() => {
+      if (cancelled) return
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser?.id, loadMySubscription])
 
   const updatePackagePrice = useCallback(
     async (tier: PackageTier | string, newPrice: number) => {
@@ -137,7 +170,10 @@ export function useSubscriptionState({
         const updatedUser = await grantSubscriptionApi(userId, tierToPlanName(tier), durationMonths)
 
         setUsers(prev => prev.map(u => (u.id === userId ? updatedUser : u)))
-        if (currentUser.id === userId) setCurrentUser(updatedUser)
+        if (currentUser.id === userId) {
+          setCurrentUser(updatedUser)
+          void loadMySubscription()
+        }
 
         const grantedPlan = packagePrices.find(plan => (plan.planName ?? plan.tier) === tierToPlanName(tier))
         const tierName = grantedPlan?.name ?? (tier === "free" ? "Free" : tier === "2-4" ? "Pro" : tier === "5+" ? "VIP" : tier)
@@ -154,7 +190,7 @@ export function useSubscriptionState({
         }
       }
     },
-    [currentUser, users, packagePrices, setCurrentUser, setUsers, addLog],
+    [currentUser, users, packagePrices, setCurrentUser, setUsers, addLog, loadMySubscription],
   )
 
   const buySubscription = useCallback(
@@ -186,6 +222,8 @@ export function useSubscriptionState({
   return {
     packagePrices,
     refetchPackagePrices: loadPackagePrices,
+    mySubscription,
+    refetchMySubscription: loadMySubscription,
     updatePackagePrice,
     grantSubscription,
     buySubscription,

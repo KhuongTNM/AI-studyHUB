@@ -18,6 +18,7 @@ import { SubAdminForm } from "./sub-admin-form"
 import {
   createSubscriptionPlanApi,
   deleteSubscriptionPlanApi,
+  fetchActiveUserCountApi,
   fetchSubscriptionPlansApi,
   updateSubscriptionPlanApi,
   type ApiSubscriptionPlan,
@@ -796,11 +797,34 @@ export function AdminDashboard() {
       }
     }
 
-    requireConfirm(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
+    // SUB-302 (Business Logic doc, Mục 3): trước khi hiển thị Pop-up "Lưu thay
+    // đổi", gọi GET active-user-count (SUB-201a) để làm rõ phạm vi ảnh hưởng —
+    // chỉ mang tính minh bạch hoá, KHÔNG chặn thao tác nếu gọi lỗi.
+    let confirmLabel = formatAdminText(text.updatePackage, { name: updated.name })
+    try {
+      const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
+      confirmLabel += text.updateActiveUserCountWarning(activeUserCount)
+    } catch {
+      // Không chặn Admin sửa gói nếu chỉ riêng số liệu cảnh báo không tải được.
+    }
+
+    requireConfirm(confirmLabel, runSave)
   }
 
-  const deletePkg = (pkg: EditablePkg) => {
-    requireConfirm(formatAdminText(text.deletePackage, { name: pkg.name }), async () => {
+  const deletePkg = async (pkg: EditablePkg) => {
+    // SUB-201 (Business Logic doc, Mục 2): gọi GET active-user-count (SUB-201a)
+    // NGAY khi Admin bấm "Xoá", hiển thị số liệu trên Pop-up xác nhận TRƯỚC
+    // khi gọi DELETE — DELETE không còn tự trả về/kiểm tra số người dùng nữa
+    // (không còn chặn thao tác), nên bước cảnh báo này nằm hẳn ở FE.
+    let confirmLabel = formatAdminText(text.deletePackage, { name: pkg.name })
+    try {
+      const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
+      confirmLabel += text.deleteActiveUserCountWarning(activeUserCount)
+    } catch {
+      // Không chặn Admin xoá gói nếu chỉ riêng số liệu cảnh báo không tải được.
+    }
+
+    requireConfirm(confirmLabel, async () => {
       try {
         await deleteSubscriptionPlanApi(pkg.planName)
         setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))

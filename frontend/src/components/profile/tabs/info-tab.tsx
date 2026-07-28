@@ -86,7 +86,7 @@ export function InfoTab({
 const infoText = {
   vi: {
     displayName: "Tên hiển thị",
-    emailLocked: "Không thể thay đổi",
+    emailLocked: "Tính năng đổi mail sẽ được phát triển trong tương lai",
     storage: "Dung lượng lưu trữ",
     used: "đã dùng",
     total: "tổng",
@@ -96,7 +96,7 @@ const infoText = {
   },
   en: {
     displayName: "Display name",
-    emailLocked: "Cannot be changed",
+    emailLocked: "Email change feature will be developed in the future",
     storage: "Storage",
     used: "used",
     total: "total",
