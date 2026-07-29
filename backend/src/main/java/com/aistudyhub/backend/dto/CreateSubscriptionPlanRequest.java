@@ -32,6 +32,10 @@ public class CreateSubscriptionPlanRequest {
     @Min(value = -1, message = "Giới hạn flashcards không hợp lệ.")
     private int maxFlashcards = 5;
 
+    /** BR-110: hạn mức tạo Flashcard bằng AI MỖI NGÀY. -1 = không giới hạn. */
+    @Min(value = -1, message = "Giới hạn flashcard AI/ngày không hợp lệ.")
+    private int dailyMaxFlashcards = 5;
+
     public String getName() {
         return name;
     }
@@ -94,5 +98,13 @@ public class CreateSubscriptionPlanRequest {
 
     public void setMaxFlashcards(int maxFlashcards) {
         this.maxFlashcards = maxFlashcards;
+    }
+
+    public int getDailyMaxFlashcards() {
+        return dailyMaxFlashcards;
+    }
+
+    public void setDailyMaxFlashcards(int dailyMaxFlashcards) {
+        this.dailyMaxFlashcards = dailyMaxFlashcards;
     }
 }

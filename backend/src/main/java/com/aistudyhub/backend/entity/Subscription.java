@@ -55,6 +55,10 @@ public class Subscription {
     @Column(name = "max_flashcards_snapshot")
     private int maxFlashcardsSnapshot;
 
+    /** BR-110: snapshot hạn mức tạo Flashcard bằng AI/ngày tại thời điểm kích hoạt gói. */
+    @Column(name = "daily_max_flashcards_snapshot")
+    private int dailyMaxFlashcardsSnapshot;
+
     @Column(name = "create_group_limit_snapshot")
     private int createGroupLimitSnapshot;
 
@@ -161,6 +165,14 @@ public class Subscription {
 
     public void setMaxFlashcardsSnapshot(int maxFlashcardsSnapshot) {
         this.maxFlashcardsSnapshot = maxFlashcardsSnapshot;
+    }
+
+    public int getDailyMaxFlashcardsSnapshot() {
+        return dailyMaxFlashcardsSnapshot;
+    }
+
+    public void setDailyMaxFlashcardsSnapshot(int dailyMaxFlashcardsSnapshot) {
+        this.dailyMaxFlashcardsSnapshot = dailyMaxFlashcardsSnapshot;
     }
 
     public int getCreateGroupLimitSnapshot() {

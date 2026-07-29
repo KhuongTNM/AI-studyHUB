@@ -19,6 +19,7 @@ public class SubscriptionSnapshotResponse {
     private BigDecimal pricePaid;
     private int dailyAiChatLimit;
     private int maxFlashcards;
+    private int dailyMaxFlashcards;
     private int createGroupLimit;
     private int joinGroupLimit;
     private short maxRoomMembers;
@@ -34,6 +35,7 @@ public class SubscriptionSnapshotResponse {
         response.pricePaid = sub.getPricePaid();
         response.dailyAiChatLimit = sub.getDailyAiChatLimitSnapshot();
         response.maxFlashcards = sub.getMaxFlashcardsSnapshot();
+        response.dailyMaxFlashcards = sub.getDailyMaxFlashcardsSnapshot();
         response.createGroupLimit = sub.getCreateGroupLimitSnapshot();
         response.joinGroupLimit = sub.getJoinGroupLimitSnapshot();
         response.maxRoomMembers = sub.getMaxRoomMembersSnapshot();
@@ -71,6 +73,10 @@ public class SubscriptionSnapshotResponse {
 
     public int getMaxFlashcards() {
         return maxFlashcards;
+    }
+
+    public int getDailyMaxFlashcards() {
+        return dailyMaxFlashcards;
     }
 
     public int getCreateGroupLimit() {

@@ -52,6 +52,14 @@ public class SubscriptionPlan {
     @Column(name = "max_flashcards", nullable = false)
     private int maxFlashcards = 5;
 
+    /**
+     * BR-110: hạn mức tạo Flashcard bằng AI MỖI NGÀY, thay thế hoàn toàn vai trò chặn của
+     * maxFlashcards cũ (BR-103 cũ, nay chỉ còn là field deprecated không ảnh hưởng tới
+     * AI-generation). -1 = không giới hạn.
+     */
+    @Column(name = "daily_max_flashcards", nullable = false)
+    private int dailyMaxFlashcards = 5;
+
     public Integer getId() {
         return id;
     }
@@ -142,6 +150,14 @@ public class SubscriptionPlan {
 
     public void setMaxFlashcards(int maxFlashcards) {
         this.maxFlashcards = maxFlashcards;
+    }
+
+    public int getDailyMaxFlashcards() {
+        return dailyMaxFlashcards;
+    }
+
+    public void setDailyMaxFlashcards(int dailyMaxFlashcards) {
+        this.dailyMaxFlashcards = dailyMaxFlashcards;
     }
 }
 

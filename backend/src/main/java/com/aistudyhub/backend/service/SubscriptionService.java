@@ -138,6 +138,7 @@ public class SubscriptionService {
         sub.setPlanNameSnapshot(plan.getName());
         sub.setDailyAiChatLimitSnapshot(plan.getDailyAiChatLimit());
         sub.setMaxFlashcardsSnapshot(plan.getMaxFlashcards());
+        sub.setDailyMaxFlashcardsSnapshot(plan.getDailyMaxFlashcards());
         sub.setCreateGroupLimitSnapshot(plan.getCreateGroupLimit());
         sub.setJoinGroupLimitSnapshot(plan.getJoinGroupLimit());
         sub.setMaxRoomMembersSnapshot(plan.getMaxRoomMembers());

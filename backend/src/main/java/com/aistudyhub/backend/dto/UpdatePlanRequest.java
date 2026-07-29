@@ -21,5 +21,8 @@ public class UpdatePlanRequest {
     private Integer dailyAiChatLimit;
 
     private Integer maxFlashcards;
+
+    /** BR-110: hạn mức tạo Flashcard bằng AI MỖI NGÀY (tuỳ chọn — chỉ cập nhật khi FE truyền). */
+    private Integer dailyMaxFlashcards;
 }
 

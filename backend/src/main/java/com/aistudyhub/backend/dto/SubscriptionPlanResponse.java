@@ -14,6 +14,7 @@ public class SubscriptionPlanResponse {
     private int joinGroupLimit;
     private int dailyAiChatLimit;
     private int maxFlashcards;
+    private int dailyMaxFlashcards;
 
     public static SubscriptionPlanResponse from(SubscriptionPlan plan) {
         SubscriptionPlanResponse response = new SubscriptionPlanResponse();
@@ -26,6 +27,7 @@ public class SubscriptionPlanResponse {
         response.joinGroupLimit = plan.getJoinGroupLimit();
         response.dailyAiChatLimit = plan.getDailyAiChatLimit();
         response.maxFlashcards = plan.getMaxFlashcards();
+        response.dailyMaxFlashcards = plan.getDailyMaxFlashcards();
         return response;
     }
 
@@ -63,5 +65,9 @@ public class SubscriptionPlanResponse {
 
     public int getMaxFlashcards() {
         return maxFlashcards;
+    }
+
+    public int getDailyMaxFlashcards() {
+        return dailyMaxFlashcards;
     }
 }
