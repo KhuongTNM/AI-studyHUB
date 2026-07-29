@@ -34,12 +34,11 @@ public class AdminUserService {
 
     private static final BigDecimal BYTES_PER_GB = BigDecimal.valueOf(1024L * 1024L * 1024L);
     private static final long SUB_ADMIN_STORAGE_LIMIT_BYTES = 1024L * 1024L * 1024L;
-    private static final long PLAN_2_4_STORAGE_BYTES = 1024L * 1024L * 1024L;
-    private static final long PLAN_5_PLUS_STORAGE_BYTES = 5L * 1024L * 1024L * 1024L;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionService subscriptionService;
     private final ActivityLogRepository activityLogRepository;
     private final ObjectMapper objectMapper;
     private final DocumentRepository documentRepository;
@@ -48,12 +47,14 @@ public class AdminUserService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             SubscriptionPlanRepository subscriptionPlanRepository,
+            SubscriptionService subscriptionService,
             ActivityLogRepository activityLogRepository,
             ObjectMapper objectMapper,
             DocumentRepository documentRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.subscriptionService = subscriptionService;
         this.activityLogRepository = activityLogRepository;
         this.objectMapper = objectMapper;
         this.documentRepository = documentRepository;
@@ -127,31 +128,44 @@ public class AdminUserService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Sub-admin chỉ được cấp subscription cho tài khoản user.");
         }
 
-        String dbPlanName = switch (request.getPlan().toLowerCase()) {
-            case "free" -> "free";
-            case "2-4", "plan_2_4" -> "plan_2_4";
-            case "5+", "plan_5_plus" -> "plan_5_plus";
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ. Chỉ hỗ trợ: FREE, 2-4, 5+.");
-        };
-
-        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(dbPlanName)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+        // BR-063 fix: tra gói theo tên thật trong DB thay vì switch cứng chỉ nhận free/plan_2_4/
+        // plan_5_plus — nhờ vậy các gói do Admin tự thêm (SUB-2xx) cũng cấp được qua "Cấp gói",
+        // đồng bộ với luồng mua qua PayOS (xem SubscriptionPurchaseService.storageLimitBytesFor).
+        SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(request.getPlan().trim())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Gói không hợp lệ."));
+        boolean isFreePlan = SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(plan.getName());
 
         target.setSubscriptionPlanId(plan.getId());
-        target.setStorageLimitBytes(storageLimitBytesFor(dbPlanName, plan));
+        target.setStorageLimitBytes(storageLimitBytesFor(plan));
 
-        if ("free".equals(dbPlanName)) {
+        LocalDateTime grantedAt = LocalDateTime.now();
+        if (isFreePlan) {
             target.setSubscriptionExpiresAt(null);
         } else {
             int months = request.getDurationMonths() != null ? request.getDurationMonths() : 0;
             if (months < 1) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Thời hạn phải lớn hơn 0 tháng.");
             }
-            target.setSubscriptionExpiresAt(LocalDateTime.now().plusMonths(months));
+            target.setSubscriptionExpiresAt(grantedAt.plusMonths(months));
         }
 
-        target.setUpdatedAt(LocalDateTime.now());
-        return UserResponse.from(userRepository.save(target));
+        target.setUpdatedAt(grantedAt);
+        User saved = userRepository.save(target);
+
+        // SUB-101: ghi nhận vào nguồn giao dịch chính (payment.subscriptions) cho mọi gói trả phí,
+        // để đồng bộ với luồng mua qua PayOS — trừ gói Free (GAP-T1, không có "thời điểm kích hoạt"
+        // mang tính giao dịch nên không tạo Subscription record).
+        if (!isFreePlan) {
+            subscriptionService.activateNewSubscription(
+                    saved.getId(), plan, grantedAt, saved.getSubscriptionExpiresAt());
+        } else {
+            // Hạ cấp về Free: không tạo bản ghi mới, nhưng PHẢI kết thúc mọi bản ghi trả phí
+            // đang ACTIVE — nếu không, getActiveSubscriptionOrDefault() vẫn thấy bản ghi cũ còn
+            // hiệu lực (chưa hết hạn) và trả về gói đó thay vì Free, bỏ qua quyết định của Admin.
+            subscriptionService.supersedeActiveSubscriptions(saved.getId());
+        }
+
+        return UserResponse.from(saved);
     }
 
     @Transactional
@@ -310,12 +324,12 @@ public class AdminUserService {
         }
     }
 
-    private long storageLimitBytesFor(String planName, SubscriptionPlan plan) {
-        return switch (planName) {
-            case "plan_2_4" -> PLAN_2_4_STORAGE_BYTES;
-            case "plan_5_plus" -> PLAN_5_PLUS_STORAGE_BYTES;
-            default -> plan.getDefaultStorageBytes();
-        };
+    private long storageLimitBytesFor(SubscriptionPlan plan) {
+        long bytes = plan.getDefaultStorageBytes();
+        if (bytes <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Gói dịch vụ chưa được cấu hình dung lượng lưu trữ.");
+        }
+        return bytes;
     }
 
     private long toBytes(BigDecimal storageLimitGb) {

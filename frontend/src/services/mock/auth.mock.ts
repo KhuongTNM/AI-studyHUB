@@ -175,7 +175,7 @@ function seedUserAccount() {
     email,
     password: "Admin123",
     displayName: "Admin",
-    role: "sub-admin",
+    role: "admin",
     locked: false,
     emailVerified: true,
     storageUsedBytes: 10_485_760,

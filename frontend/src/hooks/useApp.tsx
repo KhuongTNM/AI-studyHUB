@@ -37,6 +37,7 @@ import { useFlashcardState, type GenerateFlashcardsOutcome } from "./useFlashcar
 import { useAdminState } from "./useAdminState"
 import { useSubscriptionState } from "./useSubscriptionState"
 import { useGroupChatState } from "./useGroupChatState"
+import type { MySubscription } from "@/services/api/subscriptions"
 
 // ─── Public contract ────────────────────────────────────────────────────────
 
@@ -248,6 +249,11 @@ export interface AppState {
   /** FIXED: gọi lại sau khi admin tạo/sửa/xoá gói để packagePrices (dùng chung
    * cho trang User + form "Cấp gói") đồng bộ ngay, không cần F5/login lại. */
   refetchPackagePrices: () => Promise<void>
+  /** SUB-202 — gói/hạn mức User thực sự đang dùng (snapshot tại thời điểm kích
+   * hoạt, GET /api/subscriptions/me), độc lập với việc gói đó đã bị Admin xoá
+   * mềm hay chưa. null = chưa đăng nhập hoặc đang tải. */
+  mySubscription: MySubscription | null
+  refetchMySubscription: () => Promise<void>
   updatePackagePrice: (tier: PackageTier | string, newPrice: number) => Promise<{ success: boolean; error?: string }>
   /** Cấp gói qua POST /api/admin/users/{userId}/subscription (BR-063) */
   grantSubscription: (userId: string, tier: string, durationMonths: number) => Promise<{ success: boolean; error?: string }>
@@ -484,6 +490,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Subscription
         packagePrices: subscription.packagePrices,
         refetchPackagePrices: subscription.refetchPackagePrices,
+        mySubscription: subscription.mySubscription,
+        refetchMySubscription: subscription.refetchMySubscription,
         updatePackagePrice: subscription.updatePackagePrice,
         grantSubscription: subscription.grantSubscription,
         buySubscription: subscription.buySubscription,

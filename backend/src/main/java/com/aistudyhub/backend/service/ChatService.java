@@ -26,7 +26,6 @@ public class ChatService {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final SubscriptionService subscriptionService;
-    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
     private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     /** GET /api/v1/chat/sessions */
@@ -67,24 +66,7 @@ public class ChatService {
         ChatSession session = requireOwnedSession(sessionId, userId);
 
         if ("user".equals(request.getRole())) {
-            com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
-            boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
-
-            if (!isAdmin) {
-                com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-                com.aistudyhub.backend.entity.SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                        .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
-
-                int chatLimit = plan.getDailyAiChatLimit();
-                if (chatLimit != -1) {
-                    java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
-                    long todayMessages = chatMessageRepository.countUserMessagesSince(userId, "user", startOfToday);
-                    if (todayMessages >= chatLimit) {
-                        throw new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bạn đã dùng hết lượt Chat AI trong ngày (" + chatLimit + " lượt). Vui lòng nâng cấp gói dịch vụ.");
-                    }
-                }
-            }
+            checkDailyChatQuota(userId);
         }
 
         ChatMessage message = new ChatMessage();
@@ -101,6 +83,64 @@ public class ChatService {
         chatSessionRepository.save(session);
 
         return toMessageResponse(saved);
+    }
+
+    /**
+     * CHAT-101 — Kiểm tra & chặn vượt hạn mức Chat AI/ngày. Dùng chung cho addMessage() (lưu
+     * lịch sử) và VectorSearchController.search() (luồng thực sự sinh câu trả lời AI) — đây
+     * chính là điểm chặn BẮT BUỘC phải nằm trước bước gọi AI service, không chỉ ở bước lưu
+     * lịch sử như trước. Bỏ qua hoàn toàn nếu là Admin/Sub-Admin hoặc gói unlimited (-1).
+     */
+    @Transactional
+    public void checkDailyChatQuota(UUID userId) {
+        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+        if (isAdmin) {
+            return;
+        }
+
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
+        com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+        int chatLimit = activeSub.getDailyAiChatLimitSnapshot();
+        if (chatLimit == -1) {
+            return;
+        }
+
+        java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
+        long todayMessages = chatMessageRepository.countUserMessagesSince(userId, "user", startOfToday);
+        if (todayMessages >= chatLimit) {
+            throw new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bạn đã dùng hết lượt Chat AI trong ngày (" + chatLimit + " lượt). Vui lòng nâng cấp gói dịch vụ.");
+        }
+    }
+
+    /**
+     * GET /api/v1/chat/quota — CHAT-102: tái sử dụng ĐÚNG nguồn dữ liệu (countUserMessagesSince)
+     * với checkDailyChatQuota() để chỉ số hiển thị không bao giờ lệch pha với bước chặn thực tế.
+     */
+    @Transactional
+    public com.aistudyhub.backend.dto.ChatQuotaResponse getChatQuota(UUID userId) {
+        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                .orElseThrow(() -> new com.aistudyhub.backend.exception.ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+
+        java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
+        long used = chatMessageRepository.countUserMessagesSince(userId, "user", startOfToday);
+
+        if (isAdmin) {
+            return com.aistudyhub.backend.dto.ChatQuotaResponse.builder()
+                    .limit(-1).used(used).remaining(null).unlimited(true).build();
+        }
+
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription,
+        // không tra cứu sống theo SubscriptionPlan nữa.
+        com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+        int limit = activeSub.getDailyAiChatLimitSnapshot();
+        boolean unlimited = limit == -1;
+        Long remaining = unlimited ? null : Math.max(0, limit - used);
+        return com.aistudyhub.backend.dto.ChatQuotaResponse.builder()
+                .limit(limit).used(used).remaining(remaining).unlimited(unlimited).build();
     }
 
     /** DELETE /api/v1/chat/sessions/{sessionId} — xoá session + toàn bộ message liên quan */

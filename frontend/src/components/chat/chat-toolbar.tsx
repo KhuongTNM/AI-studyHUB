@@ -2,6 +2,7 @@ import { Plus, FileText, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Language } from "@/states/types"
+import type { ChatQuotaResponse } from "@/services/api/chat"
 
 interface ChatToolbarProps {
   onNewChat: () => void
@@ -11,6 +12,8 @@ interface ChatToolbarProps {
   showDocPicker: boolean
   setShowDocPicker: (val: boolean) => void
   language: Language
+  /** CHAT-102 — số lượt Chat AI còn lại trong ngày. null/undefined = chưa tải xong -> ẩn chỉ số. */
+  quota?: ChatQuotaResponse | null
   children?: React.ReactNode
 }
 
@@ -22,11 +25,16 @@ export function ChatToolbar({
   showDocPicker,
   setShowDocPicker,
   language,
+  quota,
   children,
 }: ChatToolbarProps) {
   const availableDocs = documents.filter(d => d.status === "ready")
   const selectedDoc = availableDocs.find(d => d.id === selectedDocId)
   const text = toolbarText[language]
+
+  // CHAT-102: ẩn hoàn toàn khi chưa có số liệu (đang tải/lỗi) hoặc gói không giới hạn.
+  const showQuota = quota != null && !quota.unlimited
+  const isLowQuota = showQuota && (quota!.remaining ?? 0) <= 1
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2">
@@ -82,12 +90,24 @@ export function ChatToolbar({
 
       {children}
 
-      {selectedDoc && (
-        <span className="ml-auto hidden items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:flex">
-          <FileText className="h-3 w-3" />
-          {text.chattingWith}: {selectedDoc.name.slice(0, 25)}
-        </span>
-      )}
+      <div className="ml-auto flex items-center gap-2">
+        {showQuota && (
+          <span
+            className={cn(
+              "hidden items-center gap-1 rounded-full px-2 py-0.5 text-xs sm:flex",
+              isLowQuota ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {text.quotaUsed(quota!.used, quota!.limit)}
+          </span>
+        )}
+        {selectedDoc && (
+          <span className="hidden items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:flex">
+            <FileText className="h-3 w-3" />
+            {text.chattingWith}: {selectedDoc.name.slice(0, 25)}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -98,11 +118,13 @@ const toolbarText = {
     selectDocument: "Chọn tài liệu",
     noDocument: "Không chọn tài liệu",
     chattingWith: "Đang chat với",
+    quotaUsed: (used: number, limit: number) => `Đã dùng ${used}/${limit} lượt hôm nay`,
   },
   en: {
     newChat: "New chat",
     selectDocument: "Select document",
     noDocument: "No document",
     chattingWith: "Chatting with",
+    quotaUsed: (used: number, limit: number) => `Used ${used}/${limit} today`,
   },
 } as const

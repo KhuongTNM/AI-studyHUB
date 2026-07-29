@@ -1,6 +1,7 @@
 package com.aistudyhub.backend.service;
 
 import com.aistudyhub.backend.dto.CreateFlashcardRequest;
+import com.aistudyhub.backend.dto.FlashcardQuotaResponse;
 import com.aistudyhub.backend.dto.FlashcardResponse;
 import com.aistudyhub.backend.dto.GenerateFlashcardsRequest;
 import com.aistudyhub.backend.dto.GenerateFlashcardsResponse;
@@ -8,16 +9,19 @@ import com.aistudyhub.backend.dto.UpdateFlashcardRequest;
 import com.aistudyhub.backend.dto.UpdateFlashcardStatusRequest;
 import com.aistudyhub.backend.entity.Document;
 import com.aistudyhub.backend.entity.Flashcard;
+import com.aistudyhub.backend.entity.FlashcardAiDailyUsage;
 import com.aistudyhub.backend.entity.FlashcardStatus;
-import com.aistudyhub.backend.entity.SubscriptionPlan;
 import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.exception.BusinessException;
 import com.aistudyhub.backend.exception.ErrorCode;
 import com.aistudyhub.backend.repository.DocumentRepository;
+import com.aistudyhub.backend.repository.FlashcardAiDailyUsageRepository;
 import com.aistudyhub.backend.repository.FlashcardRepository;
 import com.aistudyhub.backend.security.AuthUserPrincipal;
 import java.net.SocketTimeoutException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -52,27 +56,34 @@ public class FlashcardService {
      */
     private static final int BATCH_SIZE = 5;
 
+    /**
+     * BR-110/Gap 4: mốc "một ngày" của hạn mức tạo Flashcard bằng AI BẮT BUỘC ép cứng theo
+     * giờ Việt Nam, KHÔNG được suy ra từ ZoneId.systemDefault() của server (hạ tầng hiện tại
+     * nhiều khả năng chạy UTC — xem Flashcard_AI_Daily_Quota_API_Contract.docx Mục 8, Gap 4).
+     */
+    private static final ZoneId VN_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final FlashcardRepository flashcardRepository;
+    private final FlashcardAiDailyUsageRepository flashcardAiDailyUsageRepository;
     private final DocumentRepository documentRepository;
     private final RestTemplate aiServiceRestTemplate;
     private final String aiServiceUrl;
     private final SubscriptionService subscriptionService;
-    private final com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository;
     private final com.aistudyhub.backend.repository.UserRepository userRepository;
 
     public FlashcardService(FlashcardRepository flashcardRepository,
+                            FlashcardAiDailyUsageRepository flashcardAiDailyUsageRepository,
                             DocumentRepository documentRepository,
                             @Qualifier("aiServiceRestTemplate") RestTemplate aiServiceRestTemplate,
                             @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl,
                             SubscriptionService subscriptionService,
-                            com.aistudyhub.backend.repository.SubscriptionPlanRepository subscriptionPlanRepository,
                             com.aistudyhub.backend.repository.UserRepository userRepository) {
         this.flashcardRepository = flashcardRepository;
+        this.flashcardAiDailyUsageRepository = flashcardAiDailyUsageRepository;
         this.documentRepository = documentRepository;
         this.aiServiceRestTemplate = aiServiceRestTemplate;
         this.aiServiceUrl = aiServiceUrl;
         this.subscriptionService = subscriptionService;
-        this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.userRepository = userRepository;
     }
 
@@ -197,13 +208,11 @@ public class FlashcardService {
 
         if (!isAdmin) {
             com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
-            SubscriptionPlan plan = subscriptionPlanRepository.findById(activeSub.getPlanId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cấu hình gói không hợp lệ."));
 
-            // BR-099: trần per-click, đọc động từ SubscriptionPlan. Luôn kiểm tra TRƯỚC quota
-            // tổng (per-click cap luôn chặt hơn hoặc bằng quota tổng — BR-101, trường hợp ngoại lệ).
+            // BR-099: trần per-click. Luôn kiểm tra TRƯỚC hạn mức ngày (per-click cap luôn chặt
+            // hơn hoặc bằng hạn mức ngày — BR-101, trường hợp ngoại lệ).
             int requestedCountForCheck = requestedCount;
-            resolvePerClickLimit(plan).ifPresent(limit -> {
+            resolvePerClickLimit().ifPresent(limit -> {
                 if (requestedCountForCheck > limit) {
                     throw new BusinessException(ErrorCode.FLASHCARD_PER_CLICK_LIMIT_EXCEEDED, Map.of(
                             "perClickLimit", limit,
@@ -211,12 +220,19 @@ public class FlashcardService {
                 }
             });
 
-            // BR-101/BR-103: quota tổng — giữ nguyên hành vi & pattern lỗi (ApiException) đã có.
-            int maxCards = plan.getMaxFlashcards();
-            if (maxCards != -1) {
-                long currentCards = flashcardRepository.countByUserIdAndIsAiGeneratedTrue(userId);
-                if (currentCards + requestedCount > maxCards) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "Gói của bạn chỉ cho phép tạo tối đa " + maxCards + " flashcards. Bạn hiện có " + currentCards + " thẻ, không thể tạo thêm " + requestedCount + " thẻ.");
+            // BR-110: hạn mức tạo Flashcard bằng AI theo NGÀY — THAY THẾ HOÀN TOÀN quota tổng
+            // (BR-103 cũ đã bị bãi bỏ, xem Flashcard_AI_Daily_Quota_Business_Logic.docx Mục 0.4).
+            // SUB-301: đọc từ snapshot đã chốt tại thời điểm kích hoạt Subscription.
+            int dailyLimit = activeSub.getDailyMaxFlashcardsSnapshot();
+            if (dailyLimit != -1) {
+                int usedToday = flashcardAiDailyUsageRepository.findByUserIdAndUsageDate(userId, LocalDate.now(VN_ZONE))
+                        .map(FlashcardAiDailyUsage::getCount)
+                        .orElse(0);
+                if (usedToday + requestedCount > dailyLimit) {
+                    throw new BusinessException(ErrorCode.FLASHCARD_DAILY_LIMIT_EXCEEDED, Map.of(
+                            "dailyLimit", dailyLimit,
+                            "usedToday", usedToday,
+                            "requestedCount", requestedCount));
                 }
             }
         }
@@ -236,14 +252,44 @@ public class FlashcardService {
     }
 
     /**
-     * Đọc trần per-click (BR-099) từ SubscriptionPlan. Trường cấu hình này thuộc phạm vi module
+     * GET /api/flashcards/quota — BR-112: tái sử dụng ĐÚNG nguồn dữ liệu
+     * (FlashcardAiDailyUsageRepository) với khối kiểm tra hạn mức ngày trong generateFlashcards()
+     * (BR-110), để chỉ số hiển thị không bao giờ lệch pha với bước chặn thực tế.
+     */
+    @Transactional(readOnly = true)
+    public FlashcardQuotaResponse getFlashcardQuota() {
+        UUID userId = getCurrentUserId();
+        com.aistudyhub.backend.entity.User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại."));
+        boolean isAdmin = user.getRole() == com.aistudyhub.backend.entity.User.Role.admin || user.getRole() == com.aistudyhub.backend.entity.User.Role.sub_admin;
+
+        long used = flashcardAiDailyUsageRepository.findByUserIdAndUsageDate(userId, LocalDate.now(VN_ZONE))
+                .map(FlashcardAiDailyUsage::getCount)
+                .orElse(0);
+
+        if (isAdmin) {
+            return FlashcardQuotaResponse.builder()
+                    .limit(-1).used(used).remaining(null).unlimited(true).build();
+        }
+
+        // SUB-301: đọc hạn mức từ snapshot đã chốt tại thời điểm kích hoạt Subscription.
+        com.aistudyhub.backend.entity.Subscription activeSub = subscriptionService.getActiveSubscriptionOrDefault(userId);
+        int limit = activeSub.getDailyMaxFlashcardsSnapshot();
+        boolean unlimited = limit == -1;
+        Long remaining = unlimited ? null : Math.max(0, limit - used);
+        return FlashcardQuotaResponse.builder()
+                .limit(limit).used(used).remaining(remaining).unlimited(unlimited).build();
+    }
+
+    /**
+     * Đọc trần per-click (BR-099). Trường cấu hình này thuộc phạm vi module
      * Quản lý gói dịch vụ (mục 0.1 - Scope Boundaries) và CHƯA tồn tại trên entity
      * SubscriptionPlan tại thời điểm viết code này. Áp dụng fallback an toàn: trả về rỗng
      * (không áp trần riêng, chỉ dùng quota tổng hiện có) cho tới khi trường đó được bổ sung —
-     * khi đó chỉ cần sửa lại đúng phương thức này (ví dụ đọc plan.getPerClickFlashcardLimit()),
+     * khi đó chỉ cần sửa lại đúng phương thức này (ví dụ đọc từ snapshot per-click tương ứng),
      * phần logic validate còn lại không cần thay đổi.
      */
-    private Optional<Integer> resolvePerClickLimit(SubscriptionPlan plan) {
+    private Optional<Integer> resolvePerClickLimit() {
         return Optional.empty();
     }
 
@@ -307,6 +353,12 @@ public class FlashcardService {
                     : flashcardRepository.saveAll(uniqueCardsToSave);
             saved.stream().map(FlashcardResponse::from).forEach(createdCards::add);
 
+            // BR-110/Gap 3: tăng bộ đếm LƯỢT ĐÃ SINH trong ngày ngay sau khi batch lưu thành
+            // công — bộ đếm này CHỈ TĂNG, không bao giờ giảm dù thẻ sau đó bị xoá.
+            if (!saved.isEmpty()) {
+                incrementDailyUsage(userId, LocalDate.now(VN_ZONE), saved.size());
+            }
+
             // Thẻ bị loại do trùng lặp cũng được coi là "thiếu" (BR-102) -> dồn tiếp sang batch sau.
             carriedDeficit = batchTarget - saved.size();
         }
@@ -322,6 +374,25 @@ public class FlashcardService {
             return GenerateFlashcardsResponse.partial(requestedCount, createdCount, failureReason, createdCards);
         }
         return GenerateFlashcardsResponse.completed(requestedCount, createdCount, createdCards);
+    }
+
+    /**
+     * BR-110/Gap 3: tăng bộ đếm lượt-đã-sinh của (userId, usageDate) lên thêm {@code delta} —
+     * increment-only, KHÔNG có thao tác giảm nào tương ứng ở bất kỳ nơi nào khác trong hệ thống
+     * (kể cả khi Flashcard bị xoá sau đó), theo đúng quyết định Gap 3 đã chốt.
+     */
+    private void incrementDailyUsage(UUID userId, LocalDate usageDate, int delta) {
+        FlashcardAiDailyUsage usage = flashcardAiDailyUsageRepository.findByUserIdAndUsageDate(userId, usageDate)
+                .orElseGet(() -> {
+                    FlashcardAiDailyUsage created = new FlashcardAiDailyUsage();
+                    created.setUserId(userId);
+                    created.setUsageDate(usageDate);
+                    created.setCount(0);
+                    return created;
+                });
+        usage.setCount(usage.getCount() + delta);
+        usage.setUpdatedAt(LocalDateTime.now());
+        flashcardAiDailyUsageRepository.save(usage);
     }
 
     /**

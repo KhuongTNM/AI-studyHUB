@@ -35,6 +35,8 @@ export interface PackagePrice {
   joinGroupLimit?: number
   dailyAiChatLimit?: number
   maxFlashcards?: number
+  /** MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112) — hạn mức tạo Flashcard AI/ngày. */
+  dailyMaxFlashcards?: number
 }
 
 export interface GroupChatMember {

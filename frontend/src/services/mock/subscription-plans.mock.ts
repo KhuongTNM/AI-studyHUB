@@ -32,6 +32,8 @@ interface MockPlan {
   joinGroupLimit: number
   dailyAiChatLimit: number
   maxFlashcards: number
+  /** MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112) — hạn mức tạo Flashcard AI/ngày. */
+  dailyMaxFlashcards: number
   isDeleted: boolean
 }
 
@@ -49,6 +51,7 @@ const mockPlans: MockPlan[] = [
     joinGroupLimit: 5,
     dailyAiChatLimit: 5,
     maxFlashcards: 5,
+    dailyMaxFlashcards: 5,
     isDeleted: false,
   },
   {
@@ -61,6 +64,7 @@ const mockPlans: MockPlan[] = [
     joinGroupLimit: 30,
     dailyAiChatLimit: 50,
     maxFlashcards: 50,
+    dailyMaxFlashcards: 20,
     isDeleted: false,
   },
   {
@@ -73,6 +77,7 @@ const mockPlans: MockPlan[] = [
     joinGroupLimit: -1,
     dailyAiChatLimit: -1,
     maxFlashcards: -1,
+    dailyMaxFlashcards: -1,
     isDeleted: false,
   },
 ]
@@ -128,6 +133,7 @@ function toApiShape(plan: MockPlan): ApiSubscriptionPlan {
     joinGroupLimit: plan.joinGroupLimit,
     dailyAiChatLimit: plan.dailyAiChatLimit,
     maxFlashcards: plan.maxFlashcards,
+    dailyMaxFlashcards: plan.dailyMaxFlashcards,
   }
 }
 
@@ -174,6 +180,7 @@ export async function mockCreateSubscriptionPlanRequest(
     joinGroupLimit: input.joinGroupLimit,
     dailyAiChatLimit: input.dailyAiChatLimit ?? 5,
     maxFlashcards: input.maxFlashcards ?? 5,
+    dailyMaxFlashcards: input.dailyMaxFlashcards ?? 5,
     isDeleted: false,
   }
   mockPlans.push(plan)
@@ -224,6 +231,7 @@ export async function mockUpdateSubscriptionPlanRequest(
   if (typeof input.joinGroupLimit === "number") plan.joinGroupLimit = input.joinGroupLimit
   if (typeof input.dailyAiChatLimit === "number") plan.dailyAiChatLimit = input.dailyAiChatLimit
   if (typeof input.maxFlashcards === "number") plan.maxFlashcards = input.maxFlashcards
+  if (typeof input.dailyMaxFlashcards === "number") plan.dailyMaxFlashcards = input.dailyMaxFlashcards
   if (typeof input.defaultStorageBytes === "number" && input.defaultStorageBytes > 0) {
     plan.defaultStorageBytes = input.defaultStorageBytes
   }
@@ -250,6 +258,23 @@ export async function mockUpdatePackagePriceRequest(
 
   plan.price = price
   return jsonResponse(200, toApiShape(plan))
+}
+
+// ─── 5b. GET .../{planName}/active-user-count — SUB-201a ────────────────────
+//
+// Mock đơn giản: kho dữ liệu giả lập trong file này không lưu vết User↔Gói
+// theo phiên (không có "payment.subscriptions" giả lập), nên không thể đếm
+// số người đang dùng thật. Luôn trả về 0 ("Hiện không có ai đang sử dụng gói
+// này") — đủ để FE test được luồng hiển thị Pop-up mà không cần chờ Backend,
+// KHÔNG dùng để kiểm thử số liệu cảnh báo chính xác (việc đó cần backend thật).
+
+export async function mockFetchActiveUserCountRequest(planName: string): Promise<Response> {
+  await delay(150)
+  // Không lọc isDeleted (GAP-T4) — cho phép tra cứu cả với gói đã xoá mềm.
+  const target = planName.trim().toLowerCase()
+  const plan = mockPlans.find(p => p.name.toLowerCase() === target)
+  if (!plan) return jsonResponse(404, { message: "Không tìm thấy gói dịch vụ." })
+  return jsonResponse(200, { activeUserCount: 0 })
 }
 
 // ─── 6. DELETE /api/admin/subscription-plans/{planName} — BR-202 ────────────

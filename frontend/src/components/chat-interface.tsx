@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { useApp, ChatSession, ChatMessage, ChatSource } from "@/lib/store"
-import { askRagStream } from "@/services/api/chat"
+import { askRagStream, fetchChatQuotaApi, type ChatQuotaResponse } from "@/services/api/chat"
 
 import { ChatToolbar } from "./chat/chat-toolbar"
 import { ChatMessageItem } from "./chat/chat-message"
@@ -28,6 +28,8 @@ export function EnhancedChatInterface() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const [showDocPicker, setShowDocPicker] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  // CHAT-102 — số lượt Chat AI còn lại trong ngày. null = chưa tải xong/lỗi -> ẩn chỉ số ở toolbar.
+  const [quota, setQuota] = useState<ChatQuotaResponse | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -52,6 +54,22 @@ export function EnhancedChatInterface() {
     // Hủy request stream đang chạy nếu component unmount
     return () => abortControllerRef.current?.abort()
   }, [])
+
+  const refreshQuota = async () => {
+    if (!currentUser) { setQuota(null); return }
+    try {
+      const result = await fetchChatQuotaApi()
+      setQuota(result)
+    } catch {
+      // CHAT-102 Mục 5: nếu API lỗi, ẩn chỉ số thay vì hiển thị số liệu sai/mặc định.
+      setQuota(null)
+    }
+  }
+
+  useEffect(() => {
+    void refreshQuota()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id])
 
   // ── Đồng bộ tài liệu đang chọn với session / nút "Chat AI" trên từng file ──
   // Ưu tiên: 1) tài liệu vừa chọn từ nút "Chat AI" của 1 file cụ thể
@@ -141,7 +159,6 @@ export function EnhancedChatInterface() {
     await askRagStream(
       {
         query: content.trim(),
-        userId: currentUser.id,
         documentId: selectedDocId,
       },
       {
@@ -160,6 +177,7 @@ export function EnhancedChatInterface() {
               // Nếu lưu thất bại, câu trả lời vẫn hiển thị trên UI trong phiên hiện tại
             })
           }
+          void refreshQuota()
         },
         onError: (error) => {
           const message = error.message || ""
@@ -171,6 +189,7 @@ export function EnhancedChatInterface() {
                 onClick: openPackages,
               },
             })
+            void refreshQuota()
           }
           const existing = currentMessages.find(m => m.id === aiMsgId)
           updateAiMessage({
@@ -219,6 +238,7 @@ export function EnhancedChatInterface() {
         showDocPicker={showDocPicker}
         setShowDocPicker={setShowDocPicker}
         language={language}
+        quota={quota}
       />
 
       <div className="flex-1 flex overflow-hidden relative" onClick={() => { setShowDocPicker(false); }}>

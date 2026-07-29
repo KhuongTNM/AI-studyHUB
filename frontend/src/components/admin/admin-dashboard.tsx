@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react"
 import {
-  CheckCircle2, Clock, HardDrive, KeyRound, LayoutDashboard, Package,
-  Pencil, Plus, RefreshCw, Sparkles, Trash2, UserCog, Users, X,
+  CheckCircle2, ChevronLeft, ChevronRight, HardDrive, KeyRound, LayoutDashboard, Package,
+  Pencil, Plus, Receipt, RefreshCw, Search, Sparkles, Trash2, UserCog, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useApp, type ActivityLog, type User } from "@/lib/store"
+import { useApp, type User } from "@/lib/store"
 import type { PackagePrice } from "@/states/types"
 import { adminText } from "@/configs/admin-i18n"
 import { getLocalizedPlanName, isPlanNameTaken } from "@/configs/subscription-plan-labels"
@@ -18,12 +18,24 @@ import { SubAdminForm } from "./sub-admin-form"
 import {
   createSubscriptionPlanApi,
   deleteSubscriptionPlanApi,
+  fetchActiveUserCountApi,
   fetchSubscriptionPlansApi,
   updateSubscriptionPlanApi,
   type ApiSubscriptionPlan,
   type UpdateSubscriptionPlanInput,
 } from "@/services/api/subscription-plans"
 import { fetchUploadSettingsApi, updateUploadSettingsApi } from "@/services/api/upload-settings"
+import {
+  getAdminTransactionsApi,
+  getAdminTransactionDetailApi,
+  type AdminTransactionItem,
+} from "@/services/api/admin-transactions"
+import type { TransactionDetail } from "@/services/api/subscription-purchases"
+import { TransactionDetailModal } from "@/components/transactions/transaction-detail-modal"
+
+const TRANSACTIONS_PAGE_SIZE = 10
+const TRANSACTIONS_MIN_YEAR = 2020
+const TRANSACTIONS_KEYWORD_DEBOUNCE_MS = 400
 
 // ─── Editable package type used only in admin UI ───────────────────────────
 interface EditablePkg {
@@ -39,6 +51,8 @@ interface EditablePkg {
   joinGroupLimit: number
   dailyAiChatLimit: number
   maxFlashcards: number
+  /** MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112) — hạn mức tạo Flashcard AI/ngày. */
+  dailyMaxFlashcards: number
   hasAiChat: boolean
   hasFlashcards: boolean
 }
@@ -53,6 +67,17 @@ function tierFromPlanName(name: string): string {
   if (name === "plan_2_4") return "2-4"
   if (name === "plan_5_plus") return "5+"
   return name
+}
+
+function formatTxnAmount(amount: number, language: "vi" | "en") {
+  const formatted = amount.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
+  return language === "vi" ? `${formatted}đ` : `${formatted} VND`
+}
+
+function formatTxnPaidAt(paidAt: string, language: "vi" | "en") {
+  const date = new Date(paidAt)
+  if (Number.isNaN(date.getTime())) return paidAt
+  return date.toLocaleString(language === "vi" ? "vi-VN" : "en-US")
 }
 
 function formatStorage(bytes: number) {
@@ -102,6 +127,7 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
     joinGroupLimit: plan.joinGroupLimit,
     dailyAiChatLimit: plan.dailyAiChatLimit,
     maxFlashcards: plan.maxFlashcards,
+    dailyMaxFlashcards: plan.dailyMaxFlashcards,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -123,6 +149,7 @@ function pkgFromPrice(pkg: PackagePrice): EditablePkg {
     joinGroupLimit,
     dailyAiChatLimit: pkg.dailyAiChatLimit ?? 5,
     maxFlashcards: pkg.maxFlashcards ?? 5,
+    dailyMaxFlashcards: pkg.dailyMaxFlashcards ?? 5,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -145,7 +172,6 @@ export function AdminDashboard() {
     currentUser, users, documents, language, setCurrentPage, updateUser,
     toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
     packagePrices, refetchPackagePrices, grantSubscription, updateUserStorageLimit,
-    activityLogs, activityLogsLoading, activityLogsError, loadActivityLogs,
   } = useApp()
 
   const [section, setSection] = useState<AdminSection>(getStoredAdminSection)
@@ -180,7 +206,26 @@ export function AdminDashboard() {
     joinGroupLimit: 30,
     dailyAiChatLimit: 5,
     maxFlashcards: 5,
+    dailyMaxFlashcards: 5,
   })
+
+  // ── Lịch sử Giao dịch — Admin & Sub-Admin (TXN-201 → TXN-203) ─────────────
+  const [txnItems, setTxnItems] = useState<AdminTransactionItem[]>([])
+  const [txnPage, setTxnPage] = useState(0)
+  const [txnTotalPages, setTxnTotalPages] = useState(0)
+  const [txnLoading, setTxnLoading] = useState(false)
+  const [txnError, setTxnError] = useState("")
+  const [txnKeywordInput, setTxnKeywordInput] = useState("")
+  const [txnMonthDraft, setTxnMonthDraft] = useState<number | "">("")
+  const [txnYearDraft, setTxnYearDraft] = useState<number | "">("")
+  const [txnAppliedMonth, setTxnAppliedMonth] = useState<number | undefined>(undefined)
+  const [txnAppliedYear, setTxnAppliedYear] = useState<number | undefined>(undefined)
+  const [txnAppliedKeyword, setTxnAppliedKeyword] = useState<string | undefined>(undefined)
+  const [txnHasFilter, setTxnHasFilter] = useState(false)
+  const [txnSelectedOrderId, setTxnSelectedOrderId] = useState<string | null>(null)
+  const [txnDetail, setTxnDetail] = useState<TransactionDetail | null>(null)
+  const [txnDetailLoading, setTxnDetailLoading] = useState(false)
+  const [txnDetailError, setTxnDetailError] = useState("")
 
   const isAdmin = currentUser?.role === "admin"
   const isSubAdmin = currentUser?.role === "sub-admin"
@@ -247,6 +292,93 @@ export function AdminDashboard() {
         setMessage(error instanceof Error ? error.message : text.actionFailed)
       }
     })
+  }
+
+  const loadTransactions = useCallback(async (targetPage: number, month?: number, year?: number, keyword?: string) => {
+    setTxnLoading(true)
+    setTxnError("")
+    try {
+      const result = await getAdminTransactionsApi({ page: targetPage, size: TRANSACTIONS_PAGE_SIZE, month, year, keyword })
+      setTxnItems(result.content)
+      setTxnTotalPages(result.totalPages)
+      setTxnPage(result.number)
+    } catch (error) {
+      setTxnItems([])
+      setTxnError(error instanceof Error ? error.message : text.transactionsErrorLoad)
+    } finally {
+      setTxnLoading(false)
+    }
+  }, [text.transactionsErrorLoad])
+
+  useEffect(() => {
+    if (section === "activity-logs") void loadTransactions(0, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section])
+
+  // GAP-5 (đã chốt tại contract): debounce 300-500ms, chỉ gửi keyword khi >= 2 ký tự sau trim.
+  useEffect(() => {
+    if (section !== "activity-logs") return
+    const trimmed = txnKeywordInput.trim()
+    const timer = setTimeout(() => {
+      const nextKeyword = trimmed.length >= 2 ? trimmed : undefined
+      setTxnAppliedKeyword(nextKeyword)
+      setTxnHasFilter(nextKeyword != null || txnAppliedMonth != null || txnAppliedYear != null)
+      void loadTransactions(0, txnAppliedMonth, txnAppliedYear, nextKeyword)
+    }, TRANSACTIONS_KEYWORD_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txnKeywordInput])
+
+  const currentYear = new Date().getFullYear()
+  const txnYearOptions = Array.from(
+    { length: currentYear + 1 - TRANSACTIONS_MIN_YEAR + 1 },
+    (_, i) => TRANSACTIONS_MIN_YEAR + i,
+  ).reverse()
+
+  const applyTransactionFilters = () => {
+    const month = txnMonthDraft === "" ? undefined : Number(txnMonthDraft)
+    const year = txnYearDraft === "" ? (month != null ? currentYear : undefined) : Number(txnYearDraft)
+    setTxnAppliedMonth(month)
+    setTxnAppliedYear(year)
+    setTxnHasFilter(month != null || year != null || txnAppliedKeyword != null)
+    void loadTransactions(0, month, year, txnAppliedKeyword)
+  }
+
+  const clearTransactionFilters = () => {
+    setTxnMonthDraft("")
+    setTxnYearDraft("")
+    setTxnKeywordInput("")
+    setTxnAppliedMonth(undefined)
+    setTxnAppliedYear(undefined)
+    setTxnAppliedKeyword(undefined)
+    setTxnHasFilter(false)
+    void loadTransactions(0, undefined, undefined, undefined)
+  }
+
+  const goToTransactionPage = (nextPage: number) => {
+    if (nextPage < 0 || nextPage >= txnTotalPages) return
+    void loadTransactions(nextPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)
+  }
+
+  const openTransactionDetail = async (orderId: string) => {
+    setTxnSelectedOrderId(orderId)
+    setTxnDetail(null)
+    setTxnDetailError("")
+    setTxnDetailLoading(true)
+    try {
+      const result = await getAdminTransactionDetailApi(orderId)
+      setTxnDetail(result)
+    } catch (error) {
+      setTxnDetailError(error instanceof Error ? error.message : text.transactionsErrorLoad)
+    } finally {
+      setTxnDetailLoading(false)
+    }
+  }
+
+  const closeTransactionDetail = () => {
+    setTxnSelectedOrderId(null)
+    setTxnDetail(null)
+    setTxnDetailError("")
   }
 
   const selectSection = (nextSection: AdminSection) => {
@@ -360,42 +492,93 @@ export function AdminDashboard() {
               onClick={() => selectSection("upload-settings")}
             />
           )}
-          <AdminTaskButton label={text.activityLogsPage} body={text.activityLogsPageHint} onClick={() => selectSection("activity-logs")} />
+          <AdminTaskButton label={text.transactionsPage} body={text.transactionsPageHint} onClick={() => selectSection("activity-logs")} />
         </div>
       </section>
     </div>
   )
 
-  const actorLabel = (log: ActivityLog) => {
-    const actor = users.find(user => user.id === log.userId)
-    return actor ? `${actor.displayName} (${actor.email})` : log.userId
-  }
-
-  const renderActivityLogs = () => (
+  const renderTransactions = () => (
     <section className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <Clock className="h-5 w-5 text-primary" />
-            {text.activityLogsTitle}
+            <Receipt className="h-5 w-5 text-primary" />
+            {text.transactionsTitle}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">{text.activityLogsSubtitle}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{text.transactionsSubtitle}</p>
         </div>
         <Button
           variant="outline"
           size="sm"
           className="gap-2"
-          disabled={activityLogsLoading}
-          onClick={() => void loadActivityLogs()}
+          disabled={txnLoading}
+          onClick={() => void loadTransactions(txnPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)}
         >
-          <RefreshCw className={`h-4 w-4 ${activityLogsLoading ? "animate-spin" : ""}`} />
-          {text.activityRefresh}
+          <RefreshCw className={`h-4 w-4 ${txnLoading ? "animate-spin" : ""}`} />
+          {text.transactionsRefresh}
         </Button>
       </div>
 
-      {activityLogsError && (
-        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {activityLogsError}
+      {/* Bộ lọc Tháng/Năm + Tên/Email — TXN-202 */}
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="relative flex items-center">
+            <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={txnKeywordInput}
+              onChange={e => setTxnKeywordInput(e.target.value)}
+              placeholder={text.transactionsSearchPlaceholder}
+              className="w-56 rounded-lg border border-border bg-background px-3 py-2 pl-8 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </span>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.transactionsMonth}</span>
+          <select
+            value={txnMonthDraft}
+            onChange={e => setTxnMonthDraft(e.target.value === "" ? "" : Number(e.target.value))}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">{text.transactionsAllMonths}</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-semibold text-muted-foreground">{text.transactionsYear}</span>
+          <select
+            value={txnYearDraft}
+            onChange={e => setTxnYearDraft(e.target.value === "" ? "" : Number(e.target.value))}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">—</option>
+            {txnYearOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </label>
+        <Button size="sm" onClick={applyTransactionFilters} disabled={txnLoading}>{text.transactionsSearch}</Button>
+        {txnHasFilter && (
+          <Button size="sm" variant="ghost" className="gap-1" onClick={clearTransactionFilters} disabled={txnLoading}>
+            <X className="h-3.5 w-3.5" />
+            {text.transactionsClearFilters}
+          </Button>
+        )}
+      </div>
+
+      {txnError && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span>{txnError}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void loadTransactions(txnPage, txnAppliedMonth, txnAppliedYear, txnAppliedKeyword)}
+          >
+            {text.transactionsRetry}
+          </Button>
         </div>
       )}
 
@@ -403,40 +586,78 @@ export function AdminDashboard() {
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-muted text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 font-semibold">{text.activityAction}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityTarget}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityUser}</th>
-              <th className="px-4 py-3 font-semibold">{text.activityTime}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColUser}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColPlan}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColPaidAt}</th>
+              <th className="px-4 py-3 font-semibold">{text.transactionsColAmount}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {activityLogsLoading && activityLogs.length === 0 ? (
+            {txnLoading && txnItems.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  {text.activityLoading}
+                  {text.transactionsLoading}
                 </td>
               </tr>
-            ) : activityLogs.length === 0 ? (
+            ) : txnItems.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  {text.activityEmpty}
+                  {txnHasFilter ? text.transactionsEmptyFiltered : text.transactionsEmpty}
                 </td>
               </tr>
             ) : (
-              activityLogs.map(log => (
-                <tr key={log.id} className="bg-background/50">
-                  <td className="px-4 py-3 font-medium text-foreground">{log.action}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{log.target}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{actorLabel(log)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {log.timestamp.toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
-                  </td>
+              txnItems.map(item => (
+                <tr
+                  key={item.orderId}
+                  className="cursor-pointer bg-background/50 hover:bg-muted/60"
+                  onClick={() => void openTransactionDetail(item.orderId)}
+                >
+                  <td className="px-4 py-3 font-medium text-foreground">{item.userDisplayName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{item.planName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatTxnPaidAt(item.paidAt, language)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatTxnAmount(item.amount, language)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {txnTotalPages > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={txnPage <= 0 || txnLoading}
+            onClick={() => goToTransactionPage(txnPage - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {text.transactionsPrev}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {text.transactionsPage_} {txnPage + 1} {text.transactionsOf} {txnTotalPages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={txnPage >= txnTotalPages - 1 || txnLoading}
+            onClick={() => goToTransactionPage(txnPage + 1)}
+          >
+            {text.transactionsNext}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {txnSelectedOrderId && (
+        <TransactionDetailModal
+          loading={txnDetailLoading}
+          error={txnDetailError}
+          detail={txnDetail}
+          language={language === "vi" ? "vi" : "en"}
+          onClose={closeTransactionDetail}
+        />
+      )}
     </section>
   )
 
@@ -529,6 +750,7 @@ export function AdminDashboard() {
     if (!Number.isInteger(pkg.joinGroupLimit) || pkg.joinGroupLimit < -1) return { error: "Giới hạn tham gia nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.dailyMaxFlashcards) || pkg.dailyMaxFlashcards < -1) return { error: "Hạn mức tạo Flashcard AI/ngày phải là số nguyên từ -1 trở lên." }
     const defaultStorageBytes = parseStorageBytes(pkg.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) return { error: "Dung lượng lưu trữ không hợp lệ." }
 
@@ -541,6 +763,7 @@ export function AdminDashboard() {
         joinGroupLimit: pkg.joinGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
         maxFlashcards: pkg.maxFlashcards,
+        dailyMaxFlashcards: pkg.dailyMaxFlashcards,
       },
     }
   }
@@ -581,11 +804,34 @@ export function AdminDashboard() {
       }
     }
 
-    requireConfirm(formatAdminText(text.updatePackage, { name: updated.name }), runSave)
+    // SUB-302 (Business Logic doc, Mục 3): trước khi hiển thị Pop-up "Lưu thay
+    // đổi", gọi GET active-user-count (SUB-201a) để làm rõ phạm vi ảnh hưởng —
+    // chỉ mang tính minh bạch hoá, KHÔNG chặn thao tác nếu gọi lỗi.
+    let confirmLabel = formatAdminText(text.updatePackage, { name: updated.name })
+    try {
+      const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
+      confirmLabel += text.updateActiveUserCountWarning(activeUserCount)
+    } catch {
+      // Không chặn Admin sửa gói nếu chỉ riêng số liệu cảnh báo không tải được.
+    }
+
+    requireConfirm(confirmLabel, runSave)
   }
 
-  const deletePkg = (pkg: EditablePkg) => {
-    requireConfirm(formatAdminText(text.deletePackage, { name: pkg.name }), async () => {
+  const deletePkg = async (pkg: EditablePkg) => {
+    // SUB-201 (Business Logic doc, Mục 2): gọi GET active-user-count (SUB-201a)
+    // NGAY khi Admin bấm "Xoá", hiển thị số liệu trên Pop-up xác nhận TRƯỚC
+    // khi gọi DELETE — DELETE không còn tự trả về/kiểm tra số người dùng nữa
+    // (không còn chặn thao tác), nên bước cảnh báo này nằm hẳn ở FE.
+    let confirmLabel = formatAdminText(text.deletePackage, { name: pkg.name })
+    try {
+      const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
+      confirmLabel += text.deleteActiveUserCountWarning(activeUserCount)
+    } catch {
+      // Không chặn Admin xoá gói nếu chỉ riêng số liệu cảnh báo không tải được.
+    }
+
+    requireConfirm(confirmLabel, async () => {
       try {
         await deleteSubscriptionPlanApi(pkg.planName)
         setEditablePackages(prev => prev.filter(p => p.id !== pkg.id))
@@ -626,6 +872,10 @@ export function AdminDashboard() {
       setAddPkgError("Giới hạn flashcard phải từ -1 trở lên.")
       return
     }
+    if (!Number.isInteger(newPkgForm.dailyMaxFlashcards) || newPkgForm.dailyMaxFlashcards < -1) {
+      setAddPkgError("Hạn mức tạo Flashcard AI/ngày phải từ -1 trở lên.")
+      return
+    }
     if (isPlanNameTaken(newPkgForm.name, editablePackages)) {
       setAddPkgError("Tên gói này đã được sử dụng. Vui lòng chọn tên khác.")
       return
@@ -642,6 +892,7 @@ export function AdminDashboard() {
           joinGroupLimit: newPkgForm.joinGroupLimit,
           dailyAiChatLimit: newPkgForm.dailyAiChatLimit,
           maxFlashcards: newPkgForm.maxFlashcards,
+          dailyMaxFlashcards: newPkgForm.dailyMaxFlashcards,
         })
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
@@ -660,6 +911,7 @@ export function AdminDashboard() {
           joinGroupLimit: 30,
           dailyAiChatLimit: 5,
           maxFlashcards: 5,
+          dailyMaxFlashcards: 5,
         })
         setMessage(`Đã thêm gói "${newPkg.name}".`)
       } catch (error) {
@@ -917,6 +1169,26 @@ export function AdminDashboard() {
                       <span>{formatPlanLimit(pkg.maxFlashcards, text.flashcardsLimitFeature, text.flashcardsUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
                     )}
                   </li>
+                  {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-302) —
+                      hạn mức tạo Flashcard AI/ngày, độc lập với maxFlashcards (trần tổng) ở trên. */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    {isEditing ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">{text.dailyMaxFlashcardsField}</span>
+                        <input
+                          type="number"
+                          min="-1"
+                          value={draft.dailyMaxFlashcards ?? 5}
+                          onChange={e => setPkgDraft(d => ({ ...d, dailyMaxFlashcards: Number(e.target.value) }))}
+                          title={text.unlimitedInputHint}
+                          className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    ) : (
+                      <span>{formatPlanLimit(pkg.dailyMaxFlashcards, text.flashcardsDailyLimitFeature, text.flashcardsDailyUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
+                    )}
+                  </li>
                 </ul>
 
                 {/* Action buttons */}
@@ -1086,6 +1358,19 @@ export function AdminDashboard() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </label>
+                {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-301) —
+                    hạn mức tạo Flashcard AI/ngày, độc lập với maxFlashcards ở trên. */}
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.dailyMaxFlashcardsField}</span>
+                  <input
+                    type="number"
+                    min="-1"
+                    value={newPkgForm.dailyMaxFlashcards}
+                    onChange={e => setNewPkgForm(f => ({ ...f, dailyMaxFlashcards: Number(e.target.value) }))}
+                    title={text.unlimitedInputHint}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
               </div>
             </div>
 
@@ -1135,7 +1420,7 @@ export function AdminDashboard() {
           {section === "sub-admins" && isAdmin && renderSubAdmins()}
           {section === "packages" && isAdmin && renderPackages()}
           {section === "upload-settings" && isAdmin && renderUploadSettings()}
-          {section === "activity-logs" && renderActivityLogs()}
+          {section === "activity-logs" && renderTransactions()}
         </main>
       </div>
 

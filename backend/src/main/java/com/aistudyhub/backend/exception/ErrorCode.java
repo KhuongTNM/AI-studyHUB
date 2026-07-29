@@ -52,6 +52,9 @@ public enum ErrorCode {
     AI_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AI_RATE_LIMIT_EXCEEDED"),
     AI_CONTENT_SAFETY_BLOCKED(HttpStatus.UNPROCESSABLE_ENTITY, "AI_CONTENT_SAFETY_BLOCKED"),
 
+    // ==== Bổ sung cho hạn mức tạo Flashcard AI theo ngày (BR-110, thay thế quota tổng BR-103 cũ) ====
+    FLASHCARD_DAILY_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "FLASHCARD_DAILY_LIMIT_EXCEEDED"),
+
     // ==== Bổ sung cho tính năng Xác thực Email bằng OTP (BR-095 → BR-098) ====
     ACCOUNT_NOT_VERIFIED(HttpStatus.FORBIDDEN, "ACCOUNT_NOT_VERIFIED"),
     EMAIL_ALREADY_VERIFIED(HttpStatus.BAD_REQUEST, "EMAIL_ALREADY_VERIFIED"),
