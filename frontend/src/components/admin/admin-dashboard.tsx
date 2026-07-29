@@ -51,6 +51,8 @@ interface EditablePkg {
   joinGroupLimit: number
   dailyAiChatLimit: number
   maxFlashcards: number
+  /** MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112) — hạn mức tạo Flashcard AI/ngày. */
+  dailyMaxFlashcards: number
   hasAiChat: boolean
   hasFlashcards: boolean
 }
@@ -125,6 +127,7 @@ function pkgFromPlan(plan: ApiSubscriptionPlan): EditablePkg {
     joinGroupLimit: plan.joinGroupLimit,
     dailyAiChatLimit: plan.dailyAiChatLimit,
     maxFlashcards: plan.maxFlashcards,
+    dailyMaxFlashcards: plan.dailyMaxFlashcards,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -146,6 +149,7 @@ function pkgFromPrice(pkg: PackagePrice): EditablePkg {
     joinGroupLimit,
     dailyAiChatLimit: pkg.dailyAiChatLimit ?? 5,
     maxFlashcards: pkg.maxFlashcards ?? 5,
+    dailyMaxFlashcards: pkg.dailyMaxFlashcards ?? 5,
     hasAiChat: true,
     hasFlashcards: true,
   }
@@ -202,6 +206,7 @@ export function AdminDashboard() {
     joinGroupLimit: 30,
     dailyAiChatLimit: 5,
     maxFlashcards: 5,
+    dailyMaxFlashcards: 5,
   })
 
   // ── Lịch sử Giao dịch — Admin & Sub-Admin (TXN-201 → TXN-203) ─────────────
@@ -745,6 +750,7 @@ export function AdminDashboard() {
     if (!Number.isInteger(pkg.joinGroupLimit) || pkg.joinGroupLimit < -1) return { error: "Giới hạn tham gia nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.dailyMaxFlashcards) || pkg.dailyMaxFlashcards < -1) return { error: "Hạn mức tạo Flashcard AI/ngày phải là số nguyên từ -1 trở lên." }
     const defaultStorageBytes = parseStorageBytes(pkg.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) return { error: "Dung lượng lưu trữ không hợp lệ." }
 
@@ -757,6 +763,7 @@ export function AdminDashboard() {
         joinGroupLimit: pkg.joinGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
         maxFlashcards: pkg.maxFlashcards,
+        dailyMaxFlashcards: pkg.dailyMaxFlashcards,
       },
     }
   }
@@ -865,6 +872,10 @@ export function AdminDashboard() {
       setAddPkgError("Giới hạn flashcard phải từ -1 trở lên.")
       return
     }
+    if (!Number.isInteger(newPkgForm.dailyMaxFlashcards) || newPkgForm.dailyMaxFlashcards < -1) {
+      setAddPkgError("Hạn mức tạo Flashcard AI/ngày phải từ -1 trở lên.")
+      return
+    }
     if (isPlanNameTaken(newPkgForm.name, editablePackages)) {
       setAddPkgError("Tên gói này đã được sử dụng. Vui lòng chọn tên khác.")
       return
@@ -881,6 +892,7 @@ export function AdminDashboard() {
           joinGroupLimit: newPkgForm.joinGroupLimit,
           dailyAiChatLimit: newPkgForm.dailyAiChatLimit,
           maxFlashcards: newPkgForm.maxFlashcards,
+          dailyMaxFlashcards: newPkgForm.dailyMaxFlashcards,
         })
         const newPkg = pkgFromPlan(created)
         setEditablePackages(prev => [...prev, newPkg])
@@ -899,6 +911,7 @@ export function AdminDashboard() {
           joinGroupLimit: 30,
           dailyAiChatLimit: 5,
           maxFlashcards: 5,
+          dailyMaxFlashcards: 5,
         })
         setMessage(`Đã thêm gói "${newPkg.name}".`)
       } catch (error) {
@@ -1156,6 +1169,26 @@ export function AdminDashboard() {
                       <span>{formatPlanLimit(pkg.maxFlashcards, text.flashcardsLimitFeature, text.flashcardsUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
                     )}
                   </li>
+                  {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-302) —
+                      hạn mức tạo Flashcard AI/ngày, độc lập với maxFlashcards (trần tổng) ở trên. */}
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    {isEditing ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">{text.dailyMaxFlashcardsField}</span>
+                        <input
+                          type="number"
+                          min="-1"
+                          value={draft.dailyMaxFlashcards ?? 5}
+                          onChange={e => setPkgDraft(d => ({ ...d, dailyMaxFlashcards: Number(e.target.value) }))}
+                          title={text.unlimitedInputHint}
+                          className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    ) : (
+                      <span>{formatPlanLimit(pkg.dailyMaxFlashcards, text.flashcardsDailyLimitFeature, text.flashcardsDailyUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
+                    )}
+                  </li>
                 </ul>
 
                 {/* Action buttons */}
@@ -1321,6 +1354,19 @@ export function AdminDashboard() {
                     min="-1"
                     value={newPkgForm.maxFlashcards}
                     onChange={e => setNewPkgForm(f => ({ ...f, maxFlashcards: Number(e.target.value) }))}
+                    title={text.unlimitedInputHint}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-301) —
+                    hạn mức tạo Flashcard AI/ngày, độc lập với maxFlashcards ở trên. */}
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{text.dailyMaxFlashcardsField}</span>
+                  <input
+                    type="number"
+                    min="-1"
+                    value={newPkgForm.dailyMaxFlashcards}
+                    onChange={e => setNewPkgForm(f => ({ ...f, dailyMaxFlashcards: Number(e.target.value) }))}
                     title={text.unlimitedInputHint}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />

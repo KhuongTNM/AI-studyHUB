@@ -29,7 +29,14 @@ export interface ApiSubscriptionPlan {
   createGroupLimit: number
   joinGroupLimit: number
   dailyAiChatLimit: number
+  /** ĐÃ CÓ, DEPRECATED cho mục đích chặn AI-generation kể từ BR-110 — xem dailyMaxFlashcards. */
   maxFlashcards: number
+  /**
+   * MỚI (Flashcard_AI_Daily_Quota_API_Contract.docx v2.0, Mục 3 & 5.4) — hạn mức tạo
+   * Flashcard bằng AI/ngày. -1 = không giới hạn. Đây là field DUY NHẤT quyết định việc
+   * chặn tạo Flashcard bằng AI (BR-110) — maxFlashcards ở trên không còn tác dụng này.
+   */
+  dailyMaxFlashcards: number
 }
 
 export interface CreateSubscriptionPlanInput {
@@ -41,6 +48,8 @@ export interface CreateSubscriptionPlanInput {
   joinGroupLimit: number
   dailyAiChatLimit?: number
   maxFlashcards?: number
+  /** MỚI — default = 5 ở tầng DTO nếu không truyền, nhưng nên luôn truyền tường minh (Mục 3, Notes). */
+  dailyMaxFlashcards?: number
 }
 
 export interface UpdateSubscriptionPlanInput {
@@ -51,6 +60,8 @@ export interface UpdateSubscriptionPlanInput {
   joinGroupLimit?: number | null
   dailyAiChatLimit?: number | null
   maxFlashcards?: number | null
+  /** MỚI — Integer tuỳ chọn, chỉ cập nhật khi FE truyền (Mục 3, ADM-302a). */
+  dailyMaxFlashcards?: number | null
 }
 
 interface ErrorBody {

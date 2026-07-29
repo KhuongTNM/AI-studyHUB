@@ -101,6 +101,8 @@ export const adminText = {
     maxRoomMembersField: "Số thành viên tối đa/nhóm",
     dailyAiChatLimitField: "AI Chat mỗi ngày",
     maxFlashcardsField: "Flashcard tối đa",
+    // MỚI (Flashcard_AI_Daily_Quota_Business_Logic.docx v2.0, Mục 2 — Addendum ADM-301/302).
+    dailyMaxFlashcardsField: "Hạn mức tạo Flashcard AI/ngày",
     packageNameField: "Tên gói",
     unlimitedInputHint: "Nhập -1 để không giới hạn",
     maxRoomMembers: "Tối đa {count} nhóm được tham gia",
@@ -115,6 +117,9 @@ export const adminText = {
     flashcardsLimitFeature: (limit: number) => `Flashcard tối đa: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcard: không giới hạn",
     flashcardsDisabledFeature: "Không có flashcard",
+    // MỚI (BR-110 → BR-112) — hiển thị hạn mức tạo Flashcard AI/ngày trên thẻ gói.
+    flashcardsDailyLimitFeature: (limit: number) => `Flashcard AI: ${limit} lượt/ngày`,
+    flashcardsDailyUnlimitedFeature: "Flashcard AI: không giới hạn/ngày",
     groupLimitsFeature: (create: string, join: string) => `Tạo ${create}, tham gia ${join}`,
     noCreateGroupFeature: (join: string) => `Không tạo nhóm, tham gia ${join}`,
     accountUnlocked: "Đã mở khóa tài khoản.",
@@ -286,6 +291,8 @@ export const adminText = {
     maxRoomMembersField: "Max members per group",
     dailyAiChatLimitField: "Daily AI chat limit",
     maxFlashcardsField: "Max flashcards",
+    // NEW (Flashcard_AI_Daily_Quota_Business_Logic.docx v2.0, Section 2 — Addendum ADM-301/302).
+    dailyMaxFlashcardsField: "Daily AI flashcard limit",
     packageNameField: "Plan name",
     unlimitedInputHint: "Enter -1 for unlimited",
     maxRoomMembers: "Up to {count} joined groups",
@@ -300,6 +307,9 @@ export const adminText = {
     flashcardsLimitFeature: (limit: number) => `Max flashcards: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcards: unlimited",
     flashcardsDisabledFeature: "No flashcards",
+    // NEW (BR-110 → BR-112) — shown on the plan card, daily AI flashcard limit.
+    flashcardsDailyLimitFeature: (limit: number) => `AI flashcards: ${limit}/day`,
+    flashcardsDailyUnlimitedFeature: "AI flashcards: unlimited/day",
     groupLimitsFeature: (create: string, join: string) => `Create ${create}, join ${join}`,
     noCreateGroupFeature: (join: string) => `No group creation, join ${join}`,
     accountUnlocked: "Account unlocked.",
