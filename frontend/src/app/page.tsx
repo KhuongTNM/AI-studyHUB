@@ -116,7 +116,7 @@ function HomePage() {
       <div className="mb-12 text-center">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
           <Sparkles className="h-4 w-4" />
-          StudyHub — SU26SWP10
+          StudyHub — SU26SWP391
         </div>
         <h1 className="mb-4 text-balance text-4xl font-bold text-foreground md:text-6xl">
           {text.hero}{" "}

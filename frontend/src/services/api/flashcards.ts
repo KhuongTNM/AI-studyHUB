@@ -7,6 +7,7 @@ import {
 } from "@/services/api/flashcard-generate-errors"
 import {
   mockFetchFlashcardQuotaRequest,
+  mockFetchFlashcardDailyQuotaRequest,
   mockGenerateFlashcardsRequest,
   mockFetchFlashcardsRequest,
   mockFetchAllFlashcardsRequest,
@@ -60,6 +61,8 @@ async function parseErrorBody(response: Response): Promise<{
   perClickLimit?: number
   requestedCount?: number
   createdCount?: number
+  dailyLimit?: number
+  usedToday?: number
 }> {
   try {
     const body = (await response.json()) as {
@@ -67,12 +70,17 @@ async function parseErrorBody(response: Response): Promise<{
       perClickLimit?: number
       requestedCount?: number
       createdCount?: number
+      // MỚI (BR-110, Mục 5.3) — kèm theo lỗi FLASHCARD_DAILY_LIMIT_EXCEEDED.
+      dailyLimit?: number
+      usedToday?: number
     }
     return {
       message: body.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.",
       perClickLimit: body.perClickLimit,
       requestedCount: body.requestedCount,
       createdCount: body.createdCount,
+      dailyLimit: body.dailyLimit,
+      usedToday: body.usedToday,
     }
   } catch {
     return { message: "Đã xảy ra lỗi. Vui lòng thử lại." }
@@ -92,10 +100,16 @@ function tierToPlanName(tier: string): string {
 
 /**
  * Giới hạn flashcard của gói dịch vụ hiện tại của user:
- *  - maxFlashcards: trần TỔNG số thẻ tồn tại (lifetime cap, ĐÃ CÓ). -1 = không giới hạn.
- *  - perClickLimit: trần số thẻ MỖI LƯỢT BẤM "Tạo Flashcard tự động" (BR-099, MỚI —
- *    độc lập với maxFlashcards). LUÔN là một số hữu hạn (kể cả khi maxFlashcards = -1),
+ *  - maxFlashcards: trần TỔNG số thẻ tồn tại (lifetime cap, ĐÃ CÓ trong schema).
+ *    SỬA (Flashcard_AI_Daily_Quota_API_Contract.docx v2.0, Gap 2/Gap 5): field này
+ *    KHÔNG còn được dùng để tính/chặn việc sinh Flashcard bằng AI nữa — quota tổng
+ *    đã bị bãi bỏ hoàn toàn, thay bằng hạn mức NGÀY (xem FlashcardDailyQuota +
+ *    fetchFlashcardDailyQuotaApi bên dưới). Field vẫn được giữ lại ở đây chỉ vì API
+ *    /api/subscription-plans/{planName} vẫn trả về nó (DEPRECATED cho mục đích chặn AI).
+ *  - perClickLimit: trần số thẻ MỖI LƯỢT BẤM "Tạo Flashcard tự động" (BR-099, ĐÃ CÓ —
+ *    độc lập với hạn mức ngày). LUÔN là một số hữu hạn (kể cả khi maxFlashcards = -1),
  *    vì BR-099 yêu cầu "kể cả gói không giới hạn tổng cũng phải có 1 trần per-click hợp lý".
+ *    Đây là lý do DUY NHẤT hàm fetchFlashcardQuotaApi bên dưới còn được gọi.
  */
 export interface FlashcardLimits {
   maxFlashcards: number
@@ -107,7 +121,11 @@ export interface FlashcardLimits {
  * gọi trực tiếp endpoint public GET /api/subscription-plans/{planName}.
  * Hàm này thuộc phạm vi tính năng flashcard, không đụng vào code/state của tính năng subscription.
  *
- * LƯU Ý (Gap #6, API Contract): field perClickLimit trên SubscriptionPlan hiện CHƯA
+ * SỬA (Gap 5, API Contract Mục 0.2): kể từ khi có fetchFlashcardDailyQuotaApi(), hàm này
+ * CHỈ còn dùng để lấy perClickLimit — KHÔNG dùng field maxFlashcards trả về ở đây để tính
+ * "còn lại" nữa (đã chuyển hẳn sang field `remaining` của GET /api/flashcards/quota).
+ *
+ * LƯU Ý (Gap #6, API Contract batching cũ): field perClickLimit trên SubscriptionPlan hiện CHƯA
  * tồn tại ở BE tại thời điểm viết FE này — hàm này giả định BE sẽ trả field đó cùng
  * response hiện có. Nếu field vắng mặt (BE chưa deploy), fallback về FALLBACK_PER_CLICK_LIMIT
  * để không chặn UI.
@@ -146,6 +164,35 @@ export async function fetchFlashcardQuotaApi(
   if (!response.ok) throw new Error(await parseError(response))
   const plan = (await response.json()) as { maxFlashcards: number; perClickLimit?: number }
   return { maxFlashcards: plan.maxFlashcards, perClickLimit: plan.perClickLimit ?? FALLBACK_PER_CLICK_LIMIT }
+}
+
+/**
+ * GET /api/flashcards/quota — MỚI (BR-112, API Contract Mục 2 & 5.1).
+ * Nguồn dữ liệu DUY NHẤT để hiển thị hạn mức tạo Flashcard AI CÒN LẠI trong ngày —
+ * FE KHÔNG được tự tính lại bằng bất kỳ công thức nào dựa trên danh sách flashcard
+ * hiện có (Gap 5, đã chốt chính thức). Gọi lại hàm này ngay khi vào màn hình
+ * Flashcard và sau MỖI lượt tạo bằng AI (thành công hoặc bị chặn) — xem
+ * useFlashcardState/flashcard-page.tsx.
+ */
+export interface FlashcardDailyQuota {
+  /** Hạn mức tạo Flashcard AI/ngày theo gói hiện tại. -1 = không giới hạn. */
+  limit: number
+  /** Số LƯỢT (thẻ) AI đã sinh trong ngày hôm nay — increment-only, KHÔNG giảm khi xoá thẻ (Gap 3). */
+  used: number
+  /** limit - used. null khi unlimited = true. */
+  remaining: number | null
+  /** true nếu limit = -1 hoặc User là Admin/Sub-Admin. */
+  unlimited: boolean
+}
+
+export async function fetchFlashcardDailyQuotaApi(): Promise<FlashcardDailyQuota> {
+  const response = MOCK_API
+    ? await mockFetchFlashcardDailyQuotaRequest()
+    : await fetch(`${API_BASE_URL}/api/flashcards/quota`, {
+        headers: authHeaders(),
+      })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
 }
 
 function mapStatus(status: string): FlashcardStatus {
