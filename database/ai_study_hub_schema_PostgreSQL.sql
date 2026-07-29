@@ -637,4 +637,70 @@ EXECUTE FUNCTION payment.protect_free_subscription_plan();
 -- SELECT tgname FROM pg_trigger WHERE tgrelid = 'payment.subscription_plans'::regclass;
 -- (Kỳ vọng: có dòng trg_protect_free_subscription_plan)
 -- ============================================================
+-- ============================================================
+-- Migration: Hạn mức tạo Flashcard bằng AI theo NGÀY (BR-110 → BR-112)
+-- + Bãi bỏ hoàn toàn cơ chế quota TỔNG (BR-103 cũ) cho AI-generation.
+--
+-- Xem Flashcard_AI_Daily_Quota_Business_Logic.docx (v2.0, Mục 0.2 → 0.4)
+-- và Flashcard_AI_Daily_Quota_API_Contract.docx (v2.0, Mục 0.2, 5, 8).
+-- Chạy tay trên DB hiện có (ddl-auto=none, không dùng Flyway/Liquibase trong project này).
+--
+-- Thứ tự chạy: PHẢI chạy file này TRƯỚC khi deploy code BE đã đổi sang đọc
+-- daily_max_flashcards_snapshot (FlashcardService) — nếu deploy code trước, mọi
+-- User sẽ đột ngột nhận hạn mức 0 lượt/ngày cho tới khi migration này chạy xong.
+--
+-- LƯU Ý (Gap 2, đã chốt): cột max_flashcards / max_flashcards_snapshot cũ được
+-- GIỮ NGUYÊN, không xoá — chỉ không còn được FlashcardService đọc để chặn AI-
+-- generation nữa (coi là deprecated cho mục đích đó). Việc dọn dẹp/xoá hẳn 2 cột
+-- này là quyết định riêng, ngoài phạm vi migration này.
+-- ============================================================
+
+-- 1) BR-112: bảng đếm LƯỢT ĐÃ SINH Flashcard bằng AI theo (user, ngày) — increment-only,
+-- KHÔNG giảm khi User xoá Flashcard sau đó (Gap 3, đã chốt). usage_date lưu theo lịch
+-- Asia/Ho_Chi_Minh (GMT+7), do tầng Backend tính và truyền vào — cột DATE thuần không
+-- gắn timezone, tránh nhầm lẫn với LocalDateTime naive đang dùng cho created_at hiện có.
+CREATE TABLE IF NOT EXISTS ai.flashcard_ai_daily_usage (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID        NOT NULL,
+  usage_date DATE        NOT NULL,
+  count      INTEGER     NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ux_flashcard_ai_daily_usage_user_date UNIQUE (user_id, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS ix_flashcard_ai_daily_usage_user_date
+  ON ai.flashcard_ai_daily_usage (user_id, usage_date);
+
+-- 2) Hạn mức AI/ngày cấu hình theo gói (SubscriptionPlan) — Admin chỉnh qua ADM-301/302.
+-- max_flashcards (cột cũ) GIỮ NGUYÊN, không xoá (xem lưu ý đầu file).
+ALTER TABLE payment.subscription_plans
+  ADD COLUMN IF NOT EXISTS daily_max_flashcards INTEGER NOT NULL DEFAULT 5;
+
+-- 3) SUB-301: snapshot hạn mức AI/ngày tại thời điểm kích hoạt Subscription — cùng cơ chế
+-- snapshot đã áp dụng cho daily_ai_chat_limit_snapshot/max_flashcards_snapshot hiện có.
+ALTER TABLE payment.subscriptions
+  ADD COLUMN IF NOT EXISTS daily_max_flashcards_snapshot INTEGER NOT NULL DEFAULT 0;
+
+-- 4) Backfill snapshot cho các bản ghi ACTIVE đã tồn tại TRƯỚC migration này, dùng cấu hình
+-- LIVE hiện tại của plan tương ứng làm xấp xỉ tốt nhất có thể (giống cách
+-- migration_subscription_snapshot_and_backfill.sql đã backfill các cột _snapshot khác).
+UPDATE payment.subscriptions s
+SET daily_max_flashcards_snapshot = p.daily_max_flashcards
+FROM payment.subscription_plans p
+WHERE s.plan_id = p.id
+  AND s.status = 'ACTIVE';
+
+-- ============================================================
+-- Verify (chạy tay, không bắt buộc) — xác nhận migration đã áp dụng đúng:
+--
+-- SELECT column_name, data_type, column_default
+-- FROM information_schema.columns
+-- WHERE table_schema = 'payment' AND column_name LIKE 'daily_max_flashcards%';
+--
+-- SELECT count(*) FROM payment.subscriptions
+-- WHERE status = 'ACTIVE' AND daily_max_flashcards_snapshot = 0;
+-- (Số dòng này chỉ đúng 0 nếu KHÔNG có gói nào thật sự cấu hình hạn mức = 0 — nếu có,
+-- đối chiếu thêm với plan_id tương ứng để chắc chắn đây là giá trị thật, không phải
+-- sót backfill.)
+-- ============================================================
 
