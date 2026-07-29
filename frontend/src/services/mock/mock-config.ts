@@ -7,4 +7,4 @@
  *
  * Đổi đúng 1 dòng dưới đây khi backend đã deploy xong 3 API.
  */
-export const MOCK_API = false
+export const MOCK_API = true

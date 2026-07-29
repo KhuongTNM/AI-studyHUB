@@ -11,6 +11,8 @@
  */
 
 import { mockFindPlanById, mockGetFreePlan } from "@/services/mock/subscription-plans.mock"
+import { getAccessToken } from "@/lib/auth-storage"
+import { mockFetchCurrentUserRequest } from "@/services/mock/auth.mock"
 
 // ─── Kho dữ liệu giả lập trong phiên làm việc (mất khi reload trang) ────────
 
@@ -29,10 +31,68 @@ interface MockFlashcard {
 const mockCards: MockFlashcard[] = []
 let mockSeq = 0
 
-// Cache lại giới hạn gói (maxFlashcards) mỗi lần fetchFlashcardQuotaApi được gọi,
-// để generate/create mock dùng lại đúng con số đó khi enforce quota — giống hệt
-// cách backend thật đọc plan.getMaxFlashcards() ở FlashcardService.java.
+// Cache lại giới hạn gói (maxFlashcards) mỗi lần fetchFlashcardQuotaApi được gọi.
+// LƯU Ý (Gap 2, Flashcard_AI_Daily_Quota_API_Contract.docx v2.0): kể từ bản daily
+// quota, biến này KHÔNG còn dùng để chặn việc sinh Flashcard AI nữa (quota tổng đã
+// bị bãi bỏ hoàn toàn) — chỉ còn giữ lại vì response của
+// GET /api/subscription-plans/{planName} vẫn trả field maxFlashcards (DEPRECATED).
 let cachedMaxFlashcards = 5
+
+// ─── BR-110/BR-112 — bộ đếm LƯỢT ĐÃ SINH Flashcard AI theo (user, ngày) ─────
+// Increment-only, KHÔNG giảm khi xoá thẻ (Gap 3) — giống hệt cơ chế
+// ai.flashcard_ai_daily_usage phía Backend thật. Mốc "ngày" ở mock dùng luôn
+// giờ hệ thống của trình duyệt (không có server riêng để ép Asia/Ho_Chi_Minh
+// như Backend thật, Gap 4) — chỉ đủ để FE tự test luồng chặn/hiển thị hạn mức
+// ngày mà không cần chờ Backend deploy.
+
+interface MockIdentity {
+  email: string
+  role: string
+  subscriptionPlanId: number | null
+}
+
+async function resolveMockIdentity(): Promise<MockIdentity | null> {
+  const token = getAccessToken()
+  const response = await mockFetchCurrentUserRequest(token)
+  if (!response.ok) return null
+  const user = await response.json()
+  return {
+    email: user.email,
+    role: user.role,
+    subscriptionPlanId: user.subscriptionPlanId ?? null,
+  }
+}
+
+// BR-110 Mục 2: Admin & Sub-Admin luôn miễn trừ hoàn toàn khỏi hạn mức ngày.
+function dailyLimitFor(identity: MockIdentity): number {
+  if (identity.role === "admin" || identity.role === "sub-admin") return -1
+  const plan = mockFindPlanById(identity.subscriptionPlanId ?? undefined) ?? mockGetFreePlan()
+  return plan.dailyMaxFlashcards
+}
+
+const dailyUsageByEmail = new Map<string, { count: number; dateKey: string }>()
+
+function todayKey(): string {
+  return new Date().toDateString()
+}
+
+function getUsedToday(email: string): number {
+  const entry = dailyUsageByEmail.get(email)
+  if (!entry || entry.dateKey !== todayKey()) return 0
+  return entry.count
+}
+
+// MỚI (Gap 3) — tăng bộ đếm lượt-đã-sinh, KHÔNG BAO GIỜ giảm dù thẻ sau này bị xoá.
+function incrementUsedToday(email: string, delta: number): void {
+  if (delta <= 0) return
+  const key = todayKey()
+  const entry = dailyUsageByEmail.get(email)
+  if (!entry || entry.dateKey !== key) {
+    dailyUsageByEmail.set(email, { count: delta, dateKey: key })
+    return
+  }
+  entry.count += delta
+}
 
 function newId(): string {
   mockSeq += 1
@@ -101,6 +161,24 @@ export async function mockFetchFlashcardQuotaRequest(
   return jsonResponse(200, { maxFlashcards: cachedMaxFlashcards, perClickLimit: cachedPerClickLimit })
 }
 
+// ─── 1b. MỚI (BR-112) — GET /api/flashcards/quota (hạn mức tạo Flashcard AI/ngày) ──
+// userId LUÔN lấy qua JWT (accessToken hiện tại), không có tham số nào khác truyền vào,
+// giống hệt hành vi thật của @AuthenticationPrincipal ở BE (API Contract Mục 2, Notes).
+
+export async function mockFetchFlashcardDailyQuotaRequest(): Promise<Response> {
+  await delay(150)
+  const identity = await resolveMockIdentity()
+  if (!identity) return jsonResponse(401, { message: "Phiên đăng nhập đã hết hạn." })
+
+  const limit = dailyLimitFor(identity)
+  const used = getUsedToday(identity.email)
+
+  if (limit === -1) {
+    return jsonResponse(200, { limit: -1, used, remaining: null, unlimited: true })
+  }
+  return jsonResponse(200, { limit, used, remaining: Math.max(0, limit - used), unlimited: false })
+}
+
 // ─── 2. Generate AI theo cơ chế Batching (POST /api/flashcards/generate) ────
 // Mô phỏng đúng luồng BR-100: chia N thành các batch 5 thẻ, chạy tuần tự,
 // "lưu" ngay sau mỗi batch thành công. Response trả về đúng shape MỚI của
@@ -151,12 +229,27 @@ export async function mockGenerateFlashcardsRequest(
     })
   }
 
-  // 2. Quota tổng còn lại (ĐÃ CÓ, giữ nguyên pattern lỗi cũ — flat message).
-  const currentAiCount = mockCards.filter(c => c.aiGenerated).length
-  if (cachedMaxFlashcards !== -1 && currentAiCount + requestedCount > cachedMaxFlashcards) {
+  // 2. SỬA (BR-110, Gap 2 — Flashcard_AI_Daily_Quota_API_Contract.docx v2.0):
+  //    quota TỔNG (currentAiCount vs maxFlashcards) đã bị bãi bỏ hoàn toàn, THAY
+  //    BẰNG hạn mức NGÀY, đọc từ dailyMaxFlashcards của gói hiện tại + bộ đếm
+  //    LƯỢT ĐÃ SINH riêng theo (user, ngày) — increment-only, không hoàn lại khi
+  //    xoá thẻ (Gap 3). Admin/Sub-Admin tiếp tục được miễn trừ hoàn toàn (Mục 1, Notes).
+  const identity = await resolveMockIdentity()
+  if (!identity) {
+    await delay(150)
+    return jsonResponse(401, { message: "Phiên đăng nhập đã hết hạn." })
+  }
+  const dailyLimit = dailyLimitFor(identity)
+  const usedToday = getUsedToday(identity.email)
+  if (dailyLimit !== -1 && usedToday + requestedCount > dailyLimit) {
     await delay(150)
     return jsonResponse(400, {
-      message: `Gói của bạn chỉ cho phép tạo tối đa ${cachedMaxFlashcards} flashcard bằng AI. Bạn hiện có ${currentAiCount} thẻ AI, không thể tạo thêm ${requestedCount} thẻ.`,
+      code: "FLASHCARD_DAILY_LIMIT_EXCEEDED",
+      message: "FLASHCARD_DAILY_LIMIT_EXCEEDED",
+      timestamp: new Date().toISOString(),
+      dailyLimit,
+      usedToday,
+      requestedCount,
     })
   }
 
@@ -182,6 +275,9 @@ export async function mockGenerateFlashcardsRequest(
     // SAU batch đầu → PARTIAL_SUCCESS, không phải lỗi cứng).
     if (requestedCount === TEST_HOOK_PARTIAL_TIMEOUT && batchIndex === 2) {
       mockCards.push(...created)
+      // MỚI (Gap 3) — tăng bộ đếm lượt-đã-sinh đúng bằng số thẻ THỰC SỰ đã lưu,
+      // kể cả khi bị dừng giữa chừng (PARTIAL_SUCCESS).
+      incrementUsedToday(identity.email, created.length)
       return jsonResponse(200, {
         status: "PARTIAL_SUCCESS",
         requestedCount,
@@ -199,6 +295,8 @@ export async function mockGenerateFlashcardsRequest(
   }
 
   mockCards.push(...created)
+  // MỚI (Gap 3) — tăng bộ đếm lượt-đã-sinh, KHÔNG BAO GIỜ giảm dù thẻ sau này bị xoá.
+  incrementUsedToday(identity.email, created.length)
   return jsonResponse(200, {
     status: "COMPLETED",
     requestedCount,

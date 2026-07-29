@@ -125,9 +125,9 @@ const featuresText = {
 
 const footerText = {
   vi: {
-    copyright: "© 2026 StudyHub • SU26SWP10 • Dành cho sinh viên",
+    copyright: "© 2026 StudyHub • SU26SWP391 • Dành cho sinh viên",
   },
   en: {
-    copyright: "© 2026 StudyHub • SU26SWP10 • Built for students",
+    copyright: "© 2026 StudyHub • SU26SWP391 • Built for students",
   },
 } as const
