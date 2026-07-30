@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { MOCK_CATEGORIES } from "@/states/mock-data"
 import {
   fetchDocumentsApi,
   uploadDocumentApi,
@@ -41,7 +40,7 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
   const documentsRef = useRef<Document[]>(documents)
   const uploadPollsRef = useRef(new Map<string, UploadPoll>())
   useEffect(() => { documentsRef.current = documents }, [documents])
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES)
+  const [categories, setCategories] = useState<Category[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
 
   // Upload processing polls must not survive an account switch or unmount.

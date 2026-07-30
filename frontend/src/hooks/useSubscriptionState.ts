@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react"
 import { fetchSubscriptionPlansApi, updatePackagePriceApi } from "@/services/api/subscription-plans"
 import { fetchMySubscriptionApi, type MySubscription } from "@/services/api/subscriptions"
 import { grantSubscriptionApi } from "@/services/api/admin-users"
-import { DEFAULT_PACKAGE_PRICES } from "@/states/mock-data"
 import type { PackagePrice, PackageTier, User } from "@/states/types"
 import type { Dispatch, SetStateAction } from "react"
 
@@ -44,7 +43,7 @@ export function useSubscriptionState({
   setUsers,
   addLog,
 }: SubscriptionStateDeps) {
-  const [packagePrices, setPackagePrices] = useState<PackagePrice[]>(DEFAULT_PACKAGE_PRICES)
+  const [packagePrices, setPackagePrices] = useState<PackagePrice[]>([])
   // SUB-202: gói/hạn mức User THỰC SỰ đang dùng, đọc theo snapshot (SUB-301) từ
   // GET /api/subscriptions/me — độc lập với việc gói đó còn nằm trong danh
   // sách công khai (packagePrices) hay đã bị Admin xoá mềm. null = chưa
