@@ -73,6 +73,7 @@ export function useSubscriptionState({
         joinGroupLimit: plan.joinGroupLimit,
         dailyAiChatLimit: plan.dailyAiChatLimit,
         maxFlashcards: plan.maxFlashcards,
+        dailyMaxFlashcards: plan.dailyMaxFlashcards,
       })))
     } catch {
       // Giữ giá cũ (mock hoặc lần fetch trước) nếu backend không khả dụng
