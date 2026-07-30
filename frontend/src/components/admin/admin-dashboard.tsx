@@ -739,7 +739,7 @@ export function AdminDashboard() {
     if (!Number.isInteger(pkg.createGroupLimit) || pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.joinGroupLimit) || pkg.joinGroupLimit < -1) return { error: "Giới hạn tham gia nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
-    if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.maxUsers) || pkg.maxUsers < 1) return { error: "Số thành viên tối đa/nhóm phải là số nguyên từ 1 trở lên." }
     if (!Number.isInteger(pkg.dailyMaxFlashcards) || pkg.dailyMaxFlashcards < -1) return { error: "Hạn mức tạo Flashcard AI/ngày phải là số nguyên từ -1 trở lên." }
     const defaultStorageBytes = parseStorageBytes(pkg.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) return { error: "Dung lượng lưu trữ không hợp lệ." }
@@ -752,7 +752,7 @@ export function AdminDashboard() {
         createGroupLimit: pkg.createGroupLimit,
         joinGroupLimit: pkg.joinGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
-        maxFlashcards: pkg.maxFlashcards,
+        maxRoomMembers: pkg.maxUsers,
         dailyMaxFlashcards: pkg.dailyMaxFlashcards,
       },
     }
@@ -1149,13 +1149,12 @@ export function AdminDashboard() {
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
                     {isEditing ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs">{text.maxFlashcardsField}</span>
+                        <span className="text-xs">{text.maxRoomMembersField}</span>
                         <input
                           type="number"
-                          min="-1"
-                          value={draft.maxFlashcards ?? 5}
-                          onChange={e => setPkgDraft(d => ({ ...d, maxFlashcards: Number(e.target.value) }))}
-                          title={text.unlimitedInputHint}
+                          min="1"
+                          value={draft.maxUsers ?? pkg.maxUsers}
+                          onChange={e => setPkgDraft(d => ({ ...d, maxUsers: Number(e.target.value) }))}
                           className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>

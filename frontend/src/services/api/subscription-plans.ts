@@ -59,6 +59,7 @@ export interface UpdateSubscriptionPlanInput {
   createGroupLimit?: number | null
   joinGroupLimit?: number | null
   dailyAiChatLimit?: number | null
+  maxRoomMembers?: number | null
   maxFlashcards?: number | null
   /** MỚI — Integer tuỳ chọn, chỉ cập nhật khi FE truyền (Mục 3, ADM-302a). */
   dailyMaxFlashcards?: number | null
