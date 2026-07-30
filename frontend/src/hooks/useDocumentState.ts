@@ -512,8 +512,6 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
 
   return {
     documents,
-    /** Exposed so admin actions (e.g. deleteUserAccount) can soft-delete user docs */
-    setDocuments,
     categories,
     folders,
     addDocument,

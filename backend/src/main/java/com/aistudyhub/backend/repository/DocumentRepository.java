@@ -44,9 +44,6 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Query("UPDATE Document d SET d.folderId = NULL WHERE d.folderId IN :folderIds")
     void clearFolderIdByFolderIds(Collection<UUID> folderIds);
 
-    @Modifying
-    @Query("UPDATE Document d SET d.deletedAt = :deletedAt WHERE d.userId = :userId AND d.deletedAt IS NULL")
-    void softDeleteByUserId(@Param("userId") UUID userId, @Param("deletedAt") java.time.LocalDateTime deletedAt);
     @Query("SELECT DISTINCT d FROM Document d LEFT JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL " +
            "AND (:keyword IS NULL OR LOWER(d.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
            "     OR LOWER(d.originalName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
