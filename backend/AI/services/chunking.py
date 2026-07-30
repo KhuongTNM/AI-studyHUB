@@ -113,8 +113,11 @@ def semantic_chunk_text(text: str) -> List[Dict[str, str]]:
         combined = " ".join(sentences[start_idx:end_idx])
         combined_sentences.append(combined)
         
-    from services.embedding import generate_embeddings_batch
-    embeddings = generate_embeddings_batch(combined_sentences)
+    from services.embedding import generate_embeddings_batch, BATCH_SIZE
+    embeddings = []
+    for i in range(0, len(combined_sentences), BATCH_SIZE):
+        batch = combined_sentences[i:i + BATCH_SIZE]
+        embeddings.extend(generate_embeddings_batch(batch))
     
     distances = []
     for i in range(len(embeddings) - 1):
