@@ -33,4 +33,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailIgnoreCaseForUpdate(@Param("email") String email);
 
     boolean existsBySubscriptionPlanId(Integer subscriptionPlanId);
+
+    /**
+     * Đếm số User đang thực sự gán gói này qua cột legacy core.users.subscription_plan_id.
+     * Dùng riêng cho gói Free trong getActiveUserCount() — Free không bao giờ có bản ghi trong
+     * payment.subscriptions (GAP-T1), nên đếm theo bảng subscriptions sẽ luôn ra 0 cho Free dù
+     * thực tế có bao nhiêu User đang dùng.
+     */
+    long countBySubscriptionPlanId(Integer subscriptionPlanId);
 }
