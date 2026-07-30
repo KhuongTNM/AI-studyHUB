@@ -21,6 +21,9 @@ export function TrashPage() {
   const [confirmId, setConfirmId] = useState<string | "all" | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Trạng thái popup khi restore gặp 409 DUPLICATE_FILE_NAME
+  const [duplicateInfo, setDuplicateInfo] = useState<{ id: string; fileName: string } | null>(null)
+  const [renaming, setRenaming] = useState(false)
 
   // Fetch trash documents từ API mỗi khi vào trang
   const loadTrash = useCallback(async () => {
@@ -50,11 +53,33 @@ export function TrashPage() {
     )
   }
 
-  const handleRestore = (id: string) => {
-    // Xóa khỏi local trash state ngay lập tức
-    setTrashDocs(prev => prev.filter(d => d.id !== id))
-    // Gọi global restoreDocument → ADD doc vào global documents state (không cần refresh trang)
-    restoreDocument(id)
+  const handleRestore = async (id: string) => {
+    setErrorMsg(null)
+    const result = await restoreDocument(id)
+    if (result.success) {
+      // Thành công → remove khỏi danh sách thùng rác
+      setTrashDocs(prev => prev.filter(d => d.id !== id))
+    } else if (result.code === "DUPLICATE_FILE_NAME") {
+      // Trùng tên → mở popup xác nhận, file VẪN còn trong trashDocs
+      setDuplicateInfo({ id, fileName: result.details?.fileName ?? "" })
+    } else {
+      // Lỗi khác → hiển thị error banner
+      setErrorMsg(result.error ?? text.genericError)
+    }
+  }
+
+  const handleRestoreWithRename = async () => {
+    if (!duplicateInfo) return
+    setRenaming(true)
+    const result = await restoreDocument(duplicateInfo.id, true)
+    setRenaming(false)
+    if (result.success) {
+      setTrashDocs(prev => prev.filter(d => d.id !== duplicateInfo.id))
+      setDuplicateInfo(null)
+    } else {
+      setDuplicateInfo(null)
+      setErrorMsg(result.error ?? text.genericError)
+    }
   }
 
   const handleConfirmDelete = async () => {
@@ -111,7 +136,7 @@ export function TrashPage() {
         </div>
       )}
 
-      {/* Confirm dialog overlay */}
+      {/* Confirm dialog overlay — xóa vĩnh viễn */}
       {confirmId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-xl">
@@ -139,6 +164,40 @@ export function TrashPage() {
                 {loading
                   ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />{text.deleting}</>
                   : text.confirmBtn
+                }
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận khi restore gặp trùng tên (DUPLICATE_FILE_NAME) */}
+      {duplicateInfo !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-xl">
+            <h2 className="mb-2 text-base font-semibold text-foreground">
+              {text.duplicateTitle}
+            </h2>
+            <p className="mb-5 text-sm text-muted-foreground">
+              {text.duplicateBody.replace("{name}", duplicateInfo.fileName)}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={renaming}
+                onClick={() => setDuplicateInfo(null)}
+              >
+                {text.cancel}
+              </Button>
+              <Button
+                size="sm"
+                disabled={renaming}
+                onClick={handleRestoreWithRename}
+              >
+                {renaming
+                  ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />{text.renaming}</>
+                  : text.restoreAndRename
                 }
               </Button>
             </div>
@@ -236,6 +295,10 @@ const trashText = {
     cancel: "Hủy",
     deleting: "Đang xóa…",
     genericError: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    duplicateTitle: "Tên tài liệu đã tồn tại",
+    duplicateBody: "Tài liệu '{name}' đã có trong thư mục này. Bạn có muốn khôi phục và đổi tên tự động không?",
+    restoreAndRename: "Khôi phục và đổi tên",
+    renaming: "Đang khôi phục…",
   },
   en: {
     loginToView: "Log in to view trash",
@@ -259,5 +322,9 @@ const trashText = {
     cancel: "Cancel",
     deleting: "Deleting…",
     genericError: "An error occurred. Please try again.",
+    duplicateTitle: "Document name already exists",
+    duplicateBody: "A document named '{name}' already exists in this folder. Would you like to restore with an auto-renamed copy?",
+    restoreAndRename: "Restore & rename",
+    renaming: "Restoring…",
   },
 } as const

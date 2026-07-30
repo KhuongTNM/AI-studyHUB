@@ -300,9 +300,14 @@ export async function updateDocumentVisibilityApi(
   return mapApiDocumentToDocument((await response.json()) as ApiDocument)
 }
 
-/** POST /api/documents/{id}/restore — khôi phục từ trash (BR-023) */
-export async function restoreDocumentApi(id: string): Promise<Document> {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${id}/restore`, {
+/** POST /api/documents/{id}/restore — khôi phục từ trash (BR-023)
+ *  autoRename: nếu true, BE tự thêm hậu tố ` (n)` khi trùng tên (mục 3, restore-duplicate-guard.md).
+ *  Khi không truyền (mặc định false) và trùng tên → 409 DUPLICATE_FILE_NAME.
+ */
+export async function restoreDocumentApi(id: string, autoRename?: boolean): Promise<Document> {
+  const url = new URL(`${API_BASE_URL}/api/documents/${id}/restore`)
+  if (autoRename) url.searchParams.set("autoRename", "true")
+  const response = await fetch(url.toString(), {
     method: "POST",
     headers: authHeaders(),
   })
