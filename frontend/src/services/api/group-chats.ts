@@ -8,11 +8,9 @@ import {
   mockFetchGroupsRequest,
   mockFetchGroupSettingsRequest,
 } from "@/services/mock/group-chats.mock"
-import { MOCK_USERS } from "@/states/mock-data"
 import type { GroupChat, GroupChatMember, GroupChatMessage, GroupInvitation, GroupInvitationCandidate } from "@/states/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
-const USE_GROUP_INVITATION_MOCK = process.env.NEXT_PUBLIC_GROUP_INVITATIONS_MOCK === "true"
 
 // Group core and message history are API-backed. File/image helpers use the
 // corresponding endpoints when those actions are available.
@@ -127,19 +125,6 @@ function mapInvitationCandidate(api: ApiInvitationCandidate): GroupInvitationCan
   }
 }
 
-function mockInvitationCandidate(email: string): GroupInvitationCandidate {
-  const normalizedEmail = email.trim().toLowerCase()
-  const mockUser = MOCK_USERS.find(user => user.email.toLowerCase() === normalizedEmail)
-
-  if (!mockUser) throw new Error("USER_NOT_FOUND")
-
-  return {
-    userId: mockUser.id,
-    displayName: mockUser.displayName,
-    avatar: mockUser.avatar ?? null,
-  }
-}
-
 function mapMessage(api: ApiGroupMessage): GroupChatMessage {
   const documentVisibility = api.documentVisibility?.toLowerCase()
 
@@ -195,7 +180,6 @@ export async function searchGroupInvitationUserApi(
   email: string,
 ): Promise<GroupInvitationCandidate> {
   const normalizedEmail = email.trim().toLowerCase()
-  if (USE_GROUP_INVITATION_MOCK) return mockInvitationCandidate(normalizedEmail)
 
   const query = new URLSearchParams({ email: normalizedEmail })
   const response = await fetch(
@@ -209,7 +193,6 @@ export async function searchGroupInvitationUserApi(
 /** POST /api/groups/{groupId}/invitations — invite a user by email. */
 export async function inviteGroupMemberApi(groupId: string, email: string): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase()
-  if (USE_GROUP_INVITATION_MOCK) return
 
   const query = new URLSearchParams({ email: normalizedEmail })
   const response = await fetch(
