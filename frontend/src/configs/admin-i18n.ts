@@ -115,6 +115,7 @@ export const adminText = {
     aiChatUnlimitedFeature: "AI Chat: không giới hạn",
     aiChatDisabledFeature: "Không có AI Chat",
     flashcardsLimitFeature: (limit: number) => `Flashcard tối đa: ${limit}`,
+    maxRoomMembersFeature: (limit: number) => `Số thành viên tối đa: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcard: không giới hạn",
     flashcardsDisabledFeature: "Không có flashcard",
     // MỚI (BR-110 → BR-112) — hiển thị hạn mức tạo Flashcard AI/ngày trên thẻ gói.
@@ -305,6 +306,7 @@ export const adminText = {
     aiChatUnlimitedFeature: "AI chat: unlimited",
     aiChatDisabledFeature: "No AI chat",
     flashcardsLimitFeature: (limit: number) => `Max flashcards: ${limit}`,
+    maxRoomMembersFeature: (limit: number) => `Max team members: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcards: unlimited",
     flashcardsDisabledFeature: "No flashcards",
     // NEW (BR-110 → BR-112) — shown on the plan card, daily AI flashcard limit.

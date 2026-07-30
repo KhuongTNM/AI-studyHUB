@@ -149,7 +149,7 @@ export function PackagesTab({ currentUser, packagePrices, mySubscription, onBuy,
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                      <span>{formatLimitText(maxFlashcards, text.flashcardLimit, text.flashcardsUnlimited, text.flashcardsDisabled)}</span>
+                      <span>{text.maxRoomMembers(pkg.maxUsers)}</span>
                     </li>
                   </ul>
                 </div>
@@ -201,6 +201,7 @@ const packagesText = {
     groupLimits: (createLimit: number, joinLimit: number) => `Tạo ${formatCount(createLimit, "nhóm", "nhóm", "không giới hạn")}, tham gia ${formatCount(joinLimit, "nhóm", "nhóm", "không giới hạn")}`,
     storage: "Dung lượng lưu trữ",
     flashcardLimit: (limit: number) => `Tối đa ${limit} flashcards/ngày`,
+    maxRoomMembers: (limit: number) => `Tối đa ${limit} thành viên/nhóm`,
     flashcardsUnlimited: "Flashcards: không giới hạn",
     flashcardsDisabled: "Không có flashcards",
     default: "Mặc định",
@@ -231,6 +232,7 @@ const packagesText = {
     groupLimits: (createLimit: number, joinLimit: number) => `Create ${formatCount(createLimit, "group", "groups", "unlimited")}, join ${formatCount(joinLimit, "group", "groups", "unlimited")}`,
     storage: "Storage",
     flashcardLimit: (limit: number) => `Up to ${limit} flashcards/day`,
+    maxRoomMembers: (limit: number) => `Up to ${limit} members/group`,
     flashcardsUnlimited: "Flashcards: unlimited",
     flashcardsDisabled: "No flashcards",
     default: "Default",

@@ -9,7 +9,6 @@ import {
   toggleUserLockApi,
   updateUserStorageLimitApi,
 } from "@/services/api/admin-users"
-import { MOCK_USERS } from "@/states/mock-data"
 import type { Document, User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
 import type { Dispatch, SetStateAction } from "react"
@@ -27,7 +26,7 @@ export function useAdminState({
   setDocuments,
   addLog,
 }: AdminStateDeps) {
-  const [users, setUsers] = useState<User[]>(MOCK_USERS)
+  const [users, setUsers] = useState<User[]>([])
 
   // Fetch real user list when an admin/sub-admin logs in
   useEffect(() => {

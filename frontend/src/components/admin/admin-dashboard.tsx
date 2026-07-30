@@ -1166,7 +1166,7 @@ export function AdminDashboard() {
                         />
                       </div>
                     ) : (
-                      <span>{formatPlanLimit(pkg.maxFlashcards, text.flashcardsLimitFeature, text.flashcardsUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
+                      <span>{text.maxRoomMembersFeature(pkg.maxUsers)}</span>
                     )}
                   </li>
                   {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-302) —
