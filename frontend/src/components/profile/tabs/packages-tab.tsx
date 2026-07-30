@@ -105,7 +105,7 @@ export function PackagesTab({ currentUser, packagePrices, mySubscription, onBuy,
             const createGroupLimit = pkg.createGroupLimit ?? 0
             const joinGroupLimit = pkg.joinGroupLimit ?? pkg.maxUsers
             const dailyAiChatLimit = pkg.dailyAiChatLimit ?? 5
-            const maxFlashcards = pkg.maxFlashcards ?? 5
+            const dailyMaxFlashcards = pkg.dailyMaxFlashcards ?? 5
             return (
               <div
                 key={pkg.id}
@@ -150,6 +150,10 @@ export function PackagesTab({ currentUser, packagePrices, mySubscription, onBuy,
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                       <span>{text.maxRoomMembers(pkg.maxUsers)}</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                      <span>{formatLimitText(dailyMaxFlashcards, text.flashcardLimit, text.flashcardsUnlimited, text.flashcardsDisabled)}</span>
                     </li>
                   </ul>
                 </div>
