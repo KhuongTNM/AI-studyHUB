@@ -72,8 +72,7 @@ CREATE TABLE core.users (
   theme_pref              VARCHAR(10)  NOT NULL CHECK (theme_pref IN ('light', 'dark')) DEFAULT 'light',
   created_by_admin_id     UUID,
   created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  deleted_at              TIMESTAMPTZ
+  updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE core.activity_logs (

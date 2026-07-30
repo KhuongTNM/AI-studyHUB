@@ -10,6 +10,7 @@ import com.aistudyhub.backend.exception.ApiException;
 import com.aistudyhub.backend.exception.PlanAlreadyExistsException;
 import com.aistudyhub.backend.repository.SubscriptionPlanRepository;
 import com.aistudyhub.backend.repository.SubscriptionRepository;
+import com.aistudyhub.backend.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,12 +24,15 @@ public class AdminSubscriptionPlanService {
 
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final UserRepository userRepository;
 
     public AdminSubscriptionPlanService(
             SubscriptionPlanRepository subscriptionPlanRepository,
-            SubscriptionRepository subscriptionRepository) {
+            SubscriptionRepository subscriptionRepository,
+            UserRepository userRepository) {
         this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.subscriptionRepository = subscriptionRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional(readOnly = true)
@@ -160,11 +164,21 @@ public class AdminSubscriptionPlanService {
      * SUB-201/SUB-302: số User đang thực sự dùng gói này (còn hiệu lực), dùng cho cảnh báo
      * trước khi Admin xoá hoặc sửa gói. Không chặn theo plan.isDeleted() — vẫn cho xem số liệu
      * của gói đã xoá, để Admin biết còn bao nhiêu người đang được bảo lưu quyền lợi.
+     *
+     * Riêng gói Free: KHÔNG đếm qua payment.subscriptions — Free không bao giờ có bản ghi ở đó
+     * (GAP-T1, xem AdminUserService.grantSubscription()), nên đếm theo cách này sẽ luôn ra 0 dù
+     * thực tế có bao nhiêu User đang ở Free. Đếm trực tiếp qua core.users.subscription_plan_id,
+     * đúng nguồn dữ liệu thật của Free.
      */
     @Transactional(readOnly = true)
     public long getActiveUserCount(String planName) {
         SubscriptionPlan plan = subscriptionPlanRepository.findByNameIgnoreCase(planName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy gói dịch vụ."));
+
+        if (SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase(plan.getName())) {
+            return userRepository.countBySubscriptionPlanId(plan.getId());
+        }
+
         return subscriptionRepository.countByPlanIdAndStatusAndEndDateAfter(
                 plan.getId(), SubscriptionStatus.ACTIVE, LocalDateTime.now());
     }

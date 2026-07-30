@@ -170,7 +170,7 @@ function getStoredAdminSection(): AdminSection {
 export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
-    toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
+    toggleUserLock, resetUserPassword, createSubAdminAccount,
     packagePrices, refetchPackagePrices, grantSubscription, updateUserStorageLimit,
   } = useApp()
 
@@ -679,16 +679,6 @@ export function AdminDashboard() {
         )
       }
       onReset={(user) => setResetTarget(user)}
-      onDelete={(user) =>
-        requireConfirm(
-          `${text.delete}: ${user.email}`,
-          async () =>
-            runAccountAction(
-              await deleteUserAccount(user.id),
-              text.accountDeleted,
-            ),
-        )
-      }
       onGrant={(user) => {
         setGrantTarget(user)
         const userPlan = user.subscriptionPlanId == null
@@ -807,10 +797,14 @@ export function AdminDashboard() {
     // SUB-302 (Business Logic doc, Mục 3): trước khi hiển thị Pop-up "Lưu thay
     // đổi", gọi GET active-user-count (SUB-201a) để làm rõ phạm vi ảnh hưởng —
     // chỉ mang tính minh bạch hoá, KHÔNG chặn thao tác nếu gọi lỗi.
+    // FIX (free-plan-warning-message-fix.md): nhận biết gói Free ở FE theo
+    // đúng cách BE đang nhận biết — so sánh planName/name bằng chữ thường,
+    // không phân biệt hoa/thường (giống SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase).
+    const isFreePlan = pkg.planName?.toLowerCase() === "free" || pkg.name?.toLowerCase() === "free"
     let confirmLabel = formatAdminText(text.updatePackage, { name: updated.name })
     try {
       const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
-      confirmLabel += text.updateActiveUserCountWarning(activeUserCount)
+      confirmLabel += text.updateActiveUserCountWarning(activeUserCount, isFreePlan)
     } catch {
       // Không chặn Admin sửa gói nếu chỉ riêng số liệu cảnh báo không tải được.
     }
