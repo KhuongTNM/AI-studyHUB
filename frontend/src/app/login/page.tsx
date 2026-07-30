@@ -241,11 +241,13 @@ export default function LoginPage() {
                   {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {/* HIDDEN theo yêu cầu: ẩn nút Quên mật khẩu phía login
               <div className="mt-1 text-right">
                 <a href="/reset-password" className="text-xs text-primary hover:underline">
                   Quên mật khẩu?
                 </a>
               </div>
+              */}
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

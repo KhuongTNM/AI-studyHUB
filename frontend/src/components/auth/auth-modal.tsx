@@ -332,9 +332,11 @@ export function AuthModal() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {/* HIDDEN theo yêu cầu: ẩn nút Quên mật khẩu phía login
                 <button type="button" onClick={() => switchTab("forgot")} className="mt-1 text-xs text-primary hover:underline">
                   {text.forgot}
                 </button>
+                */}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

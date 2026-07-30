@@ -160,6 +160,7 @@ export function UserTable({
               >
                 ✨ {text.grantPackage}
               </Button>
+              {/* HIDDEN theo yêu cầu: ẩn nút Reset mật khẩu phía admin
               <Button
                 size="sm"
                 variant="outline"
@@ -168,6 +169,7 @@ export function UserTable({
               >
                 ↻ {text.reset}
               </Button>
+              */}
               <Button
                 size="sm"
                 variant="outline"

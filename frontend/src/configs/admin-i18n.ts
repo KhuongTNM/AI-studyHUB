@@ -89,8 +89,13 @@ export const adminText = {
         : " Hiện không có ai đang sử dụng gói này.",
     // SUB-302 (Business Logic doc, Mục 3) — dòng làm rõ phạm vi ảnh hưởng khi
     // Admin sửa gói, tránh hiểu nhầm là ảnh hưởng ngay tới người đang dùng.
-    updateActiveUserCountWarning: (count: number) =>
-      ` Thay đổi này chỉ áp dụng cho lượt đăng ký/gia hạn MỚI kể từ bây giờ. ${count} người đang dùng gói này với hạn mức hiện tại sẽ KHÔNG bị ảnh hưởng cho tới khi hết hạn hoặc gia hạn lại.`,
+    // FIX (free-plan-warning-message-fix.md): gói Free không có cơ chế snapshot
+    // hạn mức như gói trả phí — sửa gói Free áp dụng NGAY LẬP TỨC cho toàn bộ
+    // người đang dùng, nên cần message riêng, tránh nói sai sự thật.
+    updateActiveUserCountWarning: (count: number, isFreePlan: boolean) =>
+      isFreePlan
+        ? ` Thay đổi này áp dụng NGAY LẬP TỨC cho toàn bộ ${count} người đang dùng gói Free hiện tại — khác với gói trả phí, gói Free không có cơ chế giữ nguyên hạn mức cũ.`
+        : ` Thay đổi này chỉ áp dụng cho lượt đăng ký/gia hạn MỚI kể từ bây giờ. ${count} người đang dùng gói này với hạn mức hiện tại sẽ KHÔNG bị ảnh hưởng cho tới khi hết hạn hoặc gia hạn lại.`,
     addPackageTitle: "Thêm gói dịch vụ mới",
     packageNameRequired: "Tên gói *",
     packageNamePlaceholder: "vd: Gói Enterprise",
@@ -278,8 +283,13 @@ export const adminText = {
         : " No one is currently using this plan.",
     // SUB-302 — clarifying line shown when Admin edits a plan, to avoid the
     // impression that the change affects current subscribers immediately.
-    updateActiveUserCountWarning: (count: number) =>
-      ` This change only applies to NEW registrations/renewals from now on. ${count} user(s) currently on this plan's existing limits will NOT be affected until they expire or renew.`,
+    // FIX (free-plan-warning-message-fix.md): the Free plan has no snapshot
+    // mechanism like paid plans — editing Free applies IMMEDIATELY to every
+    // current user, so it needs its own message instead of the paid-plan one.
+    updateActiveUserCountWarning: (count: number, isFreePlan: boolean) =>
+      isFreePlan
+        ? ` This change applies IMMEDIATELY to all ${count} current user(s) of the Free plan — unlike paid plans, Free has no mechanism to keep existing limits unchanged.`
+        : ` This change only applies to NEW registrations/renewals from now on. ${count} user(s) currently on this plan's existing limits will NOT be affected until they expire or renew.`,
     addPackageTitle: "Add new subscription plan",
     packageNameRequired: "Plan name *",
     packageNamePlaceholder: "e.g. Enterprise plan",
