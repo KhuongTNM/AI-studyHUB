@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { MOCK_CATEGORIES } from "@/states/mock-data"
 import {
   fetchDocumentsApi,
   uploadDocumentApi,
@@ -41,7 +40,7 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
   const documentsRef = useRef<Document[]>(documents)
   const uploadPollsRef = useRef(new Map<string, UploadPoll>())
   useEffect(() => { documentsRef.current = documents }, [documents])
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES)
+  const [categories, setCategories] = useState<Category[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
 
   // Upload processing polls must not survive an account switch or unmount.
@@ -244,11 +243,16 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
       })
   }, [refreshStorageUsage])
 
-  // ── Khôi phục từ Trash (BR-023) ─────────────────────────────────────────
+  // ── Khôi phục từ Trash (BR-023, restore-duplicate-guard.md) ────────────────
   // Doc bị xóa không có trong global documents (API không trả về) → phải ADD vào, không dùng .map()
-  const restoreDocument = useCallback((id: string) => {
-    restoreDocumentApi(id)
-      .then(updated => {
+  // autoRename=true → BE tự thêm hậu tố (n) khi trùng tên; false/undefined → 409 nếu trùng.
+  const restoreDocument = useCallback(
+    async (
+      id: string,
+      autoRename?: boolean,
+    ): Promise<{ success: boolean; error?: string; code?: string; details?: { fileName?: string; folderId?: string | null } }> => {
+      try {
+        const updated = await restoreDocumentApi(id, autoRename)
         setDocuments(prev => {
           const exists = prev.some(d => d.id === id)
           // Nếu đã có (edge case) → update; nếu chưa có (từ trash) → thêm lên đầu
@@ -257,11 +261,20 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
             : [updated, ...prev]
         })
         void refreshStorageUsage()
-      })
-      .catch(() => {
-        // trash-page.tsx tự rollback trashDocs nếu lỗi
-      })
-  }, [refreshStorageUsage])
+        return { success: true }
+      } catch (error) {
+        // Khi 409 DUPLICATE_FILE_NAME: KHÔNG thêm doc vào state (file vẫn nằm trong Thùng rác)
+        if (error instanceof ApiError) {
+          return { success: false, error: error.message, code: error.code, details: error.details }
+        }
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Không thể khôi phục tài liệu.",
+        }
+      }
+    },
+    [refreshStorageUsage],
+  )
 
   // ── Đổi visibility public/private (BR-018, BR-019) ──────────────────────
   const changeDocumentVisibility = useCallback(
@@ -513,8 +526,6 @@ export function useDocumentState({ currentUser, setCurrentUser }: DocumentStateD
 
   return {
     documents,
-    /** Exposed so admin actions (e.g. deleteUserAccount) can soft-delete user docs */
-    setDocuments,
     categories,
     folders,
     addDocument,

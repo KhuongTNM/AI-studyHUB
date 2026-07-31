@@ -170,7 +170,7 @@ function getStoredAdminSection(): AdminSection {
 export function AdminDashboard() {
   const {
     currentUser, users, documents, language, setCurrentPage, updateUser,
-    toggleUserLock, resetUserPassword, deleteUserAccount, createSubAdminAccount,
+    toggleUserLock, resetUserPassword, createSubAdminAccount,
     packagePrices, refetchPackagePrices, grantSubscription, updateUserStorageLimit,
   } = useApp()
 
@@ -679,16 +679,6 @@ export function AdminDashboard() {
         )
       }
       onReset={(user) => setResetTarget(user)}
-      onDelete={(user) =>
-        requireConfirm(
-          `${text.delete}: ${user.email}`,
-          async () =>
-            runAccountAction(
-              await deleteUserAccount(user.id),
-              text.accountDeleted,
-            ),
-        )
-      }
       onGrant={(user) => {
         setGrantTarget(user)
         const userPlan = user.subscriptionPlanId == null
@@ -749,7 +739,7 @@ export function AdminDashboard() {
     if (!Number.isInteger(pkg.createGroupLimit) || pkg.createGroupLimit < -1) return { error: "Giới hạn tạo nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.joinGroupLimit) || pkg.joinGroupLimit < -1) return { error: "Giới hạn tham gia nhóm phải là số nguyên từ -1 trở lên." }
     if (!Number.isInteger(pkg.dailyAiChatLimit) || pkg.dailyAiChatLimit < -1) return { error: "Giới hạn AI Chat phải là số nguyên từ -1 trở lên." }
-    if (!Number.isInteger(pkg.maxFlashcards) || pkg.maxFlashcards < -1) return { error: "Giới hạn flashcard phải là số nguyên từ -1 trở lên." }
+    if (!Number.isInteger(pkg.maxUsers) || pkg.maxUsers < 1) return { error: "Số thành viên tối đa/nhóm phải là số nguyên từ 1 trở lên." }
     if (!Number.isInteger(pkg.dailyMaxFlashcards) || pkg.dailyMaxFlashcards < -1) return { error: "Hạn mức tạo Flashcard AI/ngày phải là số nguyên từ -1 trở lên." }
     const defaultStorageBytes = parseStorageBytes(pkg.storage)
     if (!Number.isFinite(defaultStorageBytes) || defaultStorageBytes <= 0) return { error: "Dung lượng lưu trữ không hợp lệ." }
@@ -762,7 +752,7 @@ export function AdminDashboard() {
         createGroupLimit: pkg.createGroupLimit,
         joinGroupLimit: pkg.joinGroupLimit,
         dailyAiChatLimit: pkg.dailyAiChatLimit,
-        maxFlashcards: pkg.maxFlashcards,
+        maxRoomMembers: pkg.maxUsers,
         dailyMaxFlashcards: pkg.dailyMaxFlashcards,
       },
     }
@@ -807,10 +797,14 @@ export function AdminDashboard() {
     // SUB-302 (Business Logic doc, Mục 3): trước khi hiển thị Pop-up "Lưu thay
     // đổi", gọi GET active-user-count (SUB-201a) để làm rõ phạm vi ảnh hưởng —
     // chỉ mang tính minh bạch hoá, KHÔNG chặn thao tác nếu gọi lỗi.
+    // FIX (free-plan-warning-message-fix.md): nhận biết gói Free ở FE theo
+    // đúng cách BE đang nhận biết — so sánh planName/name bằng chữ thường,
+    // không phân biệt hoa/thường (giống SubscriptionPlan.FREE_PLAN_NAME.equalsIgnoreCase).
+    const isFreePlan = pkg.planName?.toLowerCase() === "free" || pkg.name?.toLowerCase() === "free"
     let confirmLabel = formatAdminText(text.updatePackage, { name: updated.name })
     try {
       const activeUserCount = await fetchActiveUserCountApi(pkg.planName)
-      confirmLabel += text.updateActiveUserCountWarning(activeUserCount)
+      confirmLabel += text.updateActiveUserCountWarning(activeUserCount, isFreePlan)
     } catch {
       // Không chặn Admin sửa gói nếu chỉ riêng số liệu cảnh báo không tải được.
     }
@@ -1155,18 +1149,17 @@ export function AdminDashboard() {
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
                     {isEditing ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs">{text.maxFlashcardsField}</span>
+                        <span className="text-xs">{text.maxRoomMembersField}</span>
                         <input
                           type="number"
-                          min="-1"
-                          value={draft.maxFlashcards ?? 5}
-                          onChange={e => setPkgDraft(d => ({ ...d, maxFlashcards: Number(e.target.value) }))}
-                          title={text.unlimitedInputHint}
+                          min="1"
+                          value={draft.maxUsers ?? pkg.maxUsers}
+                          onChange={e => setPkgDraft(d => ({ ...d, maxUsers: Number(e.target.value) }))}
                           className="w-20 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
                     ) : (
-                      <span>{formatPlanLimit(pkg.maxFlashcards, text.flashcardsLimitFeature, text.flashcardsUnlimitedFeature, text.flashcardsDisabledFeature)}</span>
+                      <span>{text.maxRoomMembersFeature(pkg.maxUsers)}</span>
                     )}
                   </li>
                   {/* MỚI (Flashcard_AI_Daily_Quota_*.docx v2.0, BR-110 → BR-112, ADM-302) —

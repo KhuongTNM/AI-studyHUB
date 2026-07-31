@@ -30,10 +30,6 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     List<Document> findByUserIdAndStatusOrderByCreatedAtDesc(UUID userId, DocumentStatus status);
 
-    long countByUserIdAndDeletedAtIsNullAndOriginalName(UUID userId, String originalName);
-
-    List<Document> findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(UUID userId, String prefix);
-
     @Query("SELECT d FROM Document d JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL AND t.name = :tagName ORDER BY d.createdAt DESC")
     List<Document> findByUserIdAndTagName(@Param("userId") UUID userId, @Param("tagName") String tagName);
 
@@ -44,9 +40,6 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Query("UPDATE Document d SET d.folderId = NULL WHERE d.folderId IN :folderIds")
     void clearFolderIdByFolderIds(Collection<UUID> folderIds);
 
-    @Modifying
-    @Query("UPDATE Document d SET d.deletedAt = :deletedAt WHERE d.userId = :userId AND d.deletedAt IS NULL")
-    void softDeleteByUserId(@Param("userId") UUID userId, @Param("deletedAt") java.time.LocalDateTime deletedAt);
     @Query("SELECT DISTINCT d FROM Document d LEFT JOIN d.tags t WHERE d.userId = :userId AND d.deletedAt IS NULL " +
            "AND (:keyword IS NULL OR LOWER(d.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
            "     OR LOWER(d.originalName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
@@ -73,6 +66,20 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     long countActiveDuplicateInFolder(@Param("userId") UUID userId,
                                        @Nullable @Param("folderId") UUID folderId,
                                        @Param("originalName") String originalName);
+
+    /**
+     * BR-11x (Restore Duplicate Guard): tìm các bản Active cùng user + ĐÚNG cùng folder
+     * (folderId có thể NULL = root, xử lý null-safe giống countActiveDuplicateInFolder) có tên
+     * bắt đầu bằng prefix — dùng để tính số hậu tố " (n)" lớn nhất khi khôi phục kèm autoRename.
+     * Giới hạn đúng phạm vi folder (khác 1 lần đếm trùng tên toàn-user trước đây) để nhất quán
+     * với BR-112 — tránh đổi tên nhầm khi trùng tên nhưng ở KHÁC folder.
+     */
+    @Query("SELECT d FROM Document d WHERE d.userId = :userId AND d.deletedAt IS NULL " +
+           "AND ((:folderId IS NULL AND d.folderId IS NULL) OR d.folderId = :folderId) " +
+           "AND LOWER(d.originalName) LIKE LOWER(CONCAT(:prefix, '%'))")
+    List<Document> findActiveByFolderAndNamePrefix(@Param("userId") UUID userId,
+                                                     @Nullable @Param("folderId") UUID folderId,
+                                                     @Param("prefix") String prefix);
 
        @Modifying
        @Transactional

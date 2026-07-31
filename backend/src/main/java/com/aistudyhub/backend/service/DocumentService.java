@@ -268,8 +268,16 @@ public class DocumentService {
         return documentRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, DocumentStatus.DELETED);
     }
 
+    /**
+     * BR-11x (Restore Duplicate Guard): khôi phục tài liệu từ Thùng rác. Nếu tên file đang trùng
+     * với 1 bản Active khác (cùng user, cùng folder, không phân biệt hoa/thường — cùng phạm vi
+     * với BR-112), mặc định (autoRename = false) CHẶN khôi phục, trả 409 kèm {fileName, folderId}
+     * để FE hiện popup hỏi user "Khôi phục và đổi tên" hay "Hủy" — thay vì âm thầm tự đổi tên như
+     * trước đây. Chỉ khi user xác nhận đổi tên (autoRename = true) thì mới tự thêm hậu tố " (n)".
+     * Trường hợp không trùng thì khôi phục thẳng, không hỏi gì thêm.
+     */
     @Transactional(rollbackFor = Exception.class)
-    public Document restoreDocument(UUID id, UUID userId) {
+    public Document restoreDocument(UUID id, UUID userId, boolean autoRename) {
         Document doc = documentRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tài liệu không tồn tại."));
         if (doc.getStatus() != DocumentStatus.DELETED) {
@@ -280,26 +288,29 @@ public class DocumentService {
         }
 
         String originalName = doc.getOriginalName();
-        int dot = originalName.lastIndexOf('.');
-        String base = (dot > 0) ? originalName.substring(0, dot) : originalName;
-        String ext = (dot > 0) ? originalName.substring(dot) : "";
+        UUID folderId = doc.getFolderId();
 
-        List<Document> existing = documentRepository.findByUserIdAndDeletedAtIsNullAndOriginalNameStartingWith(userId, base);
-        int maxN = 0;
-        Pattern pattern = Pattern.compile(Pattern.quote(base) + " \\((\\d+)\\)" + Pattern.quote(ext));
-        for (Document d : existing) {
-            Matcher m = pattern.matcher(d.getOriginalName());
-            if (m.matches()) {
-                int n = Integer.parseInt(m.group(1));
-                if (n > maxN) maxN = n;
+        if (documentRepository.countActiveDuplicateInFolder(userId, folderId, originalName) > 0) {
+            if (!autoRename) {
+                throw duplicateFileNameException(originalName, folderId);
             }
-        }
-        if (maxN > 0) {
+
+            int dot = originalName.lastIndexOf('.');
+            String base = (dot > 0) ? originalName.substring(0, dot) : originalName;
+            String ext = (dot > 0) ? originalName.substring(dot) : "";
+
+            List<Document> existing = documentRepository.findActiveByFolderAndNamePrefix(userId, folderId, base);
+            int maxN = 1;
+            Pattern pattern = Pattern.compile(Pattern.quote(base) + " \\((\\d+)\\)" + Pattern.quote(ext),
+                    Pattern.CASE_INSENSITIVE);
+            for (Document d : existing) {
+                Matcher m = pattern.matcher(d.getOriginalName());
+                if (m.matches()) {
+                    int n = Integer.parseInt(m.group(1));
+                    if (n > maxN) maxN = n;
+                }
+            }
             String newName = base + " (" + (maxN + 1) + ")" + ext;
-            doc.setOriginalName(newName);
-            doc.setTitle(newName);
-        } else if (documentRepository.countByUserIdAndDeletedAtIsNullAndOriginalName(userId, originalName) > 0) {
-            String newName = base + " (2)" + ext;
             doc.setOriginalName(newName);
             doc.setTitle(newName);
         }
@@ -307,7 +318,16 @@ public class DocumentService {
         doc.setStatus(DocumentStatus.READY);
         doc.setDeletedAt(null);
         doc.setUpdatedAt(LocalDateTime.now());
-        Document restored = documentRepository.save(doc);
+
+        final Document restored;
+        try {
+            restored = documentRepository.saveAndFlush(doc);
+        } catch (DataIntegrityViolationException ex) {
+            // Race-condition cuối cùng do ràng buộc UNIQUE ux_docs_active_dup_name (2 request
+            // khôi phục/upload cùng tên, cùng folder lọt qua bước check phía trên) — cùng pattern
+            // với DocumentService.upload().
+            throw duplicateFileNameException(doc.getOriginalName(), folderId);
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại."));

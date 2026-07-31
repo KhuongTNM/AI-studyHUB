@@ -138,8 +138,9 @@ public class DocumentController {
     @PostMapping("/{id}/restore")
     public ResponseEntity<DocumentResponse> restore(
             @AuthenticationPrincipal AuthUserPrincipal principal,
-            @PathVariable UUID id) {
-        Document doc = documentService.restoreDocument(id, principal.getId());
+            @PathVariable UUID id,
+            @RequestParam(value = "autoRename", required = false, defaultValue = "false") boolean autoRename) {
+        Document doc = documentService.restoreDocument(id, principal.getId(), autoRename);
         return ResponseEntity.ok(DocumentResponse.from(doc));
     }
 

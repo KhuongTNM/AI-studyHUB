@@ -31,7 +31,6 @@ export const adminText = {
     reset: "Reset mật khẩu",
     lock: "Khóa",
     unlock: "Mở khóa",
-    delete: "Xóa tài khoản",
     createSubAdmin: "Tạo acc sub-admin",
     displayName: "Tên hiển thị",
     password: "Mật khẩu",
@@ -90,8 +89,13 @@ export const adminText = {
         : " Hiện không có ai đang sử dụng gói này.",
     // SUB-302 (Business Logic doc, Mục 3) — dòng làm rõ phạm vi ảnh hưởng khi
     // Admin sửa gói, tránh hiểu nhầm là ảnh hưởng ngay tới người đang dùng.
-    updateActiveUserCountWarning: (count: number) =>
-      ` Thay đổi này chỉ áp dụng cho lượt đăng ký/gia hạn MỚI kể từ bây giờ. ${count} người đang dùng gói này với hạn mức hiện tại sẽ KHÔNG bị ảnh hưởng cho tới khi hết hạn hoặc gia hạn lại.`,
+    // FIX (free-plan-warning-message-fix.md): gói Free không có cơ chế snapshot
+    // hạn mức như gói trả phí — sửa gói Free áp dụng NGAY LẬP TỨC cho toàn bộ
+    // người đang dùng, nên cần message riêng, tránh nói sai sự thật.
+    updateActiveUserCountWarning: (count: number, isFreePlan: boolean) =>
+      isFreePlan
+        ? ` Thay đổi này áp dụng NGAY LẬP TỨC cho toàn bộ ${count} người đang dùng gói Free hiện tại — khác với gói trả phí, gói Free không có cơ chế giữ nguyên hạn mức cũ.`
+        : ` Thay đổi này chỉ áp dụng cho lượt đăng ký/gia hạn MỚI kể từ bây giờ. ${count} người đang dùng gói này với hạn mức hiện tại sẽ KHÔNG bị ảnh hưởng cho tới khi hết hạn hoặc gia hạn lại.`,
     addPackageTitle: "Thêm gói dịch vụ mới",
     packageNameRequired: "Tên gói *",
     packageNamePlaceholder: "vd: Gói Enterprise",
@@ -115,6 +119,7 @@ export const adminText = {
     aiChatUnlimitedFeature: "AI Chat: không giới hạn",
     aiChatDisabledFeature: "Không có AI Chat",
     flashcardsLimitFeature: (limit: number) => `Flashcard tối đa: ${limit}`,
+    maxRoomMembersFeature: (limit: number) => `Số thành viên tối đa: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcard: không giới hạn",
     flashcardsDisabledFeature: "Không có flashcard",
     // MỚI (BR-110 → BR-112) — hiển thị hạn mức tạo Flashcard AI/ngày trên thẻ gói.
@@ -124,7 +129,6 @@ export const adminText = {
     noCreateGroupFeature: (join: string) => `Không tạo nhóm, tham gia ${join}`,
     accountUnlocked: "Đã mở khóa tài khoản.",
     accountLocked: "Đã khóa tài khoản.",
-    accountDeleted: "Đã xóa tài khoản.",
     resetSuccess: "Đã reset mật khẩu thành công.",
     resetFailed: "Không thể reset mật khẩu.",
     processing: "Đang xử lý...",
@@ -221,7 +225,6 @@ export const adminText = {
     reset: "Reset password",
     lock: "Lock",
     unlock: "Unlock",
-    delete: "Delete account",
     createSubAdmin: "Create sub-admin",
     displayName: "Display name",
     password: "Password",
@@ -280,8 +283,13 @@ export const adminText = {
         : " No one is currently using this plan.",
     // SUB-302 — clarifying line shown when Admin edits a plan, to avoid the
     // impression that the change affects current subscribers immediately.
-    updateActiveUserCountWarning: (count: number) =>
-      ` This change only applies to NEW registrations/renewals from now on. ${count} user(s) currently on this plan's existing limits will NOT be affected until they expire or renew.`,
+    // FIX (free-plan-warning-message-fix.md): the Free plan has no snapshot
+    // mechanism like paid plans — editing Free applies IMMEDIATELY to every
+    // current user, so it needs its own message instead of the paid-plan one.
+    updateActiveUserCountWarning: (count: number, isFreePlan: boolean) =>
+      isFreePlan
+        ? ` This change applies IMMEDIATELY to all ${count} current user(s) of the Free plan — unlike paid plans, Free has no mechanism to keep existing limits unchanged.`
+        : ` This change only applies to NEW registrations/renewals from now on. ${count} user(s) currently on this plan's existing limits will NOT be affected until they expire or renew.`,
     addPackageTitle: "Add new subscription plan",
     packageNameRequired: "Plan name *",
     packageNamePlaceholder: "e.g. Enterprise plan",
@@ -305,6 +313,7 @@ export const adminText = {
     aiChatUnlimitedFeature: "AI chat: unlimited",
     aiChatDisabledFeature: "No AI chat",
     flashcardsLimitFeature: (limit: number) => `Max flashcards: ${limit}`,
+    maxRoomMembersFeature: (limit: number) => `Max team members: ${limit}`,
     flashcardsUnlimitedFeature: "Flashcards: unlimited",
     flashcardsDisabledFeature: "No flashcards",
     // NEW (BR-110 → BR-112) — shown on the plan card, daily AI flashcard limit.
@@ -314,7 +323,6 @@ export const adminText = {
     noCreateGroupFeature: (join: string) => `No group creation, join ${join}`,
     accountUnlocked: "Account unlocked.",
     accountLocked: "Account locked.",
-    accountDeleted: "Account deleted.",
     resetSuccess: "Password reset successfully.",
     resetFailed: "Could not reset password.",
     processing: "Processing...",

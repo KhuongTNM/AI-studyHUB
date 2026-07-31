@@ -3,31 +3,27 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   createSubAdminApi,
-  deleteAdminUserApi,
   fetchAdminUsersApi,
   resetUserPasswordApi,
   toggleUserLockApi,
   updateUserStorageLimitApi,
 } from "@/services/api/admin-users"
-import { MOCK_USERS } from "@/states/mock-data"
-import type { Document, User } from "@/states/types"
+import type { User } from "@/states/types"
 import { formatBytes } from "@/utils/format"
 import type { Dispatch, SetStateAction } from "react"
 
 interface AdminStateDeps {
   currentUser: User | null
   setCurrentUser: Dispatch<SetStateAction<User | null>>
-  setDocuments: Dispatch<SetStateAction<Document[]>>
   addLog: (action: string, target: string, userId: string) => void
 }
 
 export function useAdminState({
   currentUser,
   setCurrentUser,
-  setDocuments,
   addLog,
 }: AdminStateDeps) {
-  const [users, setUsers] = useState<User[]>(MOCK_USERS)
+  const [users, setUsers] = useState<User[]>([])
 
   // Fetch real user list when an admin/sub-admin logs in
   useEffect(() => {
@@ -157,37 +153,6 @@ export function useAdminState({
     [currentUser, users, addLog],
   )
 
-  const deleteUserAccount = useCallback(
-    async (id: string): Promise<{ success: boolean; error?: string }> => {
-      const target = users.find(u => u.id === id)
-      if (!currentUser || !target) return { success: false, error: "Không tìm thấy tài khoản." }
-      if (!["admin", "sub-admin"].includes(currentUser.role)) return { success: false, error: "Không có quyền." }
-      if (target.role === "admin") {
-        return { success: false, error: "Không được phép xóa tài khoản Admin." }
-      }
-      if (currentUser.role === "sub-admin" && target.role !== "user") {
-        return { success: false, error: "Sub-admin chỉ được xóa tài khoản user." }
-      }
-      if (target.id === currentUser.id) return { success: false, error: "Không thể tự xóa tài khoản hiện tại." }
-
-      try {
-        await deleteAdminUserApi(id)
-        setUsers(prev => prev.filter(u => u.id !== id))
-        setDocuments(prev =>
-          prev.map(d => (d.uploadedBy === id ? { ...d, status: "deleted" } : d)),
-        )
-        addLog("Xóa tài khoản", target.email, currentUser.id)
-        return { success: true }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Không thể xóa tài khoản.",
-        }
-      }
-    },
-    [currentUser, users, setDocuments, addLog],
-  )
-
   const createSubAdminAccount = useCallback(
     async (email: string, password: string, displayName: string) => {
       if (currentUser?.role !== "admin")
@@ -222,7 +187,6 @@ export function useAdminState({
     updateUserStorageLimit,
     toggleUserLock,
     resetUserPassword,
-    deleteUserAccount,
     createSubAdminAccount,
   }
 }

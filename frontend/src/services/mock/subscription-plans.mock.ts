@@ -230,6 +230,7 @@ export async function mockUpdateSubscriptionPlanRequest(
   if (typeof input.createGroupLimit === "number") plan.createGroupLimit = input.createGroupLimit
   if (typeof input.joinGroupLimit === "number") plan.joinGroupLimit = input.joinGroupLimit
   if (typeof input.dailyAiChatLimit === "number") plan.dailyAiChatLimit = input.dailyAiChatLimit
+  if (typeof input.maxRoomMembers === "number") plan.maxRoomMembers = input.maxRoomMembers
   if (typeof input.maxFlashcards === "number") plan.maxFlashcards = input.maxFlashcards
   if (typeof input.dailyMaxFlashcards === "number") plan.dailyMaxFlashcards = input.dailyMaxFlashcards
   if (typeof input.defaultStorageBytes === "number" && input.defaultStorageBytes > 0) {
