@@ -44,6 +44,16 @@ const GROUP_JOIN_LIMIT_BY_TIER: Record<PackageTier, number> = {
   "5+": 60,
 }
 
+// BR: số thành viên tối đa của một nhóm phụ thuộc gói cước hiện tại của CHỦ
+// nhóm (đồng bộ với payment.subscription_plans.max_room_members ở backend:
+// free = 0/1 người dùng solo, plan_2_4 = 4, plan_5_plus = 99). Dùng làm giá trị
+// dự phòng khi API gói dịch vụ chưa trả về maxUsers cho plan tương ứng.
+const GROUP_MAX_MEMBERS_BY_TIER: Record<PackageTier, number> = {
+  free: 1,
+  "2-4": 4,
+  "5+": 99,
+}
+
 const GROUP_INVITATION_POLL_INTERVAL_MS = 5000
 
 function tierToPlanName(tier: string): string {
@@ -66,6 +76,7 @@ function getFallbackLimits(user: User | null) {
   return {
     create: GROUP_CREATE_LIMIT_BY_TIER[tier],
     join: GROUP_JOIN_LIMIT_BY_TIER[tier],
+    maxMembers: GROUP_MAX_MEMBERS_BY_TIER[tier],
   }
 }
 
@@ -85,6 +96,11 @@ function resolveGroupLimits(user: User | null, packagePrices: PackagePrice[]) {
   return {
     create: effectivePlan?.createGroupLimit ?? fallback.create,
     join: effectivePlan?.joinGroupLimit ?? fallback.join,
+    // maxUsers đến từ payment.subscription_plans.max_room_members (xem
+    // useSubscriptionState.ts: maxUsers = plan.maxRoomMembers), đây chính là
+    // "thông tin bên phía gói dịch vụ" cần dùng để hiển thị đúng số thành
+    // viên tối đa của nhóm do user hiện tại làm chủ.
+    maxMembers: effectivePlan?.maxUsers ?? fallback.maxMembers,
   }
 }
 
@@ -108,6 +124,26 @@ function mergeOwnerName(group: GroupChat): GroupChat {
     ...group,
     ownerName: owner?.displayName ?? group.ownerName,
   }
+}
+
+// group.maxMembers do backend trả về được tính theo snapshot gói cước tại
+// thời điểm kích hoạt subscription (SUB-301) nên có thể trễ so với gói hiện
+// tại nếu subscription vừa đổi/hết hạn. Với các nhóm do CHÍNH currentUser làm
+// chủ, ta có đủ dữ liệu gói dịch vụ mới nhất (packagePrices + mySubscription)
+// ở FE nên ghi đè lại maxMembers cho luôn khớp với gói đang áp dụng. Với nhóm
+// của người khác, giữ nguyên giá trị backend trả về vì FE không có thông tin
+// gói của chủ nhóm đó.
+function withOwnerPlanMaxMembers(
+  groups: GroupChat[],
+  currentUser: User | null,
+  ownerMaxMembers: number,
+): GroupChat[] {
+  if (!currentUser) return groups
+  return groups.map(group =>
+    group.ownerId === currentUser.id && group.maxMembers !== ownerMaxMembers
+      ? { ...group, maxMembers: ownerMaxMembers }
+      : group,
+  )
 }
 
 function withCurrentSender(message: GroupChatMessage, user: User): GroupChatMessage {
@@ -206,7 +242,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     try {
       const apiGroups = await fetchGroupsApi(currentUser.id)
       const hydratedGroups = await Promise.all(apiGroups.map(group => hydrateGroup(group)))
-      setGroups(hydratedGroups)
+      setGroups(withOwnerPlanMaxMembers(hydratedGroups, currentUser, groupLimits.maxMembers))
 
       const preferred =
         (preferredGroupId && hydratedGroups.find(group => group.id === preferredGroupId)) ||
@@ -227,7 +263,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     } finally {
       setGroupsLoading(false)
     }
-  }, [activeGroupId, currentUser, hydrateGroup])
+  }, [activeGroupId, currentUser, groupLimits.maxMembers, hydrateGroup])
 
   // Keep the sidebar in sync across separate browser sessions without
   // rehydrating every group on each poll. The open group has dedicated
@@ -241,7 +277,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
       setGroups(previousGroups => {
         const previousById = new Map(previousGroups.map(group => [group.id, group]))
 
-        return apiGroups.map(group => {
+        const merged = apiGroups.map(group => {
           const previous = previousById.get(group.id)
           if (!previous) return group
 
@@ -257,6 +293,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
             updatedAt: group.updatedAt,
           }
         })
+        return withOwnerPlanMaxMembers(merged, currentUser, groupLimits.maxMembers)
       })
       setActiveGroupId(previousId => {
         if (previousId && apiGroups.some(group => group.id === previousId)) return previousId
@@ -265,7 +302,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     } catch (error) {
       console.warn("[GroupChat] Failed to refresh group list", error)
     }
-  }, [currentUser])
+  }, [currentUser, groupLimits.maxMembers])
 
   const loadGroups = useCallback(async (): Promise<ActionResult> => {
     try {
@@ -388,7 +425,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
       .then(apiGroups => Promise.all(apiGroups.map(group => hydrateGroup(group))))
       .then(hydratedGroups => {
         if (cancelled) return
-        setGroups(hydratedGroups)
+        setGroups(withOwnerPlanMaxMembers(hydratedGroups, currentUser, groupLimits.maxMembers))
         setActiveGroupId(prev => {
           if (prev && hydratedGroups.some(group => group.id === prev)) return prev
           return hydratedGroups[0]?.id ?? null
@@ -410,7 +447,7 @@ export function useGroupChatState({ currentUser, packagePrices }: GroupChatState
     return () => {
       cancelled = true
     }
-  }, [currentUser?.id, hydrateGroup])
+  }, [currentUser?.id, groupLimits.maxMembers, hydrateGroup])
 
   // A group can be deleted or a member can be kicked from another session.
   // Refresh only the lightweight group list so those changes appear without
