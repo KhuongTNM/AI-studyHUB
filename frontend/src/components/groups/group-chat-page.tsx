@@ -2,12 +2,20 @@
 
 import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
 import {
-  AlertCircle, Download, FileText, Image, Info, Loader2, LogOut, Mail, MessageCircle,
+  AlertCircle, Download, FileText, Info, Loader2, LogOut, Mail, MessageCircle,
   MoreHorizontal, Paperclip, Plus, Search, Send, Smile, Trash2, UserMinus, Users, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useApp, type Document, type GroupChat, type GroupChatMember, type GroupChatMessage, type GroupInvitationCandidate } from "@/lib/store"
+
+const EMOJI_LIST = [
+  "😀", "😂", "😍", "🥰", "😎", "🤔", "😅", "😭",
+  "😡", "🥳", "😴", "🤗", "😱", "🙄", "😇", "🤩",
+  "👍", "👎", "👏", "🙏", "💪", "🤝", "✌️", "👌",
+  "❤️", "💔", "🔥", "✨", "🎉", "💯", "⭐", "✅",
+  "📚", "✏️", "📝", "💡", "🎓", "⏰", "☕", "🚀",
+]
 
 export function GroupChatPage() {
   const {
@@ -16,7 +24,7 @@ export function GroupChatPage() {
     setActiveGroupId, loadGroups, createGroup, searchGroupInvitationUser, inviteGroupMemberByEmail,
     leaveGroup, kickGroupMember, deleteGroup,
     updateGroupMuted, updateGroupPinned,
-    sendGroupMessage, shareGroupDocument, shareGroupImage, downloadGroupDocument,
+    sendGroupMessage, shareGroupDocument, downloadGroupDocument,
     exportGroupChat, reportGroup, generateGroupCode,
   } = useApp()
 
@@ -47,7 +55,9 @@ export function GroupChatPage() {
   const [reportReason, setReportReason] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const imageInputRef = useRef<HTMLInputElement>(null)
+  const messageInputRef = useRef<HTMLInputElement>(null)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   const activeGroup = groups.find(group => group.id === activeGroupId) ?? groups[0] ?? null
   const isActiveGroupOwner = Boolean(activeGroup && currentUser && activeGroup.ownerId === currentUser.id)
@@ -150,6 +160,17 @@ export function GroupChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activeGroup?.messages.length])
+
+  useEffect(() => {
+    if (!showEmojiPicker) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showEmojiPicker])
 
   const handleCreateGroup = async () => {
     setGroupActionBusy(true)
@@ -307,17 +328,10 @@ export function GroupChatPage() {
     setShowFileShare(false)
   }
 
-  const handleImageUpload = async (file: File) => {
-    if (!activeGroup) return
-    setGroupActionBusy(true)
-    const result = await shareGroupImage(activeGroup.id, file)
-    setGroupActionBusy(false)
-    if (!result.success) {
-      setError(result.error ?? text.imageUploadFailed)
-      return
-    }
-    setError("")
-    showMockNotice(text.imageUploaded)
+  const handleEmojiSelect = (emoji: string) => {
+    setMessage(prev => prev + emoji)
+    setShowEmojiPicker(false)
+    messageInputRef.current?.focus()
   }
 
   const handleDownloadSharedDocument = async (documentId: string) => {
@@ -552,21 +566,8 @@ export function GroupChatPage() {
                 <Button variant="ghost" size="icon" title={text.shareFile} onClick={() => setShowFileShare(prev => !prev)}>
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" title={text.uploadImage} onClick={() => imageInputRef.current?.click()}>
-                  <Image className="h-4 w-4" />
-                </Button>
                 <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={event => {
-                    const file = event.target.files?.[0]
-                    event.currentTarget.value = ""
-                    if (file) void handleImageUpload(file)
-                  }}
-                />
-                <input
+                  ref={messageInputRef}
                   value={message}
                   onChange={event => setMessage(event.target.value)}
                   onKeyDown={event => {
@@ -578,9 +579,25 @@ export function GroupChatPage() {
                   placeholder={text.messagePlaceholder(activeGroup.name)}
                   className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-muted/40 px-4 text-sm outline-none focus:border-primary focus:bg-background"
                 />
-                <Button variant="ghost" size="icon" title={text.mockEmoji} onClick={() => showMockNotice(text.mockEmoji)}>
-                  <Smile className="h-4 w-4" />
-                </Button>
+                <div className="relative" ref={emojiPickerRef}>
+                  <Button variant="ghost" size="icon" title={text.emoji} onClick={() => setShowEmojiPicker(prev => !prev)}>
+                    <Smile className="h-4 w-4" />
+                  </Button>
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-12 right-0 z-50 grid w-64 grid-cols-8 gap-1 rounded-lg border border-border bg-card p-2 shadow-xl">
+                      {EMOJI_LIST.map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className="rounded p-1 text-lg leading-none hover:bg-muted"
+                          onClick={() => handleEmojiSelect(emoji)}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Button size="icon" onClick={handleSend} disabled={!message.trim() || groupActionBusy}>
                   <Send className="h-4 w-4" />
                 </Button>
@@ -900,18 +917,21 @@ function GroupListItem({
           )}
         </div>
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          {group.groupCode} • {latestMessage?.messageType === "document"
-            ? "Shared a file"
-            : latestMessage?.messageType === "image"
-              ? "Shared an image"
-              : latestMessage?.content ?? group.description}
+          {group.groupCode}
+          {(() => {
+            const preview = latestMessage?.messageType === "document"
+              ? "Shared a file"
+              : latestMessage?.messageType === "image"
+                ? "Shared an image"
+                : latestMessage?.content ?? group.description
+            return preview ? ` • ${preview}` : ""
+          })()}
         </p>
       </div>
       <div className="shrink-0 text-right">
         <p className="text-[11px] text-muted-foreground">
           {latestMessage ? latestMessage.timestamp.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}
         </p>
-        <p className="mt-2 text-[11px] text-muted-foreground">{group.members.length}/{group.maxMembers}</p>
       </div>
     </button>
   )
@@ -949,7 +969,7 @@ function GroupHeader({
         <div className="min-w-0">
           <h2 className="truncate text-base font-bold text-foreground">{group.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {group.groupCode} • {group.members.length}/{group.maxMembers} {text.members} • {group.description || text.noDescription}
+            {group.groupCode}
           </p>
         </div>
       </div>
@@ -968,9 +988,6 @@ function GroupHeader({
           onClick={onLeaveOrDelete}
         >
           {isOwner ? <Trash2 className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
-        </Button>
-        <Button variant="ghost" size="icon" title={text.groupOptions} onClick={onShowOptions}>
-          <MoreHorizontal className="h-4 w-4" />
         </Button>
       </div>
     </header>
@@ -1097,6 +1114,7 @@ const groupText = {
     imageUploadFailed: "Không thể upload hình ảnh.",
     documentUploaded: "Tài liệu đã được chia sẻ vào chat nhóm.",
     mockEmoji: "Mock: bảng emoji sẽ được triển khai sau.",
+    emoji: "Chọn emoji",
     memberList: "Danh sách thành viên",
     inviteMember: "Mời thành viên",
     inviteHint: "Nhập email tài khoản đã đăng ký để gửi lời mời đang chờ xử lý.",
@@ -1209,6 +1227,7 @@ const groupText = {
     imageUploadFailed: "Could not upload image.",
     documentUploaded: "Document shared to the group chat.",
     mockEmoji: "Mock: emoji picker will be implemented later.",
+    emoji: "Choose emoji",
     memberList: "Member list",
     inviteMember: "Invite member",
     inviteHint: "Enter a registered account email to send a pending invitation.",
