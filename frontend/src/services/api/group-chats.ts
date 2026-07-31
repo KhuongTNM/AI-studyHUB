@@ -154,6 +154,12 @@ export function mapGroup(api: ApiGroup): GroupChat {
     description: api.description ?? undefined,
     ownerId: api.ownerId,
     ownerName: api.ownerName ?? "Owner",
+    // Giá trị này là snapshot gói cước của CHỦ NHÓM do backend tính (xem
+    // GroupService.buildResponse -> limits(owner).maxCapacity()). Với nhóm do
+    // chính currentUser sở hữu, useGroupChatState sẽ ghi đè lại bằng dữ liệu
+    // gói dịch vụ mới nhất (withOwnerPlanMaxMembers) để tránh lệch khi gói vừa
+    // đổi/hết hạn. "?? 99" chỉ là phương án dự phòng cuối cùng nếu backend
+    // không trả field này.
     maxMembers: api.maxMembers ?? 99,
     members: (api.members ?? []).map(mapMember),
     messages: [],
